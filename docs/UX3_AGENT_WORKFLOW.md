@@ -2,6 +2,7 @@
 
 > UX3 architecture program, design-only branch `ux3` created 2026-11-26 from UX2 commit `136c2788a2589b536d7a8883c7bad8d961690fca`. **NO CODING TASK is automatically authorized by this workflow.**
 > UX3 task authority: `docs/UX3_DESIGN.md`; legacy immutable visible contract: current `ux-v2/docs/UX2-refine.md` plus UX3's pinned original-section index; existing UX2 Coding Agent owns `ux-v2/HANDOVER.md`.
+> **Separate UX3 Manager:** UX3 architecture decisions, task scope and independent code/CI review belong to [`docs/UX3_MANAGER_GUIDE.md`](UX3_MANAGER_GUIDE.md) and the Manager's [`UX3_MANAGER_BOOTSTRAP.md`](UX3_MANAGER_BOOTSTRAP.md). **Neither this Coding Agent workflow nor the existing UX2 Planner Guide is the UX3 Manager's operating guide.** The first Manager chat does not grant any Coding Agent code permission.
 > Cross-product architecture: `main/docs/GAME_PRODUCT_PLANNER_GUIDE.md`; gameplay/privacy rules: `AGENTS.md`.
 
 ## 1. Role and first-work gate
