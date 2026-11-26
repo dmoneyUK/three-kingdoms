@@ -13,8 +13,8 @@ export type SerpentSpearGroupResponseIdentity = {
 
 /**
  * Selects the latest committed Serpent Spear response in one proven group
- * interaction. Event order comes only from the persisted public sequence;
- * duplicate or incomplete sequence proof fails closed.
+ * interaction. The server-owned participant ordinal is the authoritative
+ * group response order; duplicate or incomplete ordinal proof fails closed.
  */
 export function latestSerpentSpearGroupResponseEventId(
   timeline: readonly PresentationV2Event[],
@@ -30,9 +30,9 @@ export function latestSerpentSpearGroupResponseEventId(
   const root = roots.length === 1 ? roots[0] : null;
   if (!root || root.type !== "card" || root.action !== "play" || root.presentation === false
     || root.privateToPlayerId || root.card?.kind !== "BarbarianInvasion"
-    || root.resolutionId !== identity.rootResolutionId || !Number.isSafeInteger(root.publicSequence)) return null;
+    || root.resolutionId !== identity.rootResolutionId) return null;
 
-  const candidates: Array<{ eventId: string; publicSequence: number }> = [];
+  const candidates: Array<{ eventId: string; participantOrdinal: number }> = [];
   for (const effect of effects) {
     const context = effect.attackContext;
     if (effect.effectId !== "serpent_spear_attack" || effect.effectClass !== "CONVERSION"
@@ -59,22 +59,18 @@ export function latestSerpentSpearGroupResponseEventId(
     const event = matchingEvents.length === 1 ? matchingEvents[0] : null;
     if (!event || event.type !== "cards" || event.action !== "play" || event.presentation === false
       || event.privateToPlayerId || event.playedAs !== "attack" || !event.resolutionId
-      || event.actorId !== effect.activationOwnerId || !Number.isSafeInteger(event.publicSequence)
-      || (event.publicSequence as number) <= (root.publicSequence as number)
+      || event.actorId !== effect.activationOwnerId
       || event.cards?.length !== 2 || event.cards.some((card, index) => {
         const projected = effect.cards[index];
         return card.id !== projected?.id || card.kind !== projected.kind
           || card.rank !== projected.rank || card.suit !== projected.suit;
       })) continue;
-    candidates.push({ eventId: event.id, publicSequence: event.publicSequence as number });
+    candidates.push({ eventId: event.id, participantOrdinal: context.participantOrdinal });
   }
 
   if (!candidates.length) return null;
-  const newestSequence = Math.max(...candidates.map((candidate) => candidate.publicSequence));
-  const newest = candidates.filter((candidate) => candidate.publicSequence === newestSequence);
+  const newestOrdinal = Math.max(...candidates.map((candidate) => candidate.participantOrdinal));
+  const newest = candidates.filter((candidate) => candidate.participantOrdinal === newestOrdinal);
   if (newest.length !== 1) return null;
-  const sequenceCollisions = timeline.filter((event) => event.publicSequence === newestSequence
-    && event.presentation !== false && !event.privateToPlayerId);
-  if (sequenceCollisions.length !== 1 || sequenceCollisions[0]?.id !== newest[0]?.eventId) return null;
   return newest[0].eventId;
 }

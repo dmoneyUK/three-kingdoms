@@ -29,7 +29,6 @@ const spearGroupIdentity = {
 const spearGroupRoot = {
   id: spearGroupIdentity.rootEventId, type: "card", action: "play", presentation: true,
   card: { id: "barbarian-card", kind: "BarbarianInvasion" }, resolutionId: spearGroupIdentity.rootResolutionId,
-  publicSequence: 40,
 };
 function spearGroupResponse(eventId, sequence, participantId, ordinal, suffix = eventId) {
   const cards = [
@@ -55,22 +54,19 @@ function spearGroupResponse(eventId, sequence, participantId, ordinal, suffix = 
   };
 }
 
-test("group Serpent Spear routing selects the latest exact committed response by public sequence", () => {
+test("group Serpent Spear routing selects the latest exact committed response by server participant ordinal", () => {
   const first = spearGroupResponse("spear-response-1", 44, "participant-1", 1);
   const second = spearGroupResponse("spear-response-2", 48, "participant-2", 2);
+  const firstWithoutSequence = { ...first.event, publicSequence: undefined };
+  const secondWithoutSequence = { ...second.event, publicSequence: undefined };
   assert.equal(latestSerpentSpearGroupResponseEventId(
-    [spearGroupRoot, second.event, first.event], [second.effect, first.effect], spearGroupIdentity,
-  ), second.event.id, "participant order is taken from the server sequence, not array order");
+    [spearGroupRoot, secondWithoutSequence, firstWithoutSequence], [second.effect, first.effect], spearGroupIdentity,
+  ), second.event.id, "participant order comes from the server proof, not client timeline order or an optional sequence");
 
-  const tied = spearGroupResponse("spear-response-tied", 48, "participant-1", 1);
+  const tied = spearGroupResponse("spear-response-tied", 48, "participant-2", 2);
   assert.equal(latestSerpentSpearGroupResponseEventId(
     [spearGroupRoot, second.event, tied.event], [second.effect, tied.effect], spearGroupIdentity,
-  ), null, "ambiguous public ordering must fail closed");
-
-  const missingSequence = { ...first.event, publicSequence: undefined };
-  assert.equal(latestSerpentSpearGroupResponseEventId(
-    [spearGroupRoot, missingSequence], [first.effect], spearGroupIdentity,
-  ), null, "an event without persisted public ordering cannot own the frame");
+  ), null, "duplicate latest participant ordinals must fail closed");
 
   const wrongRoot = { ...second.effect, rootEventId: "unrelated-root" };
   assert.equal(latestSerpentSpearGroupResponseEventId(
