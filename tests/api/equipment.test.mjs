@@ -525,7 +525,8 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.ok(replacementDiscardEvent, "the exact public Equipment leaving its slot has one committed zone transition");
   assert.equal(replacementDiscardEvent.presentation, true);
   assert.deepEqual(replacementDiscardEvent.publicZoneTransition, {
-    semantics: "PROVEN", visibility: "PUBLIC", eventId: replacementDiscardEvent.id, physicalCardId: firstCard.id,
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: replacementDiscardEvent.id,
+    sourceEventId: replacementDiscardEvent.id, rootEventId: replacementEvent.id, physicalCardId: firstCard.id,
     from: { zone: "EQUIPMENT", ownerId: hostPlayer.id, slot: "weapon" },
     to: { zone: "DISCARD", ownerId: null },
   });
@@ -984,6 +985,25 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   const kirinEvent = resolved.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "shadowrunner-defensive"));
   assert.deepEqual(kirinEvent.publicCardEffects?.[0]?.materials, [{ cardId: "shadowrunner-defensive", ownerId: alicePlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }]);
   assert.equal(kirinEvent.publicCardEffects?.[0]?.activationOwnerId, hostPlayer.id);
+  assert.deepEqual(kirinEvent.publicCardEffects?.[0]?.source, {
+    kind: "equipment", label: "Kirin Bow", providerId: "kirin_bow_damage_about_to_apply",
+  }, "Kirin Bow discard keeps the proven equipment source, not the Attack damage source");
+  assert.deepEqual(kirinEvent.publicZoneTransitions, [{
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: kirinEvent.id, sourceEventId: kirinEvent.id,
+    rootEventId: attack.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-attack")?.id,
+    physicalCardId: "shadowrunner-defensive",
+    from: { zone: "EQUIPMENT", ownerId: alicePlayer.id, slot: "defensiveHorse" },
+    to: { zone: "DISCARD", ownerId: null },
+  }], "the real defensive Mount slot and causal Attack root are retained");
+  assert.deepEqual(kirinEvent.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DISCARDED", playerId: alicePlayer.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ], "only the committed Mount discard is attributed to Kirin Bow");
+  const observer = await state(game.code, alice.token);
+  const observerKirin = observer.data.timeline.find((event) => event.id === kirinEvent.id);
+  assert.deepEqual(observerKirin?.publicCardEffects?.[0]?.materials, kirinEvent.publicCardEffects[0].materials,
+    "the material owner receives the same public physical-card proof as the attacker");
+  assert.deepEqual(observerKirin?.publicFact?.committedOutcome?.changes, kirinEvent.publicFact.committedOutcome.changes,
+    "the material owner receives the same committed discard outcome fact");
 
 });
 

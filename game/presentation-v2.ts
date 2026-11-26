@@ -3,7 +3,7 @@ import { normalizePublicSharedWindow, type PublicSharedResponseWindow } from "./
 import { provenEntourageDecision, isEntourageDodgeFor, entourageInvocationMatchesTimeline, type EntourageDodge, type EntourageDecision } from "./entourage-presentation";
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicPresentationEvent, type PublicPresentationEventFactDraft, type PublicPresentationEventFactProjection } from "./presentation-semantics";
+import { collectPublicPresentationEventFacts, retainedPublicEventFromTimeline, type PublicOutcomeSourceKind, type PublicPresentationEvent, type PublicPresentationEventFactDraft, type PublicPresentationEventFactProjection } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind, type CardSuit } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
@@ -20,7 +20,7 @@ export type PresentationV2Event = {
   player?: string;
   target?: string;
   card?: { id?: string; kind?: string; suit?: string; rank?: string };
-  cards?: readonly { id?: string; kind?: string }[];
+  cards?: readonly { id?: string; kind?: string; suit?: string; rank?: string }[];
   message?: string;
   action?: string;
   playedAs?: "attack" | "dodge" | "peach";
@@ -41,7 +41,9 @@ export type PresentationV2Event = {
   effectNotice?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
   publicFact?: unknown;
+  publicZoneTransitions?: unknown;
   publicZoneTransition?: unknown;
+  publicDiscardContext?: unknown;
   publicDiaoChanNotice?: unknown;
   publicDeflectionAction?: unknown;
   publicCardEffects?: unknown;
@@ -131,6 +133,24 @@ export type PresentationPublicCardEffectMaterial = {
   toZone: Extract<PresentationPublicCardZone, "DISCARD" | "PUBLIC_PLAY" | "JUDGEMENT">;
 };
 
+/** Optional server-authored source label for a committed public effect. */
+export type PresentationPublicCardEffectSource = {
+  kind: "card" | "skill" | "equipment" | "other";
+  label?: string;
+  providerId?: string;
+};
+
+/** Typed cause metadata for an already committed ordinary public discard event. */
+export type PresentationPublicDiscardContext = {
+  semantics: "PROVEN";
+  eventId: string;
+  mode: "self" | "forced" | "direct" | "cost" | "effect" | "equipment-replacement" | "defeat" | "lord-punishment";
+  source: { kind: PublicOutcomeSourceKind; label?: string; providerId?: string };
+  activationOwnerId?: string;
+  rootEventId?: string;
+  resolutionId?: string;
+};
+
 /** Server-authored identity and movement proof for one public physical-card effect. */
 export type PresentationPublicCardEffectProof = {
   semantics: "PROVEN";
@@ -141,6 +161,7 @@ export type PresentationPublicCardEffectProof = {
   activationEventId?: string;
   activationOwnerId: string;
   materials: readonly PresentationPublicCardEffectMaterial[];
+  source?: PresentationPublicCardEffectSource;
   rootEventId?: string;
   rootResolutionId?: string;
   interactionId?: string;
@@ -3635,6 +3656,15 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
       const activationOwnerId = stringValue(proof?.activationOwnerId);
       const attachedEventId = stringValue(proof?.eventId);
       const activationEventId = proof?.activationEventId === undefined ? undefined : stringValue(proof.activationEventId);
+      const rawSource = proof?.source === undefined ? undefined : record(proof.source);
+      const sourceKind = rawSource?.kind;
+      const sourceLabel = rawSource?.label === undefined ? undefined : stringValue(rawSource.label);
+      const providerId = rawSource?.providerId === undefined ? undefined : stringValue(rawSource.providerId);
+      const source: PresentationPublicCardEffectSource | undefined = rawSource && (sourceKind === "card" || sourceKind === "skill" || sourceKind === "equipment" || sourceKind === "other")
+        && (rawSource.label === undefined || Boolean(sourceLabel?.trim()) && sourceLabel!.length <= 80)
+        && (rawSource.providerId === undefined || Boolean(providerId?.trim()) && providerId!.length <= 100)
+        ? { kind: sourceKind as PresentationPublicCardEffectSource["kind"], ...(sourceLabel ? { label: sourceLabel.trim() } : {}), ...(providerId ? { providerId: providerId.trim() } : {}) }
+        : undefined;
       const materials = Array.isArray(proof?.materials) ? proof.materials : [];
       const materialIds = materials.map((rawMaterial) => stringValue(record(rawMaterial)?.cardId));
       const validFromZones = new Set(["HAND", "EQUIPMENT", "DECK"]);
@@ -3663,6 +3693,7 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
       if (!proof || proof.semantics !== "PROVEN" || !effectId || !PUBLIC_CARD_EFFECT_CLASSES[effectId]
         || !effectClass || !PUBLIC_CARD_EFFECT_CLASSES[effectId].includes(effectClass)
         || !activationOwnerId || attachedEventId !== eventId
+        || proof.source !== undefined && !source
         || proof.activationEventId !== undefined && !activationEventId
         || activationEventId !== undefined && (activationEventId === eventId || effectId !== "diao_chan_lust" || effectClass !== "COST")
         || eventIdCounts.get(attachedEventId) !== 1
@@ -3723,6 +3754,7 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
         ...(activationEventId ? { activationEventId } : {}),
         activationOwnerId,
         materials: materials as PresentationPublicCardEffectProof["materials"],
+        ...(source ? { source } : {}),
         ...(rootEventId ? { rootEventId, rootResolutionId: rootResolutionId! } : {}),
         ...(interactionId ? { interactionId, rootFrameId: rootFrameId! } : {}),
         ...(targetId ? { targetId } : {}),

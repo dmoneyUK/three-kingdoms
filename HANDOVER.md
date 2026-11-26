@@ -1,15 +1,13 @@
 # HANDOVER
 
-**Latest verified delivery:** §10.81-A, `2d92f1da722b2254b2ca9c1126dc997dd27317aa`; Actions `45747248852` passed lint/fast, API, browser smoke, D1 migration, deployment and production smoke. Worker `5552482c-fbe2-4081-8bfc-3bb65e65fbf5`; `/api/health` returned `available`.
+**Latest verified delivery:** §§10.80/10.78/10.81-A/B at `1d5375921a6bdd423d3a47db29d219d09f389979`; exact-SHA Actions `45758452603` passed lint/fast, API, browser startup smoke, D1 migrations, deployment and production smoke. Worker `432523d0-bbe2-4116-87f9-2dd9fca0de75`. Owner iPhone reviews remain pending.
 
 **Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC.
 
-## Current bounded task — §10.81-B: shared two-stage Judgement presentation
+## Current bounded task — §10.82-A UNIVERSAL-PUBLIC-DISCARD-SETTLEMENT-01
 
-**Status:** implementation commit `cf1c451bc0ef00085c105634b2d567f1fa1e606e` is pushed but its exact-SHA Actions run `45756300567` failed in full ESLint: `react-hooks/rules-of-hooks` exceeded the call stack while analyzing `app/page.tsx`. API and browser smoke passed; deploy was skipped because lint failed. A focused correction is in progress; do not begin §10.82-A until the corrected exact SHA passes required CI/deployment/smoke.
+**Status:** one task commit is ready. Canonical normalization and copy now consume committed public-card effect, Dismantle and physical-zone proofs; source, ordered physical IDs, material owners, zones, causal root and equipment slot are retained. Conversion, already-read Judgement and already-presented plays are excluded. Missing actor/face proof uses neutral/count-only copy. No React display routing was added; that belongs to §10.82-B.
 
-**Correction:** move the new Judgement candidate construction and stage/action/H4 ownership predicates out of the large `GameRoom` control-flow body into typed shared helpers. Preserve exact event, resolution, causal-frame, physical-card and material-owner matching. Do not disable lint rules or weaken proof checks.
+**Validation:** 11 focused unit tests, the equipment API file (22/22), targeted ESLint, `npm run build` and `git diff --check` passed. Local UI/browser tests were not run. `npx tsc --noEmit` remains red across unrelated Cloudflare ambient types and existing game modules; the corrected new discard module has no TypeScript diagnostics. Exact-SHA Actions, deployment and production smoke are pending this push.
 
-**Validation so far:** Judgement focused tests 13/13 and `npm run build` pass after the correction. Local ESLint reaches the same Hooks-rule stack overflow; CI on the corrected exact SHA is authoritative. Owner iPhone review remains pending.
-
-**Next boundary:** §10.82-A only after §10.81-B's corrected SHA has green exact-SHA Actions, deployment and production smoke. Do not claim USER-ACCEPTED.
+**Next boundary:** after this task's exact-SHA CI, deployment and production smoke succeed, continue §10.82-B. Owner review remains pending; do not mark USER-ACCEPTED.

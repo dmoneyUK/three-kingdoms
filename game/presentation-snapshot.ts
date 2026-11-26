@@ -256,6 +256,9 @@ export function provenPublicCardEffects(value: unknown): PresentationSnapshotPub
     return effect.semantics === "PROVEN" && validIds.has(effect.effectId)
       && classesById[effect.effectId]?.includes(effect.effectClass)
       && nonEmptyString(effect.eventId) && nonEmptyString(effect.activationOwnerId)
+      && (effect.source === undefined || Boolean(effect.source && ["card", "skill", "equipment", "other"].includes(effect.source.kind)
+        && (effect.source.label === undefined || nonEmptyString(effect.source.label) && effect.source.label.trim().length <= 80)
+        && (effect.source.providerId === undefined || nonEmptyString(effect.source.providerId) && effect.source.providerId.trim().length <= 100)))
       && (effect.activationEventId === undefined || nonEmptyString(effect.activationEventId)
         && effect.activationEventId !== effect.eventId && effect.effectId === "diao_chan_lust" && effect.effectClass === "COST")
       && cards.length > 0 && cards.every((card): card is Card => Boolean(card))
@@ -295,6 +298,7 @@ export function provenPublicCardEffects(value: unknown): PresentationSnapshotPub
     ...(effect.activationEventId ? { activationEventId: effect.activationEventId } : {}),
     activationOwnerId: effect.activationOwnerId,
     materials: effect.materials.map(({ cardId, ownerId, fromZone, toZone }) => ({ cardId, ownerId, fromZone, toZone })),
+    ...(effect.source ? { source: { ...effect.source } } : {}),
     ...(effect.rootEventId ? { rootEventId: effect.rootEventId, rootResolutionId: effect.rootResolutionId! } : {}),
     ...(effect.interactionId ? { interactionId: effect.interactionId, rootFrameId: effect.rootFrameId! } : {}),
     ...(effect.targetId ? { targetId: effect.targetId } : {}),
