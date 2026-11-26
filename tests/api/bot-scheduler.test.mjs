@@ -840,11 +840,14 @@ test("a deterministic End Turn can open and canonically decline a real turn-star
 test("Rebel prefers the public Lord and Renegade delays him until the final duel", async () => {
   const { code, token, hostId, bots } = await createBotGame();
   const [rebel, renegade, loyalist] = bots;
-  // A passive-only Hero keeps an optional active skill from changing the target-policy fixture.
-  sql(`UPDATE players SET role='Lord' WHERE id=${quote(hostId)};
-    UPDATE players SET role='Rebel' WHERE id=${quote(rebel.id)};
-    UPDATE players SET role='Renegade', hero='cao-cao' WHERE id=${quote(renegade.id)};
-    UPDATE players SET role='Loyalist' WHERE id=${quote(loyalist.id)}`);
+  // Fix every Bot to Cao Cao's non-Lord passive path. The normal lobby assigns
+  // random safe Heroes; leaving an optional active skill in this role-policy
+  // fixture can legitimately replace the Attack plan before target ranking.
+  sql(`UPDATE rooms SET skill_state_json='{}' WHERE code=${quote(code)};
+    UPDATE players SET role='Lord', hero='cao-cao', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(hostId)};
+    UPDATE players SET role='Rebel', hero='cao-cao', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(rebel.id)};
+    UPDATE players SET role='Renegade', hero='cao-cao', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(renegade.id)};
+    UPDATE players SET role='Loyalist', hero='cao-cao', hp=4, max_hp=4, alive=1, equipment_json='{}', judgement_json='[]' WHERE id=${quote(loyalist.id)}`);
   const rebelAttack = card("Attack", "role-guard-rebel");
   setHand(rebel.id, [rebelAttack], 4, 4);
   setTurn(code, rebel.seat, "play");
