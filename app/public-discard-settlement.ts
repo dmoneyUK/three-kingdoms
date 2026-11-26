@@ -1,5 +1,5 @@
 import { CARD_KINDS, type Card, type CardKind, type CardRank, type CardSuit } from "../game/model";
-import type { PublicOutcomeSourceKind, PublicPresentationEventFactProjection } from "../game/presentation-semantics";
+import type { PublicOutcomeSourceKind, PublicPresentationEvent } from "../game/presentation-semantics";
 import type {
   PresentationDismantleSettlement,
   PresentationPublicCardEffect,
@@ -7,6 +7,7 @@ import type {
   PresentationV2Event,
 } from "../game/presentation-v2";
 import { publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
+import { formatCommittedPublicOutcomeWithSegments } from "../game/public-activity";
 import { publicDiscardCardFaces, publicDiscardCardList, type PublicDiscardCardFace } from "./public-discard-transition";
 
 export type PublicDiscardSettlementMode =
@@ -50,6 +51,23 @@ export type PublicDiscardSettlementCopy = {
   segments?: readonly PublicH4Segment[];
   accessibleLabel: string;
 };
+
+/** Matches one renderer to the canonical proof by event and the complete ordered physical-card set. */
+export function publicDiscardSettlementForMaterials(input: {
+  settlements: readonly CanonicalPublicDiscardSettlement[];
+  eventId: string;
+  physicalCardIds: readonly string[];
+}): CanonicalPublicDiscardSettlement | null {
+  if (!nonEmpty(input.eventId) || input.physicalCardIds.length === 0
+    || input.physicalCardIds.some((id) => !nonEmpty(id))
+    || new Set(input.physicalCardIds).size !== input.physicalCardIds.length) return null;
+  const matches = input.settlements.filter((settlement) => settlement.semantics === "PROVEN"
+    && settlement.visibility === "PUBLIC" && settlement.presentation === "eligible"
+    && settlement.eventId === input.eventId
+    && settlement.materials.length === input.physicalCardIds.length
+    && settlement.materials.every((material, index) => material.physicalCardId === input.physicalCardIds[index]));
+  return matches.length === 1 ? matches[0] : null;
+}
 
 type Endpoint = { zone: string; ownerId: string | null; slot?: string };
 type EventWithDiscardProof = PresentationV2Event & {
@@ -152,7 +170,7 @@ function sourceValue(value: unknown): { kind: PublicOutcomeSourceKind; label?: s
   return { kind: item.kind as PublicOutcomeSourceKind, ...(typeof item.label === "string" ? { label: item.label.trim() } : {}), ...(typeof item.providerId === "string" ? { providerId: item.providerId.trim() } : {}) };
 }
 
-function eventFact(eventId: string, facts: readonly PublicPresentationEventFactProjection[]): PublicPresentationEventFactProjection | null {
+function eventFact(eventId: string, facts: readonly PublicPresentationEvent[]): PublicPresentationEvent | null {
   const matches = facts.filter((fact) => fact.eventId === eventId && fact.visibility === "PUBLIC" && fact.semantics === "PROVEN");
   return matches.length === 1 ? matches[0] : null;
 }
@@ -316,7 +334,7 @@ export function normalizePublicDiscardSettlements(input: {
   timeline: readonly PresentationV2Event[];
   publicCardEffects: readonly PresentationPublicCardEffect[];
   dismantleSettlements: readonly PresentationDismantleSettlement[];
-  publicEventFacts: readonly PublicPresentationEventFactProjection[];
+  publicEventFacts: readonly PublicPresentationEvent[];
 }): CanonicalPublicDiscardSettlement[] {
   const events = input.timeline as readonly EventWithDiscardProof[];
   const counts = new Map<string, number>();
@@ -382,13 +400,17 @@ export function normalizePublicDiscardSettlements(input: {
     }
     if (!materialsValid || materials.length !== proof.materials.length) continue;
     const fact = eventFact(event.id, input.publicEventFacts);
+    const factMatchesEffectRoot = Boolean(fact && proof.rootEventId && fact.rootEventId === proof.rootEventId);
     const source = sourceFor(proof.source, fact, proof.effectClass === "EFFECT" ? "equipment" : "skill");
     const ownerIds = materials.flatMap((material) => material.ownerId ? [material.ownerId] : []);
     const base: Omit<CanonicalPublicDiscardSettlement, "presentation"> = {
       semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, order: event.publicSequence!,
       ...(proof.rootEventId ? { rootEventId: proof.rootEventId } : {}),
       ...(proof.rootResolutionId ? { resolutionId: proof.rootResolutionId } : event.resolutionId ? { resolutionId: event.resolutionId } : {}),
-      ...(proof.interactionId ? { interactionId: proof.interactionId } : {}), ...(proof.rootFrameId ? { frameId: proof.rootFrameId } : {}),
+      ...((proof.interactionId ?? (factMatchesEffectRoot ? fact?.identity.interactionId : undefined))
+        ? { interactionId: proof.interactionId ?? fact?.identity.interactionId } : {}),
+      ...((proof.rootFrameId ?? (factMatchesEffectRoot ? fact?.identity.rootFrameId : undefined))
+        ? { frameId: proof.rootFrameId ?? fact?.identity.rootFrameId } : {}),
       activationOwnerId: proof.activationOwnerId, affectedPlayerIds: [...new Set([...(proof.targetId ? [proof.targetId] : []), ...ownerIds])],
       source, mode: proof.effectClass === "COST"
         ? ownerIds.length > 0 && ownerIds.every((id) => id !== proof.activationOwnerId) ? "forced" : "cost"
@@ -435,8 +457,8 @@ export function normalizePublicDiscardSettlements(input: {
       semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, order: event.publicSequence!,
       rootEventId,
       ...(context?.resolutionId ? { resolutionId: context.resolutionId } : event.resolutionId ? { resolutionId: event.resolutionId } : {}),
-      ...(fact?.committedIdentity?.interactionId ? { interactionId: fact.committedIdentity.interactionId } : {}),
-      ...(fact?.committedIdentity?.rootFrameId ? { frameId: fact.committedIdentity.rootFrameId } : {}),
+      ...(fact?.rootEventId === rootEventId && fact.identity.interactionId ? { interactionId: fact.identity.interactionId } : {}),
+      ...(fact?.rootEventId === rootEventId && fact.identity.rootFrameId ? { frameId: fact.identity.rootFrameId } : {}),
       activationOwnerId: context?.activationOwnerId ?? fact?.actorId ?? event.actorId,
       affectedPlayerIds: [...new Set(materials.flatMap((material) => material.ownerId ? [material.ownerId] : []))],
       source, mode,
@@ -469,6 +491,8 @@ function namedPlayer(players: readonly { id: string; name: string }[], id: strin
 export function publicDiscardSettlementCopy(input: {
   settlement: CanonicalPublicDiscardSettlement;
   players: readonly { id: string; name: string }[];
+  committedOutcome?: PublicPresentationEvent["committedOutcome"];
+  publicEventFacts?: readonly PublicPresentationEvent[];
 }): PublicDiscardSettlementCopy | null {
   const { settlement, players } = input;
   if (settlement.presentation !== "eligible" || settlement.visibility !== "PUBLIC" || !settlement.materials.length) return null;
@@ -513,5 +537,58 @@ export function publicDiscardSettlementCopy(input: {
     parts.push(`Publicly discarded ${count} ${noun}${detail}.`);
   }
   const { message: headline, segments } = publicH4Copy(parts);
-  return { eventId: settlement.eventId, order: settlement.order, cards, headline, segments, accessibleLabel: headline };
+  let message = headline;
+  let headlineSegments = segments;
+  const committedOutcome = input.committedOutcome;
+  if (committedOutcome) {
+    if (committedOutcome.semantics !== "PROVEN" || committedOutcome.visibility !== "PUBLIC"
+      || committedOutcome.eventId !== settlement.eventId
+      || settlement.rootEventId && committedOutcome.rootEventId !== settlement.rootEventId
+      || !Array.isArray(committedOutcome.changes)) return null;
+    const expectedDiscardCounts = new Map<string, number>();
+    for (const material of settlement.materials) {
+      if (!material.ownerId) return null;
+      const key = `${material.ownerId}\u001f${material.fromZone}`;
+      expectedDiscardCounts.set(key, (expectedDiscardCounts.get(key) ?? 0) + 1);
+    }
+    const actualDiscardCounts = new Map<string, number>();
+    for (const change of committedOutcome.changes) {
+      if (change.kind !== "CARD_DISCARDED" || change.toZone !== "DISCARD") continue;
+      const key = `${change.playerId}\u001f${change.fromZone}`;
+      actualDiscardCounts.set(key, (actualDiscardCounts.get(key) ?? 0) + change.amount);
+    }
+    if (expectedDiscardCounts.size !== actualDiscardCounts.size
+      || [...expectedDiscardCounts].some(([key, amount]) => actualDiscardCounts.get(key) !== amount)) return null;
+    const otherChanges = committedOutcome.changes.filter((change) => change.kind !== "CARD_DISCARDED");
+    if (otherChanges.length) {
+      const additional = formatCommittedPublicOutcomeWithSegments({
+        ...committedOutcome,
+        actorId: undefined,
+        source: { kind: "other" },
+        changes: otherChanges,
+      }, players,
+        input.publicEventFacts);
+      if (!additional) return null;
+      message = `${headline} ${additional.message}`;
+      headlineSegments = [...segments, { kind: "text", text: " " }, ...additional.segments];
+    }
+  }
+  return { eventId: settlement.eventId, order: settlement.order, cards, headline: message, segments: headlineSegments, accessibleLabel: message };
+}
+
+/** Formats a canonical settlement with only its unique same-event public outcome. */
+export function publicDiscardSettlementCopyForFacts(input: {
+  settlement: CanonicalPublicDiscardSettlement;
+  players: readonly { id: string; name: string }[];
+  publicEventFacts: readonly PublicPresentationEvent[];
+}): PublicDiscardSettlementCopy | null {
+  const matches = input.publicEventFacts.filter((fact) => fact.eventId === input.settlement.eventId
+    && fact.semantics === "PROVEN" && fact.visibility === "PUBLIC");
+  if (matches.length > 1) return null;
+  return publicDiscardSettlementCopy({
+    settlement: input.settlement,
+    players: input.players,
+    committedOutcome: matches[0]?.committedOutcome,
+    publicEventFacts: input.publicEventFacts,
+  });
 }

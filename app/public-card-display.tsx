@@ -11,6 +11,7 @@ import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootActi
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
+import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import {
   positionLabeledCardAboveBand,
@@ -138,6 +139,8 @@ export type PublicCardDisplayAction = {
   publicNoticeSegments?: readonly PublicH4Segment[];
   publicNoticeCompact?: string;
   publicNoticeEventId?: string;
+  /** Canonical detail for this exact committed discard event/material set. */
+  publicDiscardSettlement?: PublicDiscardSettlementCopy;
   /** Keep a proved historical CardFace while retiring its active announcement. */
   suppressAnnouncement?: boolean;
   /** True only when this action was built from the fully validated public Negation-chain proof. */
@@ -2463,6 +2466,15 @@ export function publicCardAnnouncementCopy(
   eventId?: string,
 ): PublicCardAnnouncementCopy {
   const dismantleFace = publicDismantleCardFaceCopy(action, sourceName, targetName, eventId);
+  if (action.publicDiscardSettlement?.eventId === eventId) {
+    return {
+      message: action.publicDiscardSettlement.headline,
+      segments: matchingPublicH4Segments(action.publicDiscardSettlement.headline, action.publicDiscardSettlement.segments),
+      compactMessage: action.publicDiscardSettlement.headline,
+      accessibleLabel: action.publicDiscardSettlement.accessibleLabel,
+      ...(dismantleFace ? { dismantleCardFace: dismantleFace } : {}),
+    };
+  }
   if (dismantleFace) {
     return {
       message: dismantleFace.message,
@@ -7331,7 +7343,7 @@ function DuelCardJourney({
   const currentPublicCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
   const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
+  const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById, announcementEventId);
   const negationNarration = action.publicNegationNarration;
   const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
   const announcement = committedFactCopy.message;

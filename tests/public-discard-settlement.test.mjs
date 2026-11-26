@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   normalizePublicDiscardSettlements,
   publicDiscardSettlementCopy,
+  publicDiscardSettlementForMaterials,
 } from "../app/public-discard-settlement.ts";
 
 const actorId = "player-1";
@@ -20,6 +21,7 @@ function transition(eventId, rootEventId, cardId, from) {
 function publicFact(eventId, changes, rootEventId = eventId, source = { kind: "other", label: "Discard" }) {
   return {
     semantics: "PROVEN", visibility: "PUBLIC", eventId, order: 8, rootEventId,
+    identity: { interactionId: "interaction-1", rootFrameId: "frame-1", checkpointId: "checkpoint-1", presentationRevision: 1 },
     committedIdentity: { interactionId: "interaction-1", rootFrameId: "frame-1", checkpointId: "checkpoint-1", presentationRevision: 1 },
     frameId: "frame-1", category: "CARD_DISCARDED", actorId, affectedPlayerIds: [ownerId],
     committedOutcome: { source, changes },
@@ -123,9 +125,51 @@ test("Stauchness keeps its true activator separate from two exact discarded Hand
   const [settlement] = normalize({ event: [root, event], effects: [proof], facts: [fact] });
   assert.equal(settlement.presentation, "eligible");
   assert.equal(settlement.mode, "forced");
+  assert.equal(settlement.interactionId, fact.identity.interactionId);
+  assert.equal(settlement.frameId, fact.identity.rootFrameId);
   assert.deepEqual(settlement.materials.map(({ card }) => card.id), cards.map(({ id }) => id));
   assert.match(publicDiscardSettlementCopy({ settlement, players }).headline,
     /Player One used Stauchness, causing Player Two to discard 2 cards: 8♠ Attack · Q♥ Peach\./);
+});
+
+test("renderer match requires the exact event and complete ordered physical material set", () => {
+  const cards = [face("first", "Attack", "8", "♠"), face("second", "Peach", "Q", "♥")];
+  const proof = {
+    semantics: "PROVEN", effectId: "xiahou_dun_ganglie", effectClass: "COST", eventId: "stauchness-event", activationOwnerId: actorId,
+    materials: cards.map((card) => ({ cardId: card.id, ownerId, fromZone: "HAND", toZone: "DISCARD" })),
+    source: { kind: "skill", label: "Stauchness", providerId: "xiahou_dun_ganglie" }, rootEventId: "attack-root", rootResolutionId: "resolution-1",
+    targetId: ownerId, outcome: "SOURCE_DISCARDED_TWO", cards,
+  };
+  const root = { id: "attack-root", type: "card", action: "play", resolutionId: "resolution-1", presentation: true, publicSequence: 1, card: face("root", "Attack") };
+  const event = { id: "stauchness-event", type: "cards", action: "discard", resolutionId: "resolution-1", actorId, presentation: true,
+    publicSequence: 2, cards, publicCardEffects: [{ ...proof }], publicZoneTransitions: cards.map((card) => transition("stauchness-event", root.id, card.id, hand(ownerId))) };
+  const [settlement] = normalize({ event: [root, event], effects: [proof] });
+  assert.equal(publicDiscardSettlementForMaterials({ settlements: [settlement], eventId: event.id, physicalCardIds: ["first", "second"] }), settlement);
+  assert.equal(publicDiscardSettlementForMaterials({ settlements: [settlement], eventId: event.id, physicalCardIds: ["second", "first"] }), null);
+  assert.equal(publicDiscardSettlementForMaterials({ settlements: [settlement], eventId: event.id, physicalCardIds: ["first"] }), null);
+  assert.equal(publicDiscardSettlementForMaterials({ settlements: [settlement], eventId: "other-event", physicalCardIds: ["first", "second"] }), null);
+});
+
+test("canonical discard copy appends other committed changes without repeating the discard count", () => {
+  const cards = [face("paid-peach", "Peach", "7", "♥"), face("paid-dodge", "Dodge", "7", "♣")];
+  const { event, proof } = effectEvent({ id: "stauchness-event", materials: cards.map((card) => ({ cardId: card.id, ownerId, fromZone: "HAND", toZone: "DISCARD" })), cards });
+  const fact = publicFact("stauchness-event", [
+    { kind: "CARD_DISCARDED", playerId: ownerId, amount: 2, fromZone: "HAND", toZone: "DISCARD" },
+    { kind: "HP_RECOVERED", playerId: actorId, amount: 1 },
+  ], "attack-root", { kind: "skill", label: "Stauchness" });
+  const [settlement] = normalize({ event, effects: [proof], facts: [fact] });
+  const copy = publicDiscardSettlementCopy({ settlement, players, committedOutcome: {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: settlement.eventId,
+    identity: { interactionId: "interaction-1", rootFrameId: "frame-1", checkpointId: "checkpoint-1", presentationRevision: 1 },
+    order: settlement.order, rootEventId: settlement.rootEventId, frameId: "frame-1", category: "CARD_DISCARDED",
+    source: { kind: "skill", label: "Stauchness" }, actorId, affectedPlayerIds: [ownerId],
+    changes: [
+      { kind: "CARD_DISCARDED", playerId: ownerId, amount: 2, fromZone: "HAND", toZone: "DISCARD" },
+      { kind: "HP_RECOVERED", playerId: actorId, amount: 1 },
+    ],
+  } });
+  assert.equal(copy.headline, "Player One used Stauchness, causing Player Two to discard 2 cards: 7♥ Peach · 7♣ Dodge. Player One recovered 1 HP.");
+  assert.equal(copy.segments.map((segment) => segment.text).join(""), copy.headline);
 });
 
 test("Kirin Bow retains the actual Mount identity, owner, slot and discard outcome independently of Attack damage", () => {

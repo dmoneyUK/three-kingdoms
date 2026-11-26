@@ -1,15 +1,15 @@
 # HANDOVER
 
-**Latest verified delivery:** §§10.80/10.78/10.81-A/B at `1d5375921a6bdd423d3a47db29d219d09f389979`; exact-SHA Actions `45758452603` passed lint/fast, API, browser startup smoke, D1 migrations, deployment and production smoke. Worker `432523d0-bbe2-4116-87f9-2dd9fca0de75`. Owner iPhone reviews remain pending.
+**Latest verified delivery:** §10.82-A at `df940d592d83e888e430879d8bde1a4416805f7e`; exact-SHA Actions `45768312045` passed lint/fast, API, two browser smoke tests, deployment and production `/` plus `/api/health` smoke. Worker `b8a04a15-af7e-435a-8061-ebab39947503`. §10.82-A owner review remains pending.
 
 **Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC.
 
-## Current bounded task — §10.82-A UNIVERSAL-PUBLIC-DISCARD-SETTLEMENT-01
+## Current bounded task — §10.82-B UNIVERSAL-PUBLIC-DISCARD-SETTLEMENT-01
 
-**Status:** implementation commit `6d55a4da6d383f0b51b6de20124330e25c848379` is pushed. Its exact-SHA Actions run `45766843895` failed in three API assertions; lint/fast and browser startup/H4 smoke passed, deployment was skipped. The task remains open while those stale assertions are corrected; the implementation scope itself is not being split.
+**Status:** implementation and focused regressions are ready for one task commit. Preserve §10.78 Frost as a regression baseline; no duplicate owner or separate Frost browser scenario was added.
 
-**Implementation:** canonical normalization/copy consumes committed public-card effect, Dismantle and physical-zone proofs; it retains source, ordered physical IDs, owners, zones, causal root and equipment slot. Conversion, already-read Judgement and already-presented plays are excluded. Missing actor/face proof stays neutral/count-only. React display ownership remains §10.82-B.
+**Scope:** consume canonical settlements for one H4 and one public CardFace owner per event/material set. Plain discard groups retain `PublicDiscardCardTransition`; proven effects retain their existing `PublicCardDisplay` frame or use the shared fallback; Dismantle retains its validated result layer. Preserve event order, exact IDs/owners, accepted frames, ordinary hand-discard handoff, no replay and privacy.
 
-**Repair validation:** focused API regressions passed 46/46 (Lust/Dauntless source fields and canonical discard projection/copy); discard unit tests passed 11/11 with `node --import tsx`; targeted ESLint and `git diff --check` passed. No local UI/browser test was run. The earlier `npx tsc --noEmit` reports unrelated Cloudflare ambient-type and existing game-module diagnostics; the new discard module had none.
+**Validation:** `npm run build` passed; focused canonical discard and routing tests passed 25/25; the real four-player Stauchness scenario passed for the activator, discarding player and observer at 390×844, including one H4 owner, complete card faces and privacy checks. Targeted ESLint on changed files other than `app/page.tsx` had 0 errors and 15 existing hook-dependency warnings; local ESLint on `app/page.tsx` overflows in `react-hooks/rules-of-hooks` (no rule disabled). `git diff --check` passed. Exact-SHA Actions, Worker deployment and production smoke are pending the single task commit.
 
-**Next boundary:** push this CI repair, verify its exact-SHA Actions, deployment and production smoke; then continue §10.82-B. Owner review remains pending; do not mark USER-ACCEPTED.
+**Next boundary:** after verifying §10.82-B's exact-SHA Actions, deployment and production smoke, review the latest design and continue §10.83 SERPENT-SPEAR-PUBLIC-CONVERSION-FRAME-01. Owner review remains pending; do not mark USER-ACCEPTED.

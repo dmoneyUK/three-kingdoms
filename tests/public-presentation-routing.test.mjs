@@ -146,6 +146,12 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
   }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
     "a same-event composite result keeps its complete public deltas in the shared narrator");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
+    cardDisplay: { enabled: true, rootEventId: "frame-event", interactionId: rootFact.identity.interactionId,
+      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId },
+  }), { eventId: rootFact.eventId, owner: "PublicCardDisplay" },
+    "a committed discard with its exact frame keeps detail and same-event outcome on one H4 owner");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: rootFact, discard: { eventId: "later-discard", order: rootFact.order + 1 },
   }), { eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer" },
     "a genuinely later public discard supersedes the older fact");

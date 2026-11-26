@@ -579,6 +579,15 @@ function formatCommittedPublicOutcomeCopy(
   return verifiedPlayerCopy(parts);
 }
 
+/** Returns the validated committed-result copy with player spans for shared presenters. */
+export function formatCommittedPublicOutcomeWithSegments(
+  outcome: CommittedPublicOutcome,
+  players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+  facts: readonly PublicOutcomeEventFact[] = [],
+): { message: string; segments: VerifiedPlayerCopySegment[] } | null {
+  return formatCommittedPublicOutcomeCopy(outcome, players, facts);
+}
+
 function isStauchnessTerminalFact(fact: PresentationSnapshot["publicEventFacts"][number]) {
   return fact.committedOutcome?.source.label === "Stauchness"
     || fact.label === "Stauchness" && (fact.category === "DAMAGE_PREVENTED"
