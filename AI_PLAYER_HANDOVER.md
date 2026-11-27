@@ -1,27 +1,35 @@
 # Smart Bot Player — Coding Agent Handover
 
-Branch: `review/aip-perf-bot-02` (non-deploying). Latest design reviewed from `origin/feature/smart-bot-player`: **AIP-D46 / 2026-11-26**, including §0B and §7.2D PM-D44/D45. Owner-approved bounded task: **AIP-PERF-BOT-02-CLOSE-01**. R1 JSON micro-optimization is deferred; GET-02, PLAY and UX3 are not started.
+Branch: `review/aip-perf-bot-02` (non-deploying). Latest design reviewed from `origin/feature/smart-bot-player`: **AIP-D48 / §0C**. The bounded Track G task is **AIP-G-LOCAL-01**. This handover is **PENDING_REVIEW**; the agent does not self-accept it.
 
-## AIP-PERF-BOT-02-CLOSE-01 — **PENDING_REVIEW**
+## AIP-G-LOCAL-01 — **PENDING_REVIEW**
 
-Implemented only the approved R2/S1/S2/S3 boundaries and actual runtime counters, preserving the reviewed CORR-01 baseline:
+Implemented only the approved terminal-commit correctness fixes and the reusable local normal-match driver, within the two substantive source-commit budget:
 
-- **R2:** terminal proof now receives the exact in-process Bot execution context at canonical checkpoint/response/dying/group/duel/attack settlement paths; the old room-UUID/code context lookup is gone. Input revision is classified stale before `waiting_for_human`, and the focused replay regression expects a 409 stale result.
-- **S1:** lifecycle room guard accepts complete zero-row inventories, binds non-baseline reads to the owned Worker/version/fixed D1, tracks exactly one fresh smoke-room fingerprint, rejects old-room mutation, identity loss, and a second/new room, and supervises the read-only monitor concurrently with Playwright.
-- **S2:** request/diagnostic failures are categorical and credential-free, dynamic raw/encoded secret masking is registered, unsafe trace/HAR/screenshot/network artifacts are excluded, and the final upload is an explicit allowlist with fail-closed content scanning.
-- **S3:** self-derived `STAGING_EXPECTED_SHA` authorization was removed. Hosted admission requires externally supplied exact SHA, exact run ID, expiry, S1/S2, historical-credential and controlled-access evidence; T0 is recorded before any Staging mutation with the bounded active/closure budget. This branch remains blocked from deployment by workflow guards.
-- **Runtime evidence:** `BotRuntimeCounters` are private to the driver and returned only by the test-only scheduler endpoint. The real local Worker/D1 fixture reports room-state calls, compact short-circuits, JSON/request counters and diagnostic D1 reads without exposing them in public outcomes.
-- **CI fixture correction:** the role-policy regression now fixes all four roles, Heroes, skill state, HP and card zones; this removes random active-Hero decisions from the target-ranking assertion without changing runtime code.
+- Terminal Bot proofs are correlation-checked, terminal proofs cannot be downgraded, checkpoint proofs are recorded before continuation, and terminal settlement/victory logging use positive guarded CAS results so duplicate terminal writes do not produce a second proof or victory log.
+- Added a test-only local `/__test/run-bot-step` compact-outcome adapter, preserving the existing capability gate; no public runtime route or game-rule/UI/schema change was made.
+- Added a real local Worker/D1 normal-match driver using ordinary `create`, three `add_bot`, `start`, `choose_hero`, projected legal human actions, and genuine `runBotScheduler({ maxStepsPerWakeup: 4 })` wakes. It uses no SQL mutation, test-player/seed shortcut, fake clock/RNG, or retry loop; summaries are sanitized and typed.
+- Added terminal proof and projected `target_card` regressions and registered the driver in the API suite.
 
-Focused validation on the final working tree:
+## Evidence
 
-- `node --test tests/ai-staging-lifecycle.test.mjs tests/browser/staging-room-reconnect-diagnostics.test.mjs tests/browser/staging-room-reconnect-logic.test.mjs`: **34 pass, 0 fail**.
-- `tests/api/bot-scheduler.test.mjs`: **37 tests, 36 pass, 1 skipped, 0 fail**; the long fixture exercised **203 public events / 150 Bot Work rows**, including lease/replay, checkpoint recovery, shared responses, privacy and terminal-match regressions.
-- Real local Worker/D1 benchmark (`FREE_BUDGET_RUNTIME_WARMUPS=1`, `FREE_BUDGET_RUNTIME_SAMPLES=3`): **1 pass**; same fixture **203 events / 150 Bot Work rows**, 4 authenticated viewers and 3 measured samples per path. Runtime counters per scheduler wake: `roomStateCalls=1`, `compactProjectionShortCircuits=1`, `fullViewerProjectionCalls=0`, `requestJsonEncodes=2`, `requestJsonParses=2`, `responseJsonParses=0`, `diagnosticD1Reads=0`. Wall/process CPU are reported separately; local Wrangler exposes neither Cloudflare Worker CPU nor hosted D1 telemetry, so no Free-plan CPU claim is made.
-- `npm run build`, targeted ESLint, and `git diff --check`: pass. Standalone `tsc --noEmit` remains a known repository baseline failure (missing Cloudflare type declarations and unrelated existing errors), not a CLOSE-01 gate.
+Substantive source commits (both pushed to this review branch):
 
-Final source commit: `a151d761ae3c7d853d7e265f5f645f14f55caaef` (the CLOSE-01 implementation is in `71eb051a0c1d3c886833f3d2d6525d82e8e57475`; this second source commit is the deterministic CI-fixture correction). Exact GitHub Actions run: `45792373312`, `headSha=a151d761ae3c7d853d7e265f5f645f14f55caaef`; **Lint and fast tests**, **API tests**, and **Browser startup and visible committed H4 smoke (2 tests)** passed. **Deploy isolated AI Staging Worker** and **deploy** were both **SKIPPED**. Staging and Production were not deployed or activated. No Cloudflare resource, D1 migration, OpenAI call, feature-branch merge or production operation was performed.
+- `ed427de5d446712526244fd7c8863297d9b1539e` — terminal proof/settlement correctness and initial normal-match driver.
+- `82c2fbade4a0467e51950b9f4a87a8765f81a086` — projected target-card choices and private-view fixture correction.
 
-## Current bounded task
+Exact GitHub Actions run **46007750258** has `headSha=82c2fbade4a0467e51950b9f4a87a8765f81a086` and concluded **success**: Lint and fast tests, API tests, and Browser startup/H4 smoke all passed. The `deploy` and `Deploy isolated AI Staging Worker` jobs were **SKIPPED**; no Staging or Production deployment/activation occurred.
 
-Wait for independent AI Planner and PM review of CLOSE-01. Agent does not self-accept and must not start GET-02, PLAY or UX3.
+Focused local checks passed: `node --check` for the new driver/tests/suite, targeted ESLint for all changed files, `node --import tsx --test tests/bot-outcome.test.mjs` (**5/5**), and `git diff --check`. A standalone `tsc --noEmit` remains a pre-existing repository baseline failure and is not claimed as passing.
+
+The CI normal-match driver executed against real local Worker/D1 and returned this sanitized result:
+
+```json
+{"status":"NO_PROGRESS","turns":0,"iterations":60,"scheduler":{"consumed":82,"stale":0,"failed":0,"unsupported":0,"waitingForHuman":0,"steps":82},"pending":"none","actionKind":"none","winner":null,"invariants":{"genuineBots":true,"privateIsolation":true,"independentReread":true,"publicPhysicalTransitionIntegrity":true}}
+```
+
+This is an incomplete bounded run, not proof of a finished normal game and not an acceptance result. It does prove that the driver reached genuine Bot scheduler work while preserving the reported privacy/re-read/physical-card invariants; the zero-turn `NO_PROGRESS` outcome remains for independent review.
+
+## Boundaries and next task
+
+No Hosted validation, S1/S2/S3 work, BOT-02 optimization, GET-02, PLAY, UX2/UX3 work, branch merge, Cloudflare resource/migration change, or production operation was started. The next and only task is: **AI Planner/PM Reviewer independently inspect the terminal proof changes and the incomplete normal-driver result; Owner review is required. Do not start another roadmap task or mark ACCEPTED.**
