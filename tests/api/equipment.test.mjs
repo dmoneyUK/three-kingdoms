@@ -505,7 +505,7 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
     interactionId: firstEvent.publicFact.interactionId,
     rootFrameId: firstEvent.publicFact.committedIdentity.rootFrameId,
     eventId: firstEvent.id,
-  })?.headline, `${hostPlayer.name} equipped Frost Sword.`);
+  })?.headline, `${hostPlayer.name} equipped [Frost Sword].`);
   const firstSlot = equipped.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
   assert.ok(firstSlot.some((item) => item.id === firstCard.id && item.kind === "FrostSword"), "the same original CardFace lands in the real Weapon slot");
   assert.equal(equipped.data.room.presentationSnapshot.retainedPublicEvent?.eventId, firstEvent.id);
@@ -550,7 +550,7 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
     rootFrameId: replacementEvent.publicFact.committedIdentity.rootFrameId,
     eventId: replacementEvent.id,
   })?.headline,
-  `${hostPlayer.name} equipped Blue Steel Sword, replacing Frost Sword.`);
+  `${hostPlayer.name} equipped [Blue Steel Sword], replacing [Frost Sword].`);
   const replacementSnapshot = replaced.data.room.presentationSnapshot;
   const replacementFact = [
     ...replacementSnapshot.publicEventFacts,
@@ -582,7 +582,7 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
     rootFrameId: replacementEvent.publicFact.committedIdentity.rootFrameId,
     eventId: replacementEvent.id,
   })?.headline,
-  `${hostPlayer.name} equipped Blue Steel Sword, replacing Frost Sword.`,
+    `${hostPlayer.name} equipped [Blue Steel Sword], replacing [Frost Sword].`,
   "the combined committed result is identical for an observer viewer");
   assert.equal(alicePlayer.id, observer.meId);
 });

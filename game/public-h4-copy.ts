@@ -18,20 +18,34 @@ export function publicH4CardKindReference(kind: CardKind): string {
   return `[${CARD_DEFINITIONS[kind].name}]`;
 }
 
+/** Shared preformatted kind tokens for large render functions and non-H4 callers. */
+export const PUBLIC_H4_CARD_KIND_REFERENCES = Object.freeze(
+  Object.fromEntries(CARD_KINDS.map((kind) => [kind, publicH4CardKindReference(kind)])) as Record<CardKind, string>,
+);
+
 /** A canonical H4 face token from an already verified public physical face. */
+type PublicH4CardFace =
+  | { kind: CardKind; rank: CardRank; suit: CardSuit }
+  | { name: string; rank: CardRank; suit: CardSuit };
+
+export function publicH4CardFaceReference(face: PublicH4CardFace | null | undefined): string | null;
+export function publicH4CardFaceReference(face: PublicH4CardFace | null | undefined, fallback: string): string;
 export function publicH4CardFaceReference(
-  face: { kind: CardKind; rank: CardRank; suit: CardSuit } | { name: string; rank: CardRank; suit: CardSuit },
+  face: PublicH4CardFace | null | undefined,
+  fallback?: string,
 ): string | null {
-  if (!CARD_RANKS.has(face.rank) || !CARD_SUITS.has(face.suit)) return null;
+  if (!face || !CARD_RANKS.has(face.rank) || !CARD_SUITS.has(face.suit)) return fallback ?? null;
   const definition = "kind" in face
     ? CARD_KINDS.includes(face.kind) ? CARD_DEFINITIONS[face.kind] : null
     : CARD_KINDS.map((kind) => CARD_DEFINITIONS[kind]).find((candidate) => candidate.name === face.name) ?? null;
-  return definition ? `[${face.rank}${face.suit} ${definition.name}]` : null;
+  return definition ? `[${face.rank}${face.suit} ${definition.name}]` : fallback ?? null;
 }
 
 /** Judgement H4s retain their existing rank/suit-only information. */
-export function publicH4RankSuitReference(rank: CardRank, suit: CardSuit): string | null {
-  if (!CARD_RANKS.has(rank) || !CARD_SUITS.has(suit)) return null;
+export function publicH4RankSuitReference(rank: CardRank, suit: CardSuit): string | null;
+export function publicH4RankSuitReference(rank: CardRank, suit: CardSuit, fallback: string): string;
+export function publicH4RankSuitReference(rank: CardRank, suit: CardSuit, fallback?: string): string | null {
+  if (!CARD_RANKS.has(rank) || !CARD_SUITS.has(suit)) return fallback ?? null;
   return `[${rank}${suit}]`;
 }
 
@@ -49,6 +63,18 @@ export function publicH4CardSourceReference(
     .find((candidate) => candidate.name === source.label);
   if (source.kind === "equipment" && definition?.category !== "equipment") return null;
   return definition ? publicH4CardKindReference(definition.kind) : null;
+}
+
+/** Formats an explicitly typed committed damage source only when its label is a canonical card name. */
+export function publicH4DamageSourceReference(source: { kind: "damage"; label?: string }): string | null {
+  if (!source.label || source.label !== source.label.trim()) return null;
+  const exactKind = CARD_KINDS.find((kind) => CARD_DEFINITIONS[kind].name === source.label);
+  if (exactKind) return publicH4CardKindReference(exactKind);
+  const suffix = " damage";
+  if (!source.label.endsWith(suffix)) return null;
+  const cardName = source.label.slice(0, -suffix.length);
+  const kind = CARD_KINDS.find((candidate) => CARD_DEFINITIONS[candidate].name === cardName);
+  return kind ? publicH4CardKindReference(kind) : null;
 }
 
 export function publicH4Copy(parts: readonly (string | { id: string; name: string })[]) {

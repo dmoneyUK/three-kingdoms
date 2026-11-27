@@ -269,7 +269,7 @@ test("Diao Qiao Overindulgence publishes a single 2 club reveal with current PAC
   assert.equal(judgementPresentations[0].originalCard.id, judgeCard.id);
   assert.equal(judgementPresentations[0].effectiveCard.id, judgeCard.id);
   assert.equal(judgementPresentations[0].copy.message,
-    `${daqiao.name} is judging Overindulgence. Judgement: 2♣. Not Match.`);
+    `${daqiao.name} is judging Overindulgence. Judgement: [2♣]. Not Match.`);
   const facts = [...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? [])];
   const revealFact = facts.find((fact) => fact.eventId === reveal.id);
   assert.equal(revealFact?.actorId, daqiao.id);

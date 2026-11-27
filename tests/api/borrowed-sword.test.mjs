@@ -164,7 +164,7 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
     players: firstCommitted.players,
     rootEventId: rootEvent.id,
   });
-  assert.match(cancelledNarration?.headline ?? "", /Borrowed Sword effect/);
+  assert.match(cancelledNarration?.headline ?? "", /\[Borrowed Sword\] effect/);
   const counterWindowId = firstCommitted.currentAction.negationWindowId;
   assert.ok(counterWindowId);
 

@@ -203,7 +203,7 @@ test("Oath H4 binds the committed card source and only actual positive recoverie
   ]);
   const singleH4 = assertPublicOutcomeHasH4Owner(single.settled, singleEvent.id);
   assert.equal(singleH4.narration.headline,
-    `${single.source.name} played Oath of the Peach Garden. ${single.players[1].name} recovered 1 HP.`);
+    `${single.source.name} played [Oath of the Peach Garden]. ${single.players[1].name} recovered 1 HP.`);
   assert.equal(singleH4.owner.eventId, singleEvent.id);
 
   const multiple = await settleOath("multiple", [3, 2, 4, 4]);
@@ -215,7 +215,7 @@ test("Oath H4 binds the committed card source and only actual positive recoverie
     { kind: "HP_RECOVERED", playerId: multiple.players[1].id, amount: 1 },
   ], "the source and other wounded character are both reported from actual recovery records");
   assert.equal(assertPublicOutcomeHasH4Owner(multiple.settled, multipleEvent.id).narration.headline,
-    `${multiple.source.name} played Oath of the Peach Garden. ${multiple.source.name} and ${multiple.players[1].name} each recovered 1 HP.`);
+    `${multiple.source.name} played [Oath of the Peach Garden]. ${multiple.source.name} and ${multiple.players[1].name} each recovered 1 HP.`);
 
   const none = await settleOath("none", [4, 4, 4, 4]);
   const fabricatedRecoveries = none.settled.timeline.flatMap((event) => event.publicFact?.committedOutcome?.changes ?? [])
@@ -1108,7 +1108,7 @@ test("Steal and Burning Bridges publish committed outcomes and one shared H4 own
       kind: "CARD_DISCARDED", playerId: target.id, amount: 1, fromZone, toZone: "DISCARD",
     }], `${effect}/${zone} H4 reports the actual public zone change without a card identity`);
     assert.equal(h4.narration.headline, effect === "Steal"
-      ? `${source.name} Steal: ${source.name} received 1 card from ${target.name}.`
+      ? `${source.name} [Steal]: ${source.name} received 1 card from ${target.name}.`
       : `${target.name} Burning Bridges: ${target.name} discarded 1 card.`,
     `${effect}/${zone} H4 uses shared copy for the verified settlement result`);
     assert.equal(JSON.stringify(h4.fact.committedOutcome).includes(sourceZoneCard.id), false,

@@ -5,7 +5,9 @@ import {
   publicH4CardKindReference,
   publicH4CardSourceReference,
   publicH4Copy,
+  publicH4DamageSourceReference,
   publicH4RankSuitReference,
+  PUBLIC_H4_CARD_KIND_REFERENCES,
 } from "../game/public-h4-copy.ts";
 
 test("typed H4 formatters emit canonical physical, name-only, and Judgement references", () => {
@@ -13,6 +15,7 @@ test("typed H4 formatters emit canonical physical, name-only, and Judgement refe
     ["physical Attack face", () => publicH4CardFaceReference({ kind: "Attack", rank: "8", suit: "♠" }), "[8♠ Attack]"],
     ["physical equipment face", () => publicH4CardFaceReference({ kind: "FerganaSteed", rank: "K", suit: "♠" }), "[K♠ Fergana Steed]"],
     ["card kind", () => publicH4CardKindReference("FrostSword"), "[Frost Sword]"],
+    ["shared kind token", () => PUBLIC_H4_CARD_KIND_REFERENCES.FrostSword, "[Frost Sword]"],
     ["rank and suit only", () => publicH4RankSuitReference("Q", "♥"), "[Q♥]"],
   ];
   for (const [label, format, expected] of cases) assert.equal(format(), expected, label);
@@ -28,6 +31,13 @@ test("name-only source references require card or equipment provenance and an ex
   assert.equal(publicH4CardSourceReference({ kind: "card" }), null);
   assert.equal(publicH4CardFaceReference({ name: "unverified card", rank: "2", suit: "♣" }), null);
   assert.equal(publicH4RankSuitReference("Z", "♠"), null);
+});
+
+test("committed damage source references bracket exact canonical card names only", () => {
+  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: "Attack" }), "[Attack]");
+  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: "Duel damage" }), "[Duel]");
+  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: "Stauchness" }), null);
+  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: " Alice" }), null);
 });
 
 test("formatted H4 card tokens preserve player identity spans and untouched prose", () => {

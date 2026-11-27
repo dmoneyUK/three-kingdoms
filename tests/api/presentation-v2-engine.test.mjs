@@ -183,7 +183,7 @@ test("committed Judgement replacement retains its public causal proof after the 
     { phase: "REPLACEMENT", eventId: replacementEvent.id },
   ]);
   assert.equal(presentations[1].copy.message,
-    "TARGET used Eight Trigrams Formation. Judgement: 7♣.\nSIMA YI used Necromancy to replace the Judgement card with 7♥. Match.");
+    "TARGET used Eight Trigrams Formation. Judgement: [7♣].\nSIMA YI used Necromancy to replace the Judgement card with [7♥]. Match.");
 
   assert.deepEqual(projectPresentationV2({ ...input, timeline: [rootEvent, { ...replacementEvent,
     publicCardEffects: [{ ...proof, rootFrameId: "mismatched-frame" }] }] }).publicCardEffects, [],

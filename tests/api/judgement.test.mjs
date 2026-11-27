@@ -55,7 +55,7 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
   const pendingStauchness = stauchnessNarration(accepted.data.room);
   assert.equal(pendingStauchness.narration?.headline,
-    `${resolved.target.name} used Stauchness. Judgement: 7♠ — not a Heart.`);
+    `${resolved.target.name} used Stauchness. Judgement: [7♠] — not a Heart.`);
   const pendingPac = derivePublicActivityStatus({
     status: accepted.data.room.status,
     phase: accepted.data.room.phase,
@@ -148,7 +148,7 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
       ...(discarded.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
     ],
   });
-  const stauchnessCardList = stauchnessCost.cards.map(({ kind, rank, suit }) => `${rank}${suit} ${cardDefinition(kind).name}`).join(" · ");
+  const stauchnessCardList = stauchnessCost.cards.map(({ kind, rank, suit }) => `[${rank}${suit} ${cardDefinition(kind).name}]`).join(" · ");
   assert.equal(stauchnessDiscardCopy?.headline,
     `${resolved.target.name} used Stauchness, causing ${resolved.source.name} to discard 2 cards: ${stauchnessCardList}.`,
     "the actual committed identities, true activator and material owner feed one detailed public H4 copy");
@@ -214,7 +214,7 @@ test("real Judgement replacement rejects stale and duplicate submissions without
     rootFrameId: originalFact.identity.rootFrameId,
     eventId: originalFact.eventId,
   });
-  assert.equal(originalNarration?.headline, `${game.target.name} used Stauchness. Judgement: 9♠.`);
+  assert.equal(originalNarration?.headline, `${game.target.name} used Stauchness. Judgement: [9♠].`);
   assert.deepEqual(originalNarration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId), [game.target.id]);
   const otherViewer = (await state(game.code, game.targetMember.token)).data;
   assert.deepEqual(otherViewer.presentationSnapshot.publicEventFacts, revealed.data.presentationSnapshot.publicEventFacts,
@@ -251,7 +251,7 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   assert.equal(replacedJudgementPresentation[1].status, "FINAL");
   assert.equal(replacedJudgementPresentation[1].replacement.physicalCardId, replacement.id);
   assert.equal(replacedJudgementPresentation[1].copy.message,
-    `${game.target.name} used Stauchness. Judgement: 9♠.\n${sima.name} used Necromancy to replace the Judgement card with 7♠. Match.`);
+    `${game.target.name} used Stauchness. Judgement: [9♠].\n${sima.name} used Necromancy to replace the Judgement card with [7♠]. Match.`);
   assert.equal(after.data.causalEnvelope.interactionId, root.interactionId);
   assert.equal(after.data.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(after.data.causalEnvelope.frames.length, root.frames.length);
@@ -297,7 +297,7 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(accepted.data.room.phase, "play-struck");
   assert.ok(accepted.data.room.log.some((entry) => entry.includes(`${game.target.name} used Stauchness. Judgement: 2♥ — no effect`)));
   assert.equal(stauchnessNarration(accepted.data.room).narration?.headline,
-    `${game.target.name} used Stauchness. Judgement: 2♥ — no effect.`);
+    `${game.target.name} used Stauchness. Judgement: [2♥] — no effect.`);
   assert.ok(discardIds(game.code).includes("dodge-ganglie-heart-judge"));
 
   const guicai = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-original"), suit: "♠", rank: "9" } });
@@ -334,7 +334,7 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(reverseReplaced.data.room.currentAction.actorId, guicaiToNonHeart.source.id);
   const replacedStauchness = stauchnessNarration(reverseReplaced.data.room);
   assert.equal(replacedStauchness.narration?.headline,
-    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: 7♠ — not a Heart.`,
+    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: [7♠] — not a Heart.`,
     "after Necromancy commits, H4 names the actual effective card and only then states its result");
   const reverseChoice = await requestAndSettle("trigger", { code: guicaiToNonHeart.code, token: guicaiToNonHeart.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
   assert.equal(reverseChoice.status, 200, JSON.stringify(reverseChoice.data));
