@@ -7,6 +7,16 @@ export type PublicAnnouncementCandidate<T> = {
   supersedeOnNewerPublicPlay?: boolean;
 };
 
+/** Select a proof-built card action only when its physical event owns the current presentation cursor. */
+export function selectPublicCardActionAtCursor<T extends { rootEventId: string }>(
+  cursorEventId: string | null | undefined,
+  candidates: readonly (T | null | undefined)[],
+): T | null {
+  if (!cursorEventId) return null;
+  const due = candidates.filter((candidate): candidate is T => candidate?.rootEventId === cursorEventId);
+  return due.length === 1 ? due[0] : null;
+}
+
 /**
  * Select one already proof-built public announcement candidate. Both its
  * physical root and semantic checkpoint must occur exactly once in the

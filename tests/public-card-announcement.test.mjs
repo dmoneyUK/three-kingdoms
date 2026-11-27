@@ -1125,8 +1125,8 @@ test("verified Axe cost has compact factual H4 without premature damage and keep
     card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "7" }, player: "ACTOR", target: "TARGET" };
   const proof = verifiedRockCleavingAxeCostFrameForEvent([root, cost], [effect], [actor, target], "cost");
   assert.ok(proof);
-  assert.equal(proof.h4Copy.message, "ACTOR used [Rock Cleaving Axe]; TARGET's [Dodge] was bypassed.");
-  assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied/i);
+  assert.equal(proof.h4Copy.message, "ACTOR used [Rock Cleaving Axe] and discarded 2 cards: [A♥ Peach] · [2♣ Dodge].");
+  assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied|damage resolution/i);
   const action = { sourceId: "a", targetId: "b", rootEventId: "cost", cardLabel: "COST",
     publicNotice: proof.h4Copy.message, publicNoticeSegments: proof.h4Copy.segments,
     publicCardEffectFrame: { effectClass: "COST", accessibleLabel: "ACTOR paid exactly two of their own Hand or Equipment cards. The original Attack on TARGET continued to damage resolution after Dodge." } };
