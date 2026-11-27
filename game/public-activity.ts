@@ -8,7 +8,6 @@ import {
   publicH4CardFaceReference,
   publicH4CardKindReference,
   publicH4CardSourceReference,
-  publicH4DamageSourceReference,
 } from "./public-h4-copy";
 import { matchingVerifiedPlayerCopySegments, verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 
@@ -457,9 +456,14 @@ function formatCommittedPublicOutcomeCopy(
   const source = outcome.source.label?.trim();
   const sourceCardReference = outcome.source.kind === "card" || outcome.source.kind === "equipment"
     ? publicH4CardSourceReference(outcome.source) : null;
+  const rootCardFacts = facts.filter((fact) => fact.eventId === outcome.rootEventId && fact.category === "CARD_PLAYED");
+  const damageRootCard = rootCardFacts.length === 1 ? rootCardFacts[0] : null;
+  const damageCardReference = damageRootCard
+    && (damageRootCard.label === source || source === `${damageRootCard.label} damage`)
+    ? publicCardReferenceForFact(damageRootCard) : null;
   const damageSource = outcome.source.kind === "damage" && (!outcome.actorId || actor)
     && source && !/^(?:damage|generic damage)$/i.test(source)
-    ? publicH4DamageSourceReference(outcome.source) ?? source
+    ? damageCardReference
     : null;
 
   // Damage is an outcome, not an action label. Describe the actual recipient

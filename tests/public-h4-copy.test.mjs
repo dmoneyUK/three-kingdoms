@@ -5,7 +5,6 @@ import {
   publicH4CardKindReference,
   publicH4CardSourceReference,
   publicH4Copy,
-  publicH4DamageSourceReference,
   publicH4RankSuitReference,
   PUBLIC_H4_CARD_KIND_REFERENCES,
 } from "../game/public-h4-copy.ts";
@@ -31,13 +30,6 @@ test("name-only source references require card or equipment provenance and an ex
   assert.equal(publicH4CardSourceReference({ kind: "card" }), null);
   assert.equal(publicH4CardFaceReference({ name: "unverified card", rank: "2", suit: "♣" }), null);
   assert.equal(publicH4RankSuitReference("Z", "♠"), null);
-});
-
-test("committed damage source references bracket exact canonical card names only", () => {
-  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: "Attack" }), "[Attack]");
-  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: "Duel damage" }), "[Duel]");
-  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: "Stauchness" }), null);
-  assert.equal(publicH4DamageSourceReference({ kind: "damage", label: " Alice" }), null);
 });
 
 test("formatted H4 card tokens preserve player identity spans and untouched prose", () => {

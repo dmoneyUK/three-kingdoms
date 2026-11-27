@@ -65,18 +65,6 @@ export function publicH4CardSourceReference(
   return definition ? publicH4CardKindReference(definition.kind) : null;
 }
 
-/** Formats an explicitly typed committed damage source only when its label is a canonical card name. */
-export function publicH4DamageSourceReference(source: { kind: "damage"; label?: string }): string | null {
-  if (!source.label || source.label !== source.label.trim()) return null;
-  const exactKind = CARD_KINDS.find((kind) => CARD_DEFINITIONS[kind].name === source.label);
-  if (exactKind) return publicH4CardKindReference(exactKind);
-  const suffix = " damage";
-  if (!source.label.endsWith(suffix)) return null;
-  const cardName = source.label.slice(0, -suffix.length);
-  const kind = CARD_KINDS.find((candidate) => CARD_DEFINITIONS[candidate].name === cardName);
-  return kind ? publicH4CardKindReference(kind) : null;
-}
-
 export function publicH4Copy(parts: readonly (string | { id: string; name: string })[]) {
   return verifiedPlayerCopy(parts satisfies readonly VerifiedPlayerCopyPart[]);
 }

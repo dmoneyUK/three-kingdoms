@@ -1090,7 +1090,7 @@ test("Steal and Burning Bridges publish committed outcomes and one shared H4 own
         const face = copy?.cards?.[0];
         assert.equal(face?.id, sourceZoneCard.id, `${zone} discard copy keeps the exact physical card`);
         assert.equal(copy?.headline,
-          `${source.name} used Burning Bridges to discard ${target.name}’s ${face?.rank}${face?.suit} ${face?.name}.`,
+          `${source.name} used [Burning Bridges] to discard ${target.name}’s [${face?.rank}${face?.suit} ${face?.name}].`,
           `${zone} H4 copy names the real card and both players`);
       }
       for (const { data: viewer } of settledViews) {

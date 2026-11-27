@@ -28,6 +28,7 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, judgementSucceeds, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { projectPublicJudgementPresentations, type PublicJudgementPresentationRecord } from "../../../game/public-judgement-presentation";
+import { publicH4RankSuitReference } from "../../../game/public-h4-copy";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
 import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestNegationResponseRecord, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
@@ -814,7 +815,8 @@ function stauchnessJudgementPublicFact(input: {
     : input.outcome === "not-heart" ? " — not a Heart"
       : input.outcome === "heart" ? " — no effect"
         : " — not a Heart; no consequence was applied";
-  const detail = ` used Stauchness. Judgement: ${input.card.rank}${input.card.suit}${resultCopy}`;
+  const judgementFace = publicH4RankSuitReference(input.card.rank, input.card.suit) ?? "a Judgement card";
+  const detail = ` used Stauchness. Judgement: ${judgementFace}${resultCopy}`;
   const outcomeLabel = `${input.actor.name}${detail}`;
   return publicFactFor(input.causal, "EFFECT_APPLIED", {
     rootEventId: input.rootEventId,
