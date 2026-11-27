@@ -28,6 +28,18 @@ test("two and many-card frames stay within short and tall phone viewports", () =
   }
 });
 
+test("the two-card Serpent Spear frame hugs two full-size CardFaces at the approved phone width", () => {
+  const layout = publicCardEffectFrameLayout(2, 390, 844, {
+    title: "SERPENT SPEAR · AS ATTACK",
+    titleParts: { skillName: "SERPENT SPEAR", effectLabel: "AS ATTACK" },
+  });
+  assert.deepEqual(
+    [layout.frameWidth, layout.cardWidth, layout.cardHeight, layout.columns, layout.gap],
+    [204, 90, 135, 2, 8],
+  );
+  assert.equal(layout.gridWidth + 16, layout.frameWidth, "the frame keeps only the shared 8px side padding");
+});
+
 test("semantic skill and AS lines reserve header space without shrinking real material cards", () => {
   const title = {
     title: "AMBUSHMENT · AS BURNING BRIDGES",

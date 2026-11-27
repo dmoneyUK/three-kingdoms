@@ -1,5 +1,6 @@
 import test from "node:test";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { projectPublicJudgementPresentations } from "../../game/public-judgement-presentation.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
@@ -79,6 +80,13 @@ function assertProjectionMatchesEngine(code, token) {
       publicNextDecision: serverDecision,
       publicDrawPhaseDecision: view.presentationSnapshot.publicDrawPhaseDecision,
       viewerNegationChoice: view.presentationSnapshot.viewerNegationChoice,
+      publicJudgementPresentations: projectPublicJudgementPresentations(
+        view.timeline.filter((event) => event.presentation !== false
+          && typeof event.privateToPlayerId !== "string"
+          && view.publicPresentationTimeline.some((presentationEvent) => presentationEvent.id === event.id)),
+        view.presentationV2.publicCardEffects,
+        view.players.map((player) => ({ id: player.id, name: player.name, hero: player.hero })),
+      ),
     });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
     assert.deepEqual(view.presentationSnapshot.identity, expectedSnapshot.identity, "snapshot identity follows the atomic public authority gate");
@@ -130,6 +138,59 @@ test("public card effect projection accepts only exact committed public proof an
     "duplicate effect identities on one physical event fail closed");
   assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...event, publicCardEffects: [{ ...proof, effectClass: "EFFECT" }] }] }).publicCardEffects, [],
     "an effect ID cannot claim a different semantic class");
+});
+
+test("committed Judgement replacement retains its public causal proof after the active envelope closes", () => {
+  const interactionId = "closed-judgement-interaction";
+  const rootFrameId = "closed-judgement-frame";
+  const resolutionId = "closed-judgement-resolution";
+  const target = { id: "closed-judgement-target", name: "TARGET", hero: "liu-bei" };
+  const actor = { id: "closed-judgement-sima", name: "SIMA YI", hero: "simayi" };
+  const original = { ...card("Dodge", "closed-judgement-original", "♣"), rank: "7" };
+  const replacement = { ...card("Peach", "closed-judgement-replacement", "♥"), rank: "7" };
+  const rootEvent = {
+    type: "card", id: "closed-judgement-root", publicSequence: 10,
+    player: target.name, target: target.name, card: original, action: "reveal", judgement: true,
+    presentation: true, resolutionId,
+    publicJudgementPresentation: {
+      semantics: "PROVEN", visibility: "PUBLIC", judgementId: "closed-judgement-root",
+      targetId: target.id, judgingPlayerId: target.id, purpose: "eight_trigrams", continuationKind: "response",
+      resolutionId, causal: { interactionId, frameId: rootFrameId }, stage: "FINAL",
+      originalStatus: "unsatisfied", finalStatus: "satisfied",
+      replacementEventId: "closed-judgement-replacement", replacementActorId: actor.id,
+    },
+  };
+  const proof = {
+    semantics: "PROVEN", eventId: "closed-judgement-replacement", effectId: "sima_yi_guicai",
+    effectClass: "JUDGEMENT", activationOwnerId: actor.id,
+    materials: [{ cardId: replacement.id, ownerId: actor.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
+    targetId: target.id, outcome: "REPLACED_JUDGEMENT", rootEventId: rootEvent.id, rootResolutionId: resolutionId,
+    interactionId, rootFrameId,
+  };
+  const replacementEvent = {
+    type: "card", id: proof.eventId, publicSequence: 11,
+    player: actor.name, target: target.name, card: replacement, action: "reveal", judgement: true,
+    presentation: true, resolutionId, publicCardEffects: [proof],
+  };
+  const timeline = [rootEvent, replacementEvent];
+  const input = { pending: null, currentAction: null, actionRevision: "rest", timeline, causalEnvelope: null };
+  const projected = projectPresentationV2(input).publicCardEffects;
+  assert.deepEqual(projected.map((effect) => effect.effectId), ["sima_yi_guicai"],
+    "the committed replacement proof survives after the active causal envelope is retired");
+  const presentations = projectPublicJudgementPresentations(timeline, projected, [target, actor]);
+  assert.deepEqual(presentations.map(({ phase, eventId }) => ({ phase, eventId })), [
+    { phase: "ORIGINAL", eventId: rootEvent.id },
+    { phase: "REPLACEMENT", eventId: replacementEvent.id },
+  ]);
+  assert.equal(presentations[1].copy.message,
+    "TARGET used Eight Trigrams Formation. Judgement: 7♣.\nSIMA YI used Necromancy to replace the Judgement card with 7♥. Match.");
+
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [rootEvent, { ...replacementEvent,
+    publicCardEffects: [{ ...proof, rootFrameId: "mismatched-frame" }] }] }).publicCardEffects, [],
+  "a closed-envelope proof cannot borrow a different Judgement frame");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...rootEvent,
+    publicJudgementPresentation: { ...rootEvent.publicJudgementPresentation, replacementActorId: "other-actor" } }, replacementEvent] }).publicCardEffects, [],
+  "the persisted root must name the exact committed replacement actor");
 });
 
 test("Lust cost and activation pair only through their exact public event, owner, card and target order", () => {

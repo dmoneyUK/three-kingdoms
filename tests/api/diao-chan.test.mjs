@@ -47,6 +47,7 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
     effectId: "diao_chan_lust", effectClass: "COST",
     activationOwnerId: setup.diao.id,
     materials: [{ cardId: setup.cost.id, ownerId: setup.diao.id, fromZone: "HAND", toZone: "DISCARD" }],
+    source: { kind: "skill", label: "Lust", providerId: "diao_chan_lust" },
     targetIds: [setup.first.id, setup.second.id],
     outcome: "DUEL_DECLARED",
   }], "the public proof identifies only the committed physical cost and its true payer");
@@ -404,6 +405,23 @@ test("Lust enters canonical Attack conversion providers for Guan Yu, Zhao Yun, a
     assert.equal(conversion.activationOwnerId, setup.first.id);
     assert.equal(conversion.resultingCardKind, "Attack");
     assert.deepEqual(conversion.materials.map((entry) => entry.cardId), Array.isArray(scenario.selection.cardIds) ? scenario.selection.cardIds : [scenario.selection.cardId]);
+    if (scenario.providerId === "serpent_spear_attack") {
+      const responseProof = conversionEvent.lustDuelAttackResponse;
+      assert.deepEqual(conversion.attackContext, {
+        kind: "LUST_DUEL_RESPONSE", providerId: conversionEvent.actorId,
+        semanticActorId: responseProof.decisionActorId, targetId: responseProof.targetId,
+        interactionId: responseProof.interactionId, rootFrameId: responseProof.rootFrameId,
+        activationEventId: responseProof.activationEventId, activationResolutionId: responseProof.activationResolutionId,
+        costEventId: responseProof.costEventId, costCardId: responseProof.costCardId,
+        ownerId: responseProof.ownerId, firstParticipantId: responseProof.firstParticipantId,
+        secondParticipantId: responseProof.secondParticipantId, firstActorId: responseProof.firstActorId,
+        ordinal: responseProof.ordinal,
+      }, "the two-card conversion is linked to the actual Lust Duel root and response ordinal");
+      const snapshotEffect = answered.data.room.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === conversionEvent.id);
+      assert.equal(snapshotEffect?.interactionId, responseProof.interactionId);
+      assert.equal(snapshotEffect?.rootFrameId, responseProof.rootFrameId,
+        "the public snapshot accepts the same typed Lust Duel response relationship");
+    }
     for (const held of scenario.hand) assert.equal(roomCardCount(game.code, held.id), 1);
   }
 });

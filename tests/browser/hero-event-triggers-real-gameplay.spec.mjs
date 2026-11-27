@@ -424,6 +424,7 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
   try {
     const sima = await openPlayer(page, game, 2);
     const observer = await openPlayer(observerPage, game, 3);
+    await Promise.all([page, observerPage].map((viewerPage) => viewerPage.setViewportSize({ width: 440, height: 894 })));
     const openedAttack = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: game.code, token: game.players[0].token, cardId: attack.id, targetId: game.players[1].id },
     });
@@ -440,10 +441,15 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
     const originalReveal = projected.timeline.find((event) => event.type === "card" && event.card?.id === original.id);
     expect(originalReveal).toMatchObject({ action: "reveal", judgement: true, presentation: true });
     expect(originalReveal.privateToPlayerId).toBeUndefined();
+    const provisionalH4Copy = "TARGET used Eight Trigrams Formation. Judgement: 7♣.";
     const revealEvidence = await Promise.all([page, observerPage].map(async (viewerPage) => {
       const owner = viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalReveal.id}"]`);
       await expect(owner).toBeVisible({ timeout: 12_000 });
       await expect(owner).toHaveCount(1);
+      const h4 = viewerPage.locator(`[data-public-h4-event-id="${originalReveal.id}"]`);
+      await expect(h4).toHaveCount(1);
+      await expect(h4).toContainText(provisionalH4Copy);
+      await expect(h4).not.toContainText(/\b(?:Not )?Match\./);
       const face = owner.locator(".played-card");
       await expect(face).toHaveCount(1);
       const geometry = await viewerPage.evaluate(({ eventId }) => {
@@ -452,8 +458,9 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
         if (!element || !table) return null;
         const face = element.getBoundingClientRect();
         const stage = table.getBoundingClientRect();
-        const h4 = table.querySelector("[data-public-card-announcement='true']");
+        const h4 = table.querySelector(`[data-public-h4-event-id="${eventId}"]`);
         const announcement = h4?.getBoundingClientRect();
+        const h4Copy = h4?.querySelector("b");
         const pac = table.querySelector("[data-public-activity-chip='true']");
         const activity = pac && getComputedStyle(pac).display !== "none" && getComputedStyle(pac).visibility !== "hidden"
           ? pac.getBoundingClientRect() : null;
@@ -469,6 +476,8 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
             expectedY: face.top + face.height / 2 - stage.top,
           },
           h4: announcement ? { top: announcement.top, bottom: announcement.bottom, height: announcement.height } : null,
+          h4Copy: h4Copy?.textContent?.trim() ?? null,
+          h4WhiteSpace: h4Copy ? getComputedStyle(h4Copy).whiteSpace : null,
           pac: activity ? { top: activity.top, bottom: activity.bottom } : null,
           face: { top: face.top, bottom: face.bottom, left: face.left, right: face.right },
           ready: reveal?.dataset.publicRevealPositioned === "true",
@@ -482,6 +491,8 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       expect(Math.abs(geometry.sharedWaypoint.x - geometry.sharedWaypoint.expectedX)).toBeLessThan(1);
       expect(Math.abs(geometry.sharedWaypoint.y - geometry.sharedWaypoint.expectedY)).toBeLessThan(1);
       expect(geometry.h4, "the committed Judgement reveal keeps its actual H4 anchor").not.toBeNull();
+      expect(geometry.h4Copy).toBe(provisionalH4Copy);
+      expect(geometry.h4WhiteSpace).toBe("pre-line");
       expect(geometry.face.top - geometry.h4.bottom, "the full Judgement face clears H4 by at least 8px").toBeGreaterThanOrEqual(8);
       if (geometry.pac) expect(geometry.pac.top - geometry.face.bottom, "the full Judgement face clears PAC by at least 8px").toBeGreaterThanOrEqual(8);
       return { eventId: originalReveal.id, cardId: originalReveal.card.id, geometry };
@@ -521,11 +532,21 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
     expect(replacementEvent.publicCardEffects).toContainEqual(expect.objectContaining({
       effectId: "sima_yi_guicai", effectClass: "JUDGEMENT", activationOwnerId: sima.id,
       targetId: game.players[1].id, rootEventId: originalEvent.id, rootResolutionId: originalEvent.resolutionId,
+      interactionId: originalEvent.publicJudgementPresentation.causal.interactionId,
+      rootFrameId: originalEvent.publicJudgementPresentation.causal.frameId,
       outcome: "REPLACED_JUDGEMENT",
       materials: [{ cardId: replacement.id, ownerId: sima.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
     }));
-    const projectedEffect = result.room.presentationSnapshot?.publicCardEffects?.find((effect) => effect.eventId === replacementEvent.id);
+    const projectedEffect = result.room.presentationSnapshot?.publicCardEffects?.find((effect) => effect.eventId === replacementEvent.id
+      && effect.effectId === "sima_yi_guicai" && effect.effectClass === "JUDGEMENT");
     expect(projectedEffect).toMatchObject({ eventId: replacementEvent.id, effectId: "sima_yi_guicai", effectClass: "JUDGEMENT" });
+    const replacementJudgement = result.room.presentationSnapshot?.publicJudgementPresentations?.find((fact) => fact.eventId === replacementEvent.id);
+    const expectedReplacementH4 = "TARGET used Eight Trigrams Formation. Judgement: 7♣.\nSIMA YI used Necromancy to replace the Judgement card with 7♥. Match.";
+    expect(replacementJudgement).toMatchObject({
+      judgementId: originalEvent.id, phase: "REPLACEMENT", eventId: replacementEvent.id,
+      replacement: { physicalCardId: replacement.id, actorId: sima.id, materialOwnerId: sima.id },
+      copy: { message: expectedReplacementH4 },
+    });
     const viewers = [{ player: sima, page }, { player: observer, page: observerPage }];
     const frameEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
       const frameSnapshot = ({ viewerId, eventId, cardId }) => {
@@ -533,12 +554,30 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
           .find((element) => element.dataset.publicCardJourneyEventId === eventId);
         const display = journey?.closest(".public-card-display");
         const frame = journey?.querySelector('[data-public-card-frame-effect-id="sima_yi_guicai"]');
+        const h4 = display?.querySelector('[data-public-card-announcement="true"]');
+        const h4Text = h4?.querySelector("b");
         const phase = journey?.dataset.publicCardJourneyPhase;
+        const journeyStyle = journey ? getComputedStyle(journey) : null;
+        const frameStyle = frame ? getComputedStyle(frame) : null;
         if (!journey || display?.dataset.publicCardViewerId !== viewerId || !frame
           || !["reveal", "move"].includes(phase)
-          || journey.dataset.publicCardJourneyCardIds !== cardId) return false;
+          || journey.dataset.publicCardJourneyCardIds !== cardId
+          || journeyStyle?.visibility === "hidden" || Number(journeyStyle?.opacity) <= 0
+          || frameStyle?.display === "none" || frameStyle?.visibility === "hidden" || Number(frameStyle?.opacity) <= 0) return false;
         const faces = [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
           .map((face) => face.getAttribute("data-public-card-effect-frame-card-id"));
+        const clearance = (a, b) => {
+          if (!a || !b) return null;
+          const dx = Math.max(0, a.left - b.right, b.left - a.right);
+          const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
+          if (dx || dy) return Math.hypot(dx, dy);
+          return -Math.min(Math.min(a.right, b.right) - Math.max(a.left, b.left), Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        };
+        const frameRect = frame.getBoundingClientRect();
+        const h4Rect = h4?.getBoundingClientRect() ?? null;
+        const pac = document.querySelector(".play-table [data-public-activity-chip='true']");
+        const pacRect = pac && getComputedStyle(pac).display !== "none" && getComputedStyle(pac).visibility !== "hidden"
+          ? pac.getBoundingClientRect() : null;
         return {
           viewerId: display.dataset.publicCardViewerId,
           eventId: journey.dataset.publicCardJourneyEventId,
@@ -551,7 +590,15 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
           frameFaces: faces,
           frameTitle: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
           announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
-          announcement: display.querySelector('[data-public-card-announcement="true"]')?.textContent?.trim(),
+          announcement: h4?.textContent?.trim(),
+          h4EventId: h4?.getAttribute("data-public-h4-event-id"),
+          h4Copy: h4Text?.textContent?.trim() ?? null,
+          h4WhiteSpace: h4Text ? getComputedStyle(h4Text).whiteSpace : null,
+          h4FrameClearance: clearance(h4Rect, frameRect),
+          pacFrameClearance: clearance(pacRect, frameRect),
+          frameRect: { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom },
+          h4Rect: h4Rect ? { left: h4Rect.left, top: h4Rect.top, right: h4Rect.right, bottom: h4Rect.bottom } : null,
+          pacRect: pacRect ? { left: pacRect.left, top: pacRect.top, right: pacRect.right, bottom: pacRect.bottom } : null,
           viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
         };
       };
@@ -581,18 +628,28 @@ test("W4-F8: Necromancy frames the genuine Judgement replacement for multiple ph
       viewerId: sima.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
       frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
       frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
-      announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+      announcementCount: 1, viewport: { width: 440, height: 894, scrollWidth: 440 },
     });
     expect(frameEvidence[1]).toMatchObject({
       viewerId: observer.id, eventId: replacementEvent.id, frameCount: 1, frameClass: "JUDGEMENT",
       frameOwnerId: sima.id, frameMaterialOwnerIds: sima.id, frameMaterialCardIds: replacement.id,
       frameFaces: [replacement.id], frameTitle: "NECROMANCY · JUDGEMENT REPLACEMENT",
-      announcementCount: 1, viewport: { width: 390, height: 844, scrollWidth: 390 },
+      announcementCount: 1, viewport: { width: 440, height: 894, scrollWidth: 440 },
     });
     for (const evidence of frameEvidence) {
       expect(evidence.phase).toMatch(/^(reveal|move)$/);
-      expect(evidence.announcement).toContain("replace");
-      expect(evidence.announcement).toContain("Judgement");
+      expect(evidence.announcementCount).toBe(1);
+      expect(evidence.h4EventId).toBe(replacementEvent.id);
+      expect(evidence.h4Copy).toBe(expectedReplacementH4);
+      expect(evidence.h4WhiteSpace).toBe("pre-line");
+      expect(evidence.h4FrameClearance, JSON.stringify(evidence)).toBeGreaterThanOrEqual(5);
+      if (evidence.pacFrameClearance !== null) expect(evidence.pacFrameClearance, JSON.stringify(evidence)).toBeGreaterThanOrEqual(5);
+    }
+    for (const viewerPage of [page, observerPage]) {
+      await expect(viewerPage.locator(`[data-public-judgement-reveal-event-id="${originalEvent.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-public-judgement-reveal-event-id="${replacementEvent.id}"]`)).toHaveCount(0);
+      await expect(viewerPage.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`)).toHaveCount(1);
+      await expect(viewerPage.locator(`[data-public-h4-event-id="${replacementEvent.id}"]`)).toHaveCount(1);
     }
     await expect(page.locator(`[data-public-card-journey-event-id="${replacementEvent.id}"]`))
       .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });
@@ -838,35 +895,33 @@ test("real Stauchness frames the two committed source cards for actor, payer and
     await expect(dialog).toBeVisible();
 
     const pendingProjection = await view(request, seedData, 2);
-    const pendingFacts = [
-      ...(pendingProjection.presentationSnapshot?.retainedPublicEventFacts ?? []),
-      ...(pendingProjection.presentationSnapshot?.publicEventFacts ?? []),
-    ].filter((fact) => fact.label === "Stauchness" && fact.effect?.kind === "skill_pending_choice")
-      .sort((left, right) => left.order - right.order);
-    const pendingFact = pendingFacts.at(-1);
-    expect(pendingFact?.eventId).toBeTruthy();
-    expect(pendingFact?.rootEventId).toBeTruthy();
-    expect(pendingFact?.identity?.interactionId).toBeTruthy();
-    expect(pendingFact?.resolutionId).toBeTruthy();
-    const pendingTimelineEvent = pendingProjection.timeline.find((event) => event.id === pendingFact.eventId);
-    expect(pendingTimelineEvent?.resolutionId).toBe(pendingFact.resolutionId);
+    const pendingInteraction = pendingProjection.presentationSnapshot?.interaction;
+    expect(pendingInteraction?.semantics).toBe("PROVEN");
+    expect(pendingInteraction?.interactionId).toBeTruthy();
+    expect(pendingInteraction?.rootFrameId).toBeTruthy();
+    expect(pendingInteraction?.decisionActorId).toBe(seedData.players[0].id);
+    const pendingRootFact = pendingProjection.presentationSnapshot.publicEventFacts
+      .filter((fact) => fact.frameId === pendingInteraction.rootFrameId && fact.label === "Stauchness")
+      .sort((left, right) => left.order - right.order)
+      .at(-1);
+    expect(pendingRootFact?.rootEventId).toBeTruthy();
+    expect(JSON.stringify(pendingProjection)).not.toContain(privateCard.id);
     for (const [viewerPage, viewerIndex] of [[page, 1], [sourcePage, 0], [observerPage, 2]]) {
-      const pendingH4 = viewerPage.locator(`[data-public-h4-event-id="${pendingFact.eventId}"]`);
-      const pendingOwner = viewerPage.locator(`.public-interaction-event-announcement[data-public-interaction-event-id="${pendingFact.eventId}"]`);
-      await expect(pendingOwner).toHaveCount(1, { timeout: 10_000 });
-      await expect(pendingOwner).toBeVisible();
-      await expect(pendingH4).toHaveCount(1);
-      await expect(pendingH4).toBeVisible();
-      await expect(pendingH4).toHaveAttribute("data-public-h4-owner", "PublicInteractionAnnouncementLayer");
-      await expect(pendingOwner).toHaveAttribute("data-public-event-root-id", pendingFact.rootEventId);
-      await expect(pendingH4).toContainText("XIAHOU DUN used Stauchness: waiting for SOURCE to choose a consequence.");
+      await expect(viewerPage.getByRole("status", { name: /Waiting for SOURCE to choose a Stauchness consequence/ })).toBeVisible();
       await expect(viewerPage.locator('[data-public-card-announcement="true"]:visible')).toHaveCount(1);
       const viewerProjection = await view(request, seedData, viewerIndex);
       expect(viewerProjection.presentationSnapshot.publicEventFacts).toEqual(pendingProjection.presentationSnapshot.publicEventFacts);
+      if (viewerIndex !== 0) expect(JSON.stringify(viewerProjection)).not.toContain(privateCard.id);
     }
     await dialog.getByRole("button", { name: "Discard 2 Hand cards", exact: true }).click();
-    await dialog.getByRole("button", { name: "Peach 7♥", exact: true }).click();
-    await dialog.getByRole("button", { name: "Dodge 7♣", exact: true }).click();
+    const paidHandCards = paidCards.map((paid) => sourcePage.locator(`[data-hand-card-id="${paid.id}"] button.game-card`));
+    await expect(paidHandCards[0]).toBeVisible();
+    await paidHandCards[0].click();
+    await paidHandCards[1].click();
+    await expect(paidHandCards[0]).toHaveAttribute("aria-pressed", "true");
+    await expect(paidHandCards[1]).toHaveAttribute("aria-pressed", "true");
+    const confirmChoice = dialog.getByRole("button", { name: /Confirm .* card choice/ });
+    await expect(confirmChoice).toBeEnabled();
     const readFrame = async (viewerPage, viewerId) => {
       try {
         const handle = await viewerPage.waitForFunction(({ expectedViewerId, cardIds }) => {
@@ -890,7 +945,6 @@ test("real Stauchness frames the two committed source cards for actor, payer and
             frameFaces: [...frame.querySelectorAll("[data-public-card-effect-frame-card-id]")]
               .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")),
             title: frame.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
-            announcementCount: document.querySelectorAll('[data-public-card-announcement="true"][data-public-card-announcement-delivery="VISIBLE"]').length,
             viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
           };
         }, { expectedViewerId: viewerId, cardIds: paidCards.map((paid) => paid.id) }, { timeout: 8_000 });
@@ -940,17 +994,17 @@ test("real Stauchness frames the two committed source cards for actor, payer and
       ...(projected.presentationSnapshot.retainedPublicEventFacts ?? []),
       ...projected.presentationSnapshot.publicEventFacts,
     ].find((fact) => fact.eventId === costEvent.id);
-    expect(committedFact?.rootEventId).toBe(pendingFact.rootEventId);
-    expect(committedFact?.identity?.interactionId).toBe(pendingFact.identity.interactionId);
+    expect(committedFact?.rootEventId).toBe(pendingRootFact.rootEventId);
+    expect(committedFact?.identity?.interactionId).toBe(pendingInteraction.interactionId);
     expect(committedFact?.resolutionId).toBe(costEvent.resolutionId);
-    expect(committedFact?.order).toBeGreaterThan(pendingFact.order);
+    expect(committedFact?.order).toBeGreaterThan(pendingRootFact.order);
     for (const viewerPage of [page, sourcePage, observerPage]) {
       const committedH4 = viewerPage.locator(`[data-public-h4-event-id="${costEvent.id}"]`);
       await expect(committedH4).toHaveCount(1, { timeout: 10_000 });
       await expect(committedH4).toBeVisible();
-      await expect(committedH4).toHaveAttribute("data-public-h4-owner", "PublicInteractionAnnouncementLayer");
+      await expect(committedH4).toHaveAttribute("data-public-h4-owner", "PublicCardDisplay");
       await expect(committedH4).toHaveAttribute("data-public-h4-public-sequence", String(committedFact.order));
-      await expect(committedH4).toHaveText("XIAHOU DUN used Stauchness: SOURCE discarded 2 Hand cards.");
+      await expect(committedH4).toHaveText("XIAHOU DUN used Stauchness, causing SOURCE to discard 2 cards: 7♥ Peach · 7♣ Dodge.");
       await expect(viewerPage.locator('[data-public-card-announcement="true"]:visible')).toHaveCount(1);
     }
     expect(costEvent.publicCardEffects).toEqual(expect.arrayContaining([
@@ -979,7 +1033,6 @@ test("real Stauchness frames the two committed source cards for actor, payer and
         frameMaterialCardIds: paidCards.map((paid) => paid.id).join(","),
         frameFaces: paidCards.map((paid) => paid.id),
         title: "STAUCHNESS",
-        announcementCount: 1,
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
     }
@@ -1363,13 +1416,50 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
       { viewerPage: targetPage, viewerId: seedData.players[1].id, privateHandCard: privateTargetCard },
       { viewerPage: observerPage, viewerId: seedData.players[2].id, privateHandCard: null },
     ];
-    const activated = await request.post(`${API}/api/rooms`, {
-      data: {
-        action: "trigger", code: seedData.code, token: seedData.players[0].token,
-        providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", equipmentMaterial.id],
-      },
-    });
+    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
+    const stage = page.locator('.card-pool-target-stage[data-trigger-target-pool="true"]');
+    const pool = stage.locator('.card-pool-panel--actor-target-select[aria-label="Frost Sword target card selection"]');
+    await expect(pool).toBeVisible();
+    await expect(pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-select').first()).toBeVisible();
+    await expect(pool.getByRole("tab", { name: /Judgement/ })).toHaveCount(0);
+    await expect(page.locator(`[data-hand-card-id="${privateTargetCard.id}"]`)).toHaveCount(0);
+    const handChoice = pool.locator('[data-target-card-public-zone="hand"] .card-pool-panel__target-select').first();
+    await handChoice.click();
+    await expect(handChoice).toHaveAttribute("aria-pressed", "true");
+    await pool.getByRole("tab", { name: /^Equipment/ }).click();
+    const equipmentChoice = pool.locator('[data-target-card-public-zone="equipment"] .card-pool-panel__target-select');
+    await expect(equipmentChoice).toHaveCount(1);
+    await equipmentChoice.click();
+    await expect(pool).toBeVisible();
+    await expect(page.locator('.card-pool-decision-footer__count')).toHaveText("2 / 2 selected");
+    await expect(pool.getByRole("tab", { name: /Hand.*1 selected/ })).toBeVisible();
+    await expect(pool.getByRole("tab", { name: /Equipment.*1 selected/ })).toBeVisible();
+    const unchangedPollResponse = page.waitForResponse((response) => response.url().startsWith(`${API}/api/rooms?`)
+      && response.request().method() === "GET", { timeout: 10_000 });
+    const unchangedPoll = await unchangedPollResponse;
+    expect(unchangedPoll.ok()).toBeTruthy();
+    const afterPoll = await unchangedPoll.json();
+    expect(afterPoll.currentAction).toMatchObject({ kind: "trigger", actorId: seedData.players[0].id,
+      });
+    expect(afterPoll.actionRevision).toBe(triggerDecision.actionRevision);
+    await expect(pool).toBeVisible();
+    await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true");
+    await pool.getByRole("tab", { name: /^Hand/ }).click();
+    await expect(handChoice).toHaveAttribute("aria-pressed", "true");
+    await pool.getByRole("tab", { name: /^Equipment/ }).click();
+    await expect(equipmentChoice).toHaveAttribute("aria-pressed", "true");
+    const confirm = pool.getByRole("button", { name: "Confirm Frost Sword selection" });
+    await expect(confirm).toBeEnabled();
+    const activationResponse = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "trigger"
+      && response.request().postDataJSON()?.providerId === "frost_sword_damage_about_to_apply");
+    await confirm.click();
+    const activated = await activationResponse;
     expect(activated.ok(), await activated.text()).toBeTruthy();
+    expect(activated.request().postDataJSON()).toMatchObject({ action: "trigger", code: seedData.code,
+      token: seedData.players[0].token, providerId: "frost_sword_damage_about_to_apply",
+      cardKeys: ["hand:0", equipmentMaterial.id] });
     const publicRoom = await view(request, seedData, 2);
     const effectEvent = publicRoom.timeline.find((event) => event.type === "cards"
       && event.action === "discard" && event.cards.some((item) => item.id === handMaterial.id));
@@ -1397,7 +1487,6 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
     expect(JSON.stringify(publicRoom)).not.toContain(privateSourceCard.id);
     expect(JSON.stringify(publicRoom)).not.toContain(privateTargetCard.id);
 
-    await Promise.all([openPlayer(page, seedData, 0), openPlayer(targetPage, seedData, 1), openPlayer(observerPage, seedData, 2)]);
     const frameEvidence = await Promise.all(viewers.map(async ({ viewerPage, viewerId }) => {
       const handle = await viewerPage.waitForFunction(({ expectedViewerId, expectedEventId, cardIds }) => {
         const display = [...document.querySelectorAll(".public-card-display")]
@@ -1434,12 +1523,17 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
         journeyActorId: seedData.players[1].id, frameCount: 1,
         materialCardIds: `${handMaterial.id},${equipmentMaterial.id}`,
         cardFaces: [handMaterial.id, equipmentMaterial.id],
-        title: "FROST SWORD · DAMAGE PREVENTED",
+        title: "FROST SWORD · DISCARD",
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
       expect(evidence.accessibleLabel).toContain("FROST USER");
       expect(evidence.accessibleLabel).toContain("FROST TARGET");
-      expect(evidence.announcement).toContain("Attack damage was prevented");
+      expect(evidence.accessibleLabel).toContain("7♣ Dodge");
+      expect(evidence.accessibleLabel).toContain("7♠ Nio Shield");
+      expect(evidence.announcement).toBe(
+        "FROST USER used Frost Sword to discard 2 cards from FROST TARGET: 7♣ Dodge · 7♠ Nio Shield.",
+      );
+      expect(evidence.announcement).not.toContain("prevent");
       if (privateHandCard) await expect(viewerPage.locator(`[data-hand-card-id="${privateHandCard.id}"]`)).toHaveCount(1);
     }
     for (const { viewerPage, privateHandCard } of viewers) {
@@ -1790,6 +1884,19 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
       if (!display || !journey || !publicFramePresent) return false;
       const frameRect = frame?.getBoundingClientRect();
       const announcementRect = announcement?.getBoundingClientRect();
+      const faceRects = [...(frame?.querySelectorAll("[data-public-card-effect-frame-card-id]") ?? [])].map((face) => {
+        const rect = face.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      });
+      const rectanglesOverlap = Boolean(frameRect && announcementRect
+        && announcementRect.left < frameRect.right && announcementRect.right > frameRect.left
+        && announcementRect.top < frameRect.bottom && announcementRect.bottom > frameRect.top);
+      const horizontalGap = frameRect && announcementRect
+        ? Math.max(0, announcementRect.left - frameRect.right, frameRect.left - announcementRect.right) : null;
+      const verticalGap = frameRect && announcementRect
+        ? Math.max(0, announcementRect.top - frameRect.bottom, frameRect.top - announcementRect.bottom) : null;
+      const frameAnnouncementClearance = rectanglesOverlap ? 0
+        : horizontalGap === null || verticalGap === null ? null : Math.hypot(horizontalGap, verticalGap);
       return {
         viewerId: display.dataset.publicCardViewerId,
         rootEventId: journey.dataset.publicCardJourneyEventId,
@@ -1804,11 +1911,12 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
         materialCardIds: frame?.dataset.publicCardFrameMaterialCardIds ?? journey.dataset.publicCardJourneyCardIds,
         materialFaces: [...new Set([...journey.querySelectorAll("[data-public-card-effect-frame-card-id]")]
           .map((face) => face.getAttribute("data-public-card-effect-frame-card-id")))],
+        frameWidth: frameRect?.width ?? null,
+        faceRects,
+        frameAnnouncementClearance,
         announcement: announcement?.textContent?.trim() ?? journey.getAttribute("aria-label"),
         announcementCount: announcement ? display.querySelectorAll('[data-public-card-announcement="true"]').length : 1,
-        overlapsAnnouncement: Boolean(frameRect && announcementRect && announcementRect.left < frameRect.right
-          && announcementRect.right > frameRect.left && announcementRect.top < frameRect.bottom
-          && announcementRect.bottom > frameRect.top),
+        overlapsAnnouncement: rectanglesOverlap,
         viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
       };
     }, { expectedViewerId: viewerId, expectedRootEventId: rootEventId }, { timeout: 12_000 });
@@ -1879,7 +1987,17 @@ test("Serpent Spear presents two real cards as one Attack for actor, target and 
         announcementCount: 1, overlapsAnnouncement: false,
         viewport: { width: 390, height: 844, scrollWidth: 390 },
       });
-      expect(evidence.announcement).toMatch(/two (real )?Hand cards AS Attack/i);
+      expect(evidence.frameWidth).toBeGreaterThanOrEqual(203);
+      expect(evidence.frameWidth).toBeLessThanOrEqual(205);
+      expect(evidence.faceRects).toHaveLength(2);
+      for (const face of evidence.faceRects) {
+        expect(Math.abs(face.width - 90)).toBeLessThanOrEqual(1);
+        expect(Math.abs(face.height - 135)).toBeLessThanOrEqual(1);
+      }
+      expect(evidence.frameAnnouncementClearance).toBeGreaterThanOrEqual(5);
+      expect(evidence.announcement).toContain(`${firstMaterial.rank}${firstMaterial.suit} Peach`);
+      expect(evidence.announcement).toContain(`${secondMaterial.rank}${secondMaterial.suit} Dodge`);
+      expect(evidence.announcement).toMatch(/Serpent Spear to play Attack against DODGE TARGET/i);
     }
 
     const targetView = await view(request, seedData, 1);

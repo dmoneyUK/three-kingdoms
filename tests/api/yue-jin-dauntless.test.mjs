@@ -50,6 +50,7 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
     semantics: "PROVEN", eventId: paidCost.id, effectId: "yue_jin_dauntless", effectClass: "COST",
     activationOwnerId: yue.id,
     materials: [{ cardId: "peach-dauntless-peach", ownerId: yue.id, fromZone: "HAND", toZone: "DISCARD" }],
+    source: { kind: "skill", label: "Dauntless", providerId: "yue_jin_dauntless" },
     targetId: target.id, outcome: "ACTIVATION_COST",
   });
   const targetView = await state(game.code, game.members[0].token);
@@ -69,6 +70,7 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
     semantics: "PROVEN", eventId: targetEquipment.id, effectId: "yue_jin_dauntless", effectClass: "EFFECT",
     activationOwnerId: yue.id,
     materials: [{ cardId: "nioshield-dauntless-armor", ownerId: target.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }],
+    source: { kind: "skill", label: "Dauntless", providerId: "yue_jin_dauntless" },
     targetId: target.id, outcome: "DAMAGE_PREVENTED",
   }, "the activation owner and the target-owned Equipment material remain distinct");
   assert.equal(discardIds(game.code).filter((id) => ["peach-dauntless-peach", "nioshield-dauntless-armor"].includes(id)).length, 2);

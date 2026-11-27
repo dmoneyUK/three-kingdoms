@@ -1191,7 +1191,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(pickerHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
   assert.match(pickerHtml, /class="card-pool-panel__title">FROST SWORD<\/b>/);
   assert.match(pickerHtml, /class="card-pool-panel__instruction">Choose 2 cards to discard<\/span>/);
-  assert.deepEqual([...pickerHtml.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), ["Hand (4)", "Equipment (1)"], "only server-authorized populated zones become tabs");
+  assert.deepEqual([...pickerHtml.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), ["Hand (4), 0 selected", "Equipment (1), 0 selected"], "only server-authorized populated zones become tabs and stable multi-select tabs expose their counts");
   assert.equal((pickerHtml.match(/aria-label="Choose hidden Hand position \d+"/g) ?? []).length, 4, "opaque Hand positions retain their original server indices");
   assert.doesNotMatch(pickerHtml, /data-public-card-id="armor"/, "inactive Equipment is not duplicated below the Hand row");
   assert.doesNotMatch(pickerHtml, /data-public-card-id="lightning"|Judgement \(/, "Frost Sword does not expose a Judgement choice");

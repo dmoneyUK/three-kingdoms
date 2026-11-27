@@ -287,8 +287,8 @@ export type PublicInteractionNarration = {
   eventId: string;
   publicSequence?: number;
   rootEventId: string;
-  interactionId: string;
-  rootFrameId: string;
+  interactionId?: string;
+  rootFrameId?: string;
   actorId?: string;
   headline: string;
   headlineSegments?: readonly VerifiedPlayerCopySegment[];
@@ -577,6 +577,15 @@ function formatCommittedPublicOutcomeCopy(
   });
   parts.push(".");
   return verifiedPlayerCopy(parts);
+}
+
+/** Returns the validated committed-result copy with player spans for shared presenters. */
+export function formatCommittedPublicOutcomeWithSegments(
+  outcome: CommittedPublicOutcome,
+  players: readonly Pick<PublicActivityPlayer, "id" | "name">[],
+  facts: readonly PublicOutcomeEventFact[] = [],
+): { message: string; segments: VerifiedPlayerCopySegment[] } | null {
+  return formatCommittedPublicOutcomeCopy(outcome, players, facts);
 }
 
 function isStauchnessTerminalFact(fact: PresentationSnapshot["publicEventFacts"][number]) {

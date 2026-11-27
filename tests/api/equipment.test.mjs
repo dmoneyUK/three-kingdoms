@@ -525,7 +525,8 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.ok(replacementDiscardEvent, "the exact public Equipment leaving its slot has one committed zone transition");
   assert.equal(replacementDiscardEvent.presentation, true);
   assert.deepEqual(replacementDiscardEvent.publicZoneTransition, {
-    semantics: "PROVEN", visibility: "PUBLIC", eventId: replacementDiscardEvent.id, physicalCardId: firstCard.id,
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: replacementDiscardEvent.id,
+    sourceEventId: replacementDiscardEvent.id, rootEventId: replacementEvent.id, physicalCardId: firstCard.id,
     from: { zone: "EQUIPMENT", ownerId: hostPlayer.id, slot: "weapon" },
     to: { zone: "DISCARD", ownerId: null },
   });
@@ -615,6 +616,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
       { cardId: "dodge-serpent-two", ownerId: hostPlayer.id, fromZone: "HAND", toZone: "DISCARD" },
     ],
     targetId: bobPlayer.id, resultingCardKind: "Attack", outcome: "AS_ATTACK",
+    attackContext: { kind: "DIRECT_ATTACK", providerId: hostPlayer.id, semanticActorId: hostPlayer.id, targetId: bobPlayer.id },
   }, "the two real cards form one server-authored Attack without a fabricated Attack face");
   const serpentDecision = await state(game.code, bob.token); assert.equal(serpentDecision.data.currentAction.kind, "response"); assert.equal(serpentDecision.data.currentAction.requirement, "dodge"); assert.ok(serpentDecision.data.currentAction.options.some((option) => option.providerId === "card"));
   const [sourceDuringResponse, targetDuringResponse, observerDuringResponse] = await Promise.all([
@@ -627,6 +629,9 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
     assert.equal(view.presentationSnapshot.rootAction.playedAs, "attack");
     assert.deepEqual(view.presentationSnapshot.rootAction.materialCardIds, ["peach-serpent-one", "dodge-serpent-two"]);
     assert.equal(view.presentationSnapshot.rootAction.physicalCardKind, undefined, "the semantic Attack never invents a physical Attack card");
+    const publicEffect = view.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === formedEvent.id);
+    assert.deepEqual(publicEffect?.cards.map((face) => face.id), ["peach-serpent-one", "dodge-serpent-two"],
+      "all viewers receive the same two genuine public material faces through the shared snapshot");
   }
   assert.deepEqual(targetDuringResponse.currentAction.options.find((option) => option.providerId === "card")?.selection.eligibleCardIds, ["dodge-serpent-answer"],
     "the target retains the real server-authorized Dodge option");
@@ -656,12 +661,52 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   const duelSpearEvent = duelAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-duel-one"));
   assert.equal(duelSpearEvent.publicCardEffects?.[0]?.effectId, "serpent_spear_attack", "Duel responses expose the same physical proof path");
   assert.equal(duelSpearEvent.publicCardEffects?.[0]?.targetId, hostPlayer.id);
+  const duelContext = duelSpearEvent.publicCardEffects[0].attackContext;
+  assert.deepEqual(duelContext, {
+    kind: "DUEL_RESPONSE", providerId: alicePlayer.id,
+    semanticActorId: duelSpearEvent.duelAttackResponse.decisionActorId,
+    targetId: duelSpearEvent.duelAttackResponse.targetId,
+    interactionId: duelSpearEvent.duelAttackResponse.interactionId,
+    rootFrameId: duelSpearEvent.duelAttackResponse.rootFrameId,
+    rootEventId: duelSpearEvent.duelAttackResponse.rootEventId,
+    rootResolutionId: duelSpearEvent.duelAttackResponse.rootResolutionId,
+    ordinal: duelSpearEvent.duelAttackResponse.ordinal,
+  }, "one two-card conversion retains the real Duel root and response ordinal");
+  const duelSnapshotEffect = duelAnswer.data.room.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === duelSpearEvent.id);
+  assert.deepEqual(duelSnapshotEffect?.cards.map((face) => face.id), ["peach-duel-one", "dodge-duel-two"]);
+  assert.equal(duelSnapshotEffect?.interactionId, duelContext.interactionId);
+  assert.equal(duelSnapshotEffect?.rootFrameId, duelContext.rootFrameId,
+    "the shared viewer snapshot accepts the same Duel response proof and causal frame");
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "invasion") });
   setHand(hostPlayer.id, [card("BarbarianInvasion", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "invasion-one"), card("Dodge", "invasion-two")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
-  assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-serpent" })).status, 200);
+  const invasionStarted = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-serpent" });
+  assert.equal(invasionStarted.status, 200);
+  const invasionGroup = invasionStarted.data.room.presentationV2.groupResolution;
+  assert.equal(invasionGroup?.cardKind, "BarbarianInvasion");
+  assert.ok(invasionGroup?.rootCardProof, "the response is tied to the real ordered group root");
   const invasionAnswer = await requestAndSettle("respond", { code: game.code, token: alice.token, cardIds: ["peach-invasion-one", "dodge-invasion-two"] });
   assert.equal(invasionAnswer.status, 200); assert.equal(invasionAnswer.data.room.pendingGroup, null); assert.equal(invasionAnswer.data.room.players.find(p => p.id === bobPlayer.id).hp, 3); assert.equal(invasionAnswer.data.room.players.find(p => p.id === carolPlayer.id).hp, 3); assert.ok(invasionAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
+  const invasionRoot = invasionAnswer.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card.kind === "BarbarianInvasion");
+  const invasionSpearEvent = invasionAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-invasion-one"));
+  const groupContext = invasionSpearEvent.publicCardEffects?.[0]?.attackContext;
+  assert.equal(groupContext?.kind, "GROUP_RESPONSE");
+  assert.equal(groupContext.providerId, alicePlayer.id);
+  assert.equal(groupContext.semanticActorId, alicePlayer.id);
+  assert.equal(groupContext.groupCardKind, "BarbarianInvasion");
+  assert.equal(groupContext.rootEventId, invasionRoot.id);
+  assert.equal(groupContext.rootResolutionId, invasionRoot.resolutionId);
+  assert.equal(groupContext.interactionId, invasionGroup.interactionId);
+  assert.equal(groupContext.rootFrameId, invasionGroup.groupFrameId);
+  assert.deepEqual(groupContext.participantIds, invasionGroup.targetIds, "the public context preserves authoritative group order");
+  assert.equal(groupContext.participantOrdinal, invasionGroup.targetIds.indexOf(alicePlayer.id) + 1);
+  assert.equal(invasionSpearEvent.publicCardEffects[0].rootEventId, invasionRoot.id);
+  assert.equal(invasionSpearEvent.publicCardEffects[0].rootResolutionId, invasionRoot.resolutionId);
+  const groupSnapshotEffect = invasionAnswer.data.room.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === invasionSpearEvent.id);
+  assert.deepEqual(groupSnapshotEffect?.cards.map((face) => face.id), ["peach-invasion-one", "dodge-invasion-two"]);
+  assert.equal(groupSnapshotEffect?.interactionId, groupContext.interactionId);
+  assert.equal(groupSnapshotEffect?.rootFrameId, groupContext.rootFrameId,
+    "the shared viewer snapshot accepts the ordered group participants and exact causal frame");
 
   setEquipment(hostPlayer.id, { weapon: card("SerpentSpear", "trigrams-spear") });
   setEquipment(alicePlayer.id, { armor: card("EightTrigrams", "trigrams-spear-armor") });
@@ -914,6 +959,13 @@ test("Frost Sword prevents Attack damage only when its owner discards exactly tw
   const frostOutcome = assertPublicOutcomeHasH4Owner(frost.data.room, frostEvent.id);
   assert.equal(frostOutcome.narration.headline, `${hostPlayer.name} used Frost Sword to discard 2 cards from ${alicePlayer.name}.`);
   assert.deepEqual(frostOutcome.owner, { eventId: frostEvent.id, owner: "PublicInteractionAnnouncementLayer" });
+  const frostNotices = frost.data.room.timeline.filter((event) => event.type === "message" && event.effectNotice
+    && event.message.includes("Frost Sword"));
+  assert.deepEqual(frostNotices, [],
+    `a proven Frost discard owns the public result without a separate prevention notice: ${JSON.stringify(frostNotices.map(({ id, message, effectNotice, publicFact, resolutionId, actorId }) => ({ id, message, effectNotice, publicFact, resolutionId, actorId })))}`);
+  assert.equal(frost.data.room.timeline.some((event) => event.type === "message"
+    && /optional reaction to prevent damage/i.test(event.message)), false,
+  "the committed discard event replaces prevention-led duplicate narration");
 
   setHand(hostPlayer.id, [card("Attack", "one-eligible-attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one-eligible-target")], 4, 4); setEquipment(alicePlayer.id); setTurn(game.code, hostPlayer.seat);
   const oneEligibleAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-one-eligible-attack", targetId: alicePlayer.id });
@@ -977,6 +1029,25 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   const kirinEvent = resolved.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "shadowrunner-defensive"));
   assert.deepEqual(kirinEvent.publicCardEffects?.[0]?.materials, [{ cardId: "shadowrunner-defensive", ownerId: alicePlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }]);
   assert.equal(kirinEvent.publicCardEffects?.[0]?.activationOwnerId, hostPlayer.id);
+  assert.deepEqual(kirinEvent.publicCardEffects?.[0]?.source, {
+    kind: "equipment", label: "Kirin Bow", providerId: "kirin_bow_damage_about_to_apply",
+  }, "Kirin Bow discard keeps the proven equipment source, not the Attack damage source");
+  assert.deepEqual(kirinEvent.publicZoneTransitions, [{
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: kirinEvent.id, sourceEventId: kirinEvent.id,
+    rootEventId: attack.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-attack")?.id,
+    physicalCardId: "shadowrunner-defensive",
+    from: { zone: "EQUIPMENT", ownerId: alicePlayer.id, slot: "defensiveHorse" },
+    to: { zone: "DISCARD", ownerId: null },
+  }], "the real defensive Mount slot and causal Attack root are retained");
+  assert.deepEqual(kirinEvent.publicFact?.committedOutcome?.changes, [
+    { kind: "CARD_DISCARDED", playerId: alicePlayer.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ], "only the committed Mount discard is attributed to Kirin Bow");
+  const observer = await state(game.code, alice.token);
+  const observerKirin = observer.data.timeline.find((event) => event.id === kirinEvent.id);
+  assert.deepEqual(observerKirin?.publicCardEffects?.[0]?.materials, kirinEvent.publicCardEffects[0].materials,
+    "the material owner receives the same public physical-card proof as the attacker");
+  assert.deepEqual(observerKirin?.publicFact?.committedOutcome?.changes, kirinEvent.publicFact.committedOutcome.changes,
+    "the material owner receives the same committed discard outcome fact");
 
 });
 

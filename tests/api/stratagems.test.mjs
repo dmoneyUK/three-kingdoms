@@ -3,6 +3,7 @@ import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
+import { normalizePublicDiscardSettlements, publicDiscardSettlementCopy } from "../../app/public-discard-settlement.ts";
 import { baseUrl } from "./harness.mjs";
 import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
@@ -1698,7 +1699,7 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
 
 });
 
-test("committed Discard-phase cards carry one public physical HAND-to-Discard proof for every viewer", { timeout: 30_000 }, async () => {
+test("committed Discard-phase cards normalize to one public physical HAND-to-Discard result for every viewer", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const owner = game.room.players[0];
   const committedCard = card("Peach", "m4-committed-hand-discard");
@@ -1729,14 +1730,30 @@ test("committed Discard-phase cards carry one public physical HAND-to-Discard pr
   const observerEvent = observer.timeline.find((event) => event.id === ownerEvent.id);
   assert.deepEqual(observerEvent?.publicZoneTransitions, ownerEvent.publicZoneTransitions,
     "public transition evidence is identical for every viewer");
-  const ownerH4 = assertPublicOutcomeHasH4Owner(discarded.data.room, ownerEvent.id);
-  const observerH4 = assertPublicOutcomeHasH4Owner(observer, ownerEvent.id);
-  assert.equal(ownerH4.fact.committedOutcome.changes[0]?.kind, "CARD_DISCARDED");
-  assert.equal(ownerH4.fact.committedOutcome.changes[0]?.amount, 1);
-  assert.match(ownerH4.narration.headline, /discarded 1 card/,
-    "ordinary Discard Phase H4 reports the committed discard count");
-  assert.equal(observerH4.narration.headline, ownerH4.narration.headline,
-    "actor and observer share the same single-owner H4 result for the public discard");
+  const canonicalFor = (view) => normalizePublicDiscardSettlements({
+    timeline: view.timeline,
+    publicCardEffects: view.presentationV2.publicCardEffects,
+    dismantleSettlements: view.presentationV2.dismantleSettlements,
+    publicEventFacts: view.presentationSnapshot.publicEventFacts,
+  }).filter((settlement) => settlement.eventId === ownerEvent.id);
+  const ownerSettlements = canonicalFor(discarded.data.room);
+  const observerSettlements = canonicalFor(observer);
+  assert.equal(ownerSettlements.length, 1, "one canonical settlement owns the committed physical discard");
+  assert.equal(observerSettlements.length, 1, "the observer receives the same unique public settlement");
+  assert.equal(ownerSettlements[0].presentation, "eligible");
+  assert.deepEqual(ownerSettlements[0].materials.map(({ physicalCardId, ownerId, fromZone, toZone }) => ({ physicalCardId, ownerId, fromZone, toZone })), [{
+    physicalCardId: committedCard.id, ownerId: owner.id, fromZone: "HAND", toZone: "DISCARD",
+  }]);
+  assert.deepEqual(observerSettlements[0], ownerSettlements[0],
+    "all viewers normalize identical physical identity, source, order and zone proof");
+  const ownerCopy = publicDiscardSettlementCopy({ settlement: ownerSettlements[0], players: discarded.data.room.players });
+  const observerCopy = publicDiscardSettlementCopy({ settlement: observerSettlements[0], players: observer.players });
+  assert.ok(ownerCopy);
+  assert.equal(ownerCopy.cards?.[0]?.id, committedCard.id, "canonical copy retains the exact public physical card face");
+  assert.match(ownerCopy.headline, /discarded 1 card/,
+    "ordinary Discard Phase copy reports the committed discard count");
+  assert.equal(observerCopy?.headline, ownerCopy.headline,
+    "actor and observer receive identical shared discard copy");
 });
 
 test("delayed Judgement Negation and counter-Negation reuse one activation frame", { timeout: 30_000 }, async () => {

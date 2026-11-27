@@ -146,6 +146,12 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
   }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
     "a same-event composite result keeps its complete public deltas in the shared narrator");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
+    cardDisplay: { enabled: true, rootEventId: "frame-event", interactionId: rootFact.identity.interactionId,
+      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId },
+  }), { eventId: rootFact.eventId, owner: "PublicCardDisplay" },
+    "a committed discard with its exact frame keeps detail and same-event outcome on one H4 owner");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: rootFact, discard: { eventId: "later-discard", order: rootFact.order + 1 },
   }), { eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer" },
     "a genuinely later public discard supersedes the older fact");
@@ -208,6 +214,35 @@ test("H4 cursor selection never jumps ahead of the event currently being present
   assert.deepEqual(publicH4FactAtPresentationCursor(facts, null), {
     fact: facts[2], isExactCursorFact: false,
   }, "a fresh or restored view presents the latest retained committed fact");
+});
+
+test("Judgement H4 selects one owner, with the replacement frame claiming only its exact stage", () => {
+  const original = {
+    semantics: "PROVEN", visibility: "PUBLIC", judgementId: "judgement-1", eventId: "judgement-1", order: 10,
+    phase: "ORIGINAL", status: "PROVISIONAL",
+  };
+  const replacement = {
+    ...original, eventId: "replacement-1", order: 11, phase: "REPLACEMENT", status: "FINAL",
+  };
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: original, isActive: true, replacementFrameMatches: false,
+  } }), { eventId: "judgement-1", owner: "PublicInteractionAnnouncementLayer" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: true, replacementFrameMatches: true,
+  } }), { eventId: "replacement-1", owner: "PublicCardDisplay" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: true, replacementFrameMatches: false,
+  } }), { eventId: "replacement-1", owner: "PublicInteractionAnnouncementLayer" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: false, replacementFrameMatches: false,
+  }, discard: { eventId: "later-discard", order: 12 } }), {
+    eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer",
+  });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
+    presentation: replacement, isActive: true, replacementFrameMatches: false,
+  }, discard: { eventId: "later-discard", order: 12 } }), {
+    eventId: "replacement-1", owner: "PublicInteractionAnnouncementLayer",
+  }, "a later queued discard does not preempt the currently read Judgement stage");
 });
 
 test("Attack, Duel and committed Negation response cards retain one public journey owner", () => {

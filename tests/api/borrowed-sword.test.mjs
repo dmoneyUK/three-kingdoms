@@ -585,6 +585,22 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   setHand(spearScenario.holder.id, [spearCostA, spearCostB], 4, 4); setHand(spearScenario.target.id, [targetDodge], 4, 4);
   assert.equal((await requestAndSettle("choose_borrowed_sword_target", { code: spearScenario.game.code, token: spearScenario.host.token, targetId: spearScenario.target.id })).status, 200);
   const spear = await requestAndSettle("respond", { code: spearScenario.game.code, token: spearScenario.alice.token, providerId: "serpent_spear_attack", cardIds: [spearCostA.id, spearCostB.id] }); assert.equal(spear.status, 200, JSON.stringify(spear.data));
+  const borrowedRoot = spear.data.room.timeline.find((event) => event.type === "card" && event.card?.kind === "BorrowedSword");
+  const borrowedSpearEvent = spear.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === spearCostA.id));
+  const borrowedConversion = borrowedSpearEvent.publicCardEffects?.find((proof) => proof.effectId === "serpent_spear_attack");
+  assert.ok(borrowedRoot && borrowedConversion, "the real Borrowed Sword event and its committed conversion are both projected");
+  assert.deepEqual(borrowedConversion.attackContext, {
+    kind: "BORROWED_SWORD", providerId: spearScenario.holder.id, semanticActorId: spearScenario.holder.id,
+    targetId: spearScenario.target.id, borrowerId: spearScenario.source.id, holderId: spearScenario.holder.id,
+    borrowedSwordEventId: borrowedRoot.id, borrowedSwordResolutionId: borrowedRoot.resolutionId,
+    borrowedSwordCardId: borrowedRoot.card.id,
+  });
+  assert.equal(borrowedConversion.rootEventId, borrowedRoot.id);
+  assert.equal(borrowedConversion.rootResolutionId, borrowedRoot.resolutionId);
+  const borrowedSnapshotEffect = spear.data.room.presentationSnapshot.publicCardEffects.find((proof) => proof.eventId === borrowedSpearEvent.id);
+  assert.deepEqual(borrowedSnapshotEffect?.cards.map((face) => face.id), [spearCostA.id, spearCostB.id]);
+  assert.equal(borrowedSnapshotEffect?.attackContext?.kind, "BORROWED_SWORD",
+    "the shared snapshot keeps the forced Attack bound to the real Borrowed Sword root");
   assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(spearScenario.holder.id)} AND (json_extract(value,'$.id')=${quote(spearCostA.id)} OR json_extract(value,'$.id')=${quote(spearCostB.id)})`), "0");
   const spearDodge = await requestAndSettle("respond", { code: spearScenario.game.code, token: spearScenario.game.members[2].token, providerId: "card", cardId: targetDodge.id }); assert.equal(spearDodge.status, 200, JSON.stringify(spearDodge.data));
 

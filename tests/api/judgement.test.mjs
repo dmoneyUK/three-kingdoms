@@ -143,6 +143,15 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   assert.equal(revealed.data.currentAction.triggerEvent, "judgement_revealed");
   const originalJudgement = revealed.data.timeline.find((event) => event.type === "card" && event.action === "reveal" && event.judgement === true);
   assert.equal(originalJudgement?.card.id, "dodge-judgement-race-original");
+  const openJudgementPresentation = revealed.data.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.equal(openJudgementPresentation.length, 1, "the public original reveal has one typed provisional presentation");
+  assert.equal(openJudgementPresentation[0].judgementId, originalJudgement?.id);
+  assert.equal(openJudgementPresentation[0].status, "PROVISIONAL");
+  assert.equal(openJudgementPresentation[0].replacement, undefined);
+  assert.doesNotMatch(openJudgementPresentation[0].copy.message, /\b(?:Not )?Match\.$/,
+    "a replaceable original result is not narrated as final");
+  assert.doesNotMatch(JSON.stringify(revealed.data.presentationSnapshot), new RegExp(replacement.id),
+    "the public snapshot does not expose the unconfirmed Hand card identity");
   const originalFact = [...(revealed.data.presentationSnapshot?.publicEventFacts ?? []), ...(revealed.data.presentationSnapshot?.retainedPublicEventFacts ?? [])]
     .find((fact) => fact.eventId === originalJudgement?.id);
   assert.ok(originalFact, "the genuine original reveal owns a public H4 fact");
@@ -159,6 +168,8 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   const otherViewer = (await state(game.code, game.targetMember.token)).data;
   assert.deepEqual(otherViewer.presentationSnapshot.publicEventFacts, revealed.data.presentationSnapshot.publicEventFacts,
     "the committed original Judgement fact is public and identical for every viewer");
+  assert.deepEqual(otherViewer.presentationSnapshot.publicJudgementPresentations, openJudgementPresentation,
+    "the provisional Judgement proof is identical for all viewers");
   const root = revealed.data.causalEnvelope;
   const pendingBefore = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
   const staleContext = { actionRevision: revealed.data.actionRevision - 1, meId: sima.id, phase: "response", pendingKind: "trigger", actorId: sima.id };
@@ -176,11 +187,50 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   assert.equal(results.filter((result) => result.status === 200).length, 1, JSON.stringify(results));
   assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
   const after = await state(game.code, simaMember.token);
+  const replacedJudgementPresentation = after.data.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.equal(replacedJudgementPresentation.length, 2, "the replacement appends one final stage to the exact original Judgement identity");
+  assert.deepEqual(replacedJudgementPresentation.map((entry) => entry.phase), ["ORIGINAL", "REPLACEMENT"]);
+  assert.equal(replacedJudgementPresentation[0].judgementId, originalJudgement?.id);
+  assert.equal(replacedJudgementPresentation[0].status, "PROVISIONAL");
+  assert.equal(replacedJudgementPresentation[1].judgementId, originalJudgement?.id);
+  assert.equal(replacedJudgementPresentation[1].eventId, replacedJudgementPresentation[1].replacement.eventId);
+  assert.equal(replacedJudgementPresentation[1].status, "FINAL");
+  assert.equal(replacedJudgementPresentation[1].replacement.physicalCardId, replacement.id);
+  assert.equal(replacedJudgementPresentation[1].copy.message,
+    `${game.target.name} used Stauchness. Judgement: 9♠.\n${sima.name} used Necromancy to replace the Judgement card with 7♠. Match.`);
   assert.equal(after.data.causalEnvelope.interactionId, root.interactionId);
   assert.equal(after.data.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(after.data.causalEnvelope.frames.length, root.frames.length);
   assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(sima.id)}`), "0");
   assert.equal(discardIds(game.code).filter((id) => id === replacement.id).length, 1);
+});
+
+test("declining Necromancy finalizes only the original public Judgement and preserves the unused Hand card", { timeout: 30_000 }, async () => {
+  const game = await openGanglieAttack({ judge: { ...card("Dodge", "judgement-decline-original"), suit: "♥", rank: "2" } });
+  const sima = game.room.players.find((player) => player.name === "Bob");
+  const simaMember = game.members.find((member) => member.name === "Bob");
+  assert.ok(sima && simaMember);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima.id)}`);
+  const heldCard = { ...card("Peach", "judgement-decline-unused"), suit: "♣", rank: "Q" };
+  setHand(sima.id, [heldCard], 3, 3);
+  const opened = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const pending = (await state(game.code, simaMember.token)).data;
+  const before = pending.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.equal(before.length, 1);
+  assert.equal(before[0].status, "PROVISIONAL");
+  assert.equal(before[0].replacement, undefined);
+  assert.doesNotMatch(JSON.stringify(pending.presentationSnapshot), new RegExp(heldCard.id));
+
+  const declined = await requestAndSettle("decline_trigger", { code: game.code, token: simaMember.token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  const final = declined.data.room.presentationSnapshot?.publicJudgementPresentations ?? [];
+  assert.equal(final.length, 1, "skip finalizes the existing reveal instead of inventing a replacement");
+  assert.equal(final[0].phase, "ORIGINAL");
+  assert.equal(final[0].status, "FINAL");
+  assert.equal(final[0].effectiveCard.id, "dodge-judgement-decline-original");
+  assert.equal(final[0].judgementStatus, "unsatisfied");
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(sima.id)}`)).some((entry) => entry.id === heldCard.id), true);
 });
 
 test("Stauchness uses the final Guicai card, limits discard choices, and resumes when its source disappears", { timeout: 30_000 }, async () => {

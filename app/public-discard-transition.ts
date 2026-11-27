@@ -3,7 +3,8 @@ import type { PublicPhysicalZoneTransition, PublicZoneEndpoint } from "../game/p
 import { cardDefinition } from "../game/cards";
 import type { CardKind, CardRank, CardSuit } from "../game/model";
 
-type PublicDiscardCard = { id: string; kind: string; rank?: string; suit?: string };
+export type PublicDiscardCard = { id: string; kind: string; rank?: string; suit?: string };
+export type PublicDiscardCardFace = { id: string; name: string; rank: CardRank; suit: CardSuit };
 export type PublicDiscardTimelineEvent = {
   id: string;
   type: "card" | "cards" | "message";
@@ -42,9 +43,33 @@ export type PublicDiscardAnnouncement = {
   accessibleLabel: string;
 };
 
+export type PublicDiscardByActionAnnouncement = {
+  cards: readonly { id: string; name: string; rank: CardRank; suit: CardSuit }[] | null;
+  headline: string;
+  segments?: readonly PublicH4Segment[];
+  accessibleLabel: string;
+};
+
 function eventCards(event: PublicDiscardTimelineEvent): readonly PublicDiscardCard[] {
   if (event.type === "card") return event.card ? [event.card] : [];
   return event.type === "cards" && Array.isArray(event.cards) ? event.cards : [];
+}
+
+/** One face formatter shared by every committed public discard presentation. */
+export function publicDiscardCardFaces(cards: readonly PublicDiscardCard[]): readonly PublicDiscardCardFace[] | null {
+  const ranks = new Set<CardRank>(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
+  const suits = new Set<CardSuit>(["♥", "♦", "♣", "♠"]);
+  if (!cards.length || cards.some((card) => !card || typeof card.id !== "string" || !card.id || typeof card.kind !== "string")) return null;
+  const faces = cards.map((card) => {
+    if (!ranks.has(card.rank as CardRank) || !suits.has(card.suit as CardSuit)) return null;
+    const definition = cardDefinition(card.kind as CardKind);
+    return definition ? { id: card.id, name: definition.name, rank: card.rank as CardRank, suit: card.suit as CardSuit } : null;
+  });
+  return faces.every((face): face is PublicDiscardCardFace => Boolean(face)) ? faces : null;
+}
+
+export function publicDiscardCardList(faces: readonly PublicDiscardCardFace[]): string {
+  return faces.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ");
 }
 
 function isSourceEndpoint(value: unknown): value is Extract<PublicZoneEndpoint, { zone: "HAND" | "EQUIPMENT" | "JUDGEMENT" }> {
@@ -135,18 +160,33 @@ export function publicDiscardAnnouncement(input: {
   const actor = input.players.find((player) => player.id === event.actorId)?.name.trim();
   if (!actor) return null;
   const count = route.transitions.length;
-  const ranks = new Set<CardRank>(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
-  const suits = new Set<CardSuit>(["♥", "♦", "♣", "♠"]);
-  const cards = eventCards(event).map((card) => {
-    if (!ranks.has(card.rank as CardRank) || !suits.has(card.suit as CardSuit)) return null;
-    const definition = cardDefinition(card.kind as CardKind);
-    return definition ? { id: card.id, name: definition.name, rank: card.rank as CardRank, suit: card.suit as CardSuit } : null;
-  });
-  const hasCompleteIdentity = cards.length === count && cards.every((card) => card !== null);
-  const cardList = hasCompleteIdentity ? cards as Array<{ id: string; name: string; rank: CardRank; suit: CardSuit }> : null;
+  const cardList = publicDiscardCardFaces(eventCards(event));
   const suffix = cardList
-    ? ` discarded ${count} ${count === 1 ? "card" : "cards"}: ${cardList.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ")}.`
+    ? ` discarded ${count} ${count === 1 ? "card" : "cards"}: ${publicDiscardCardList(cardList)}.`
     : ` discarded ${count} ${count === 1 ? "card" : "cards"}.`;
   const { message: headline, segments } = publicH4Copy([{ id: event.actorId!, name: actor }, suffix]);
   return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, cards: cardList, headline, segments, accessibleLabel: headline };
+}
+
+/** Formats one committed effect that makes its target's discarded cards public. */
+export function publicDiscardByActionAnnouncement(input: {
+  actor: { id: string; name: string };
+  materialOwner: { id: string; name: string };
+  actionLabel: string;
+  cards: readonly PublicDiscardCard[];
+}): PublicDiscardByActionAnnouncement | null {
+  const { actor, materialOwner, actionLabel, cards } = input;
+  if (!actor.id || !actor.name.trim() || !materialOwner.id || !materialOwner.name.trim()
+    || !actionLabel.trim() || !cards.length || cards.some((card) => !card.id || !card.kind)
+    || new Set(cards.map((card) => card.id)).size !== cards.length) return null;
+  const cardList = publicDiscardCardFaces(cards);
+  const count = cards.length;
+  const cardCopy = cardList ? `: ${publicDiscardCardList(cardList)}.` : ".";
+  const { message: headline, segments } = publicH4Copy([
+    { id: actor.id, name: actor.name.trim() },
+    ` used ${actionLabel.trim()} to discard ${count} ${count === 1 ? "card" : "cards"} from `,
+    { id: materialOwner.id, name: materialOwner.name.trim() },
+    cardCopy,
+  ]);
+  return { cards: cardList, headline, segments, accessibleLabel: headline };
 }

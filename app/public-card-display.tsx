@@ -11,6 +11,7 @@ import type { PresentationSnapshotPublicCardEffect, PresentationSnapshotRootActi
 import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
+import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
 import {
   positionLabeledCardAboveBand,
@@ -48,6 +49,10 @@ type PublicCardDisplayResponseNode = {
   targetName?: string;
   cardFace?: Card;
   cardFaces?: readonly Card[];
+  publicNotice?: string;
+  publicNoticeSegments?: readonly PublicH4Segment[];
+  publicNoticeCompact?: string;
+  publicCardEffectFrame?: PublicCardEffectFrameView;
   semanticLabel?: string;
   ariaLabel: string;
 };
@@ -138,6 +143,8 @@ export type PublicCardDisplayAction = {
   publicNoticeSegments?: readonly PublicH4Segment[];
   publicNoticeCompact?: string;
   publicNoticeEventId?: string;
+  /** Canonical detail for this exact committed discard event/material set. */
+  publicDiscardSettlement?: PublicDiscardSettlementCopy;
   /** Keep a proved historical CardFace while retiring its active announcement. */
   suppressAnnouncement?: boolean;
   /** True only when this action was built from the fully validated public Negation-chain proof. */
@@ -371,6 +378,10 @@ type JourneyCard = {
     title: string;
   };
   ariaLabel: string;
+  publicNotice?: string;
+  publicNoticeSegments?: readonly PublicH4Segment[];
+  publicNoticeCompact?: string;
+  publicCardEffectFrame?: PublicCardEffectFrameView;
   semanticLabel?: string;
   role: "root" | "response" | "deflection";
   globalOrdinal?: number;
@@ -2463,6 +2474,15 @@ export function publicCardAnnouncementCopy(
   eventId?: string,
 ): PublicCardAnnouncementCopy {
   const dismantleFace = publicDismantleCardFaceCopy(action, sourceName, targetName, eventId);
+  if (action.publicDiscardSettlement && action.publicDiscardSettlement.eventId === eventId) {
+    return {
+      message: action.publicDiscardSettlement.headline,
+      segments: matchingPublicH4Segments(action.publicDiscardSettlement.headline, action.publicDiscardSettlement.segments),
+      compactMessage: action.publicDiscardSettlement.headline,
+      accessibleLabel: action.publicDiscardSettlement.accessibleLabel,
+      ...(dismantleFace ? { dismantleCardFace: dismantleFace } : {}),
+    };
+  }
   if (dismantleFace) {
     return {
       message: dismantleFace.message,
@@ -2518,10 +2538,10 @@ export function publicCardAnnouncementCopy(
       const responseActorName = response.actorName ?? actorName ?? compactPlayerNamesById[actorId] ?? null;
       if (response.targetName) {
         const compact = compactLustDuelAttackMessage(responseActorName, response.targetName);
-        return { message: notice, compactMessage: compact ?? notice, accessibleLabel: notice };
+        return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact ?? compact ?? notice, accessibleLabel: notice };
       }
       const compact = compactPublicNotice(notice, responseActorName);
-      return { message: notice, compactMessage: compact === notice ? undefined : compact, accessibleLabel: notice };
+      return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact ?? (compact === notice ? undefined : compact), accessibleLabel: notice };
     }
     return {
       message: action.lustCostFrame.message,
@@ -2532,6 +2552,7 @@ export function publicCardAnnouncementCopy(
   if (action.motion?.type === "duel" && action.publicNotice) {
     return {
       message: action.publicNotice,
+      segments: matchingPublicH4Segments(action.publicNotice, action.publicNoticeSegments),
       compactMessage: action.publicNoticeCompact,
       accessibleLabel: action.publicNotice,
     };
@@ -6400,7 +6421,8 @@ function SingleTargetCardJourney({
     || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom"
     || action.publicCardEffectFrame?.effectId === "sun_quan_zhiheng"
     || action.publicCardEffectFrame?.effectId === "sun_shangxiang_betrothment"
-    || action.publicCardEffectFrame?.effectId === "sima_yi_guicai") && motion?.type !== "lust-cost";
+    || action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+    || action.publicCardEffectFrame?.effectId === "serpent_spear_attack") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
     : currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
@@ -6604,7 +6626,8 @@ function SingleTargetCardJourney({
 }
 
 type DuelJourneyEvent = Pick<JourneyCard,
-  "eventId" | "actorId" | "actorName" | "cardFace" | "cardFaces" | "ariaLabel" | "role" | "semanticLabel" | "globalOrdinal"
+  "eventId" | "actorId" | "actorName" | "cardFace" | "cardFaces" | "ariaLabel" | "publicNotice"
+  | "publicNoticeSegments" | "publicNoticeCompact" | "publicCardEffectFrame" | "role" | "semanticLabel" | "globalOrdinal"
 >;
 type DuelJourneyPhase = "queued" | "reveal" | "move" | "parked";
 type DuelJourneyCard = DuelJourneyEvent & {
@@ -6653,6 +6676,12 @@ function duelJourneyEvents(action: PublicCardDisplayAction, sourceName: string |
     actorName: sourceName,
     cardFace: action.cardFace,
     cardFaces: [action.cardFace],
+    ...(action.publicCardEffectFrame?.eventId === action.rootEventId ? { publicCardEffectFrame: action.publicCardEffectFrame } : {}),
+    ...(action.publicNoticeEventId === action.rootEventId && action.publicNotice ? {
+      publicNotice: action.publicNotice,
+      ...(action.publicNoticeSegments ? { publicNoticeSegments: action.publicNoticeSegments } : {}),
+      ...(action.publicNoticeCompact ? { publicNoticeCompact: action.publicNoticeCompact } : {}),
+    } : {}),
     ariaLabel: action.ariaLabel,
     role: "root",
     globalOrdinal: 1,
@@ -6666,6 +6695,10 @@ function duelJourneyEvents(action: PublicCardDisplayAction, sourceName: string |
       actorName: response.actorName,
       cardFace: cardFaces[0],
       cardFaces,
+      ...(response.publicCardEffectFrame ? { publicCardEffectFrame: response.publicCardEffectFrame } : {}),
+      ...(response.publicNotice ? { publicNotice: response.publicNotice } : {}),
+      ...(response.publicNoticeSegments ? { publicNoticeSegments: response.publicNoticeSegments } : {}),
+      ...(response.publicNoticeCompact ? { publicNoticeCompact: response.publicNoticeCompact } : {}),
       ariaLabel: response.ariaLabel,
       role: "response",
       globalOrdinal: response.ordinal + 1,
@@ -6863,7 +6896,7 @@ function DuelCardJourney({
   }, [action.motion?.type, action.settlement?.eventId, expiredLustSettlementEventId, firstVisibleLustSettlement]);
 
   const incoming = duelJourneyEvents(action, sourceName);
-  const responseSignature = incoming.map((event) => `${event.eventId}:${event.globalOrdinal ?? 0}`).join(",");
+  const responseSignature = incoming.map((event) => `${event.eventId}:${event.globalOrdinal ?? 0}:${event.publicCardEffectFrame?.eventId ?? ""}:${event.publicCardEffectFrame?.materials.map(({ card }) => card.id).join(",") ?? ""}`).join(";");
   const freshSignature = action.motion?.type === "duel" || action.motion?.type === "lust-duel" ? [...action.motion.freshEventIds].join(",") : "";
   const historyOnly = !enabled && retainHistoryDuringInspection;
   const journeyEnabled = enabled || historyOnly;
@@ -6876,9 +6909,12 @@ function DuelCardJourney({
     const events = duelJourneyEvents(currentAction, currentSourceName);
     const fresh = new Set(currentMotion.freshEventIds);
     const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
+    const latestFreshFrame = latestFreshEvent?.publicCardEffectFrame;
     const lustRootIsCurrent = latestFreshEvent?.role === "root"
       || (!latestFreshEvent && events.at(-1)?.role === "root");
-    const center = currentAction.publicCardEffectFrame && currentMotion.type === "lust-duel" && lustRootIsCurrent
+    const center = latestFreshFrame
+      ? battlefieldPublicEffectFrameCard(latestFreshFrame)
+      : currentAction.publicCardEffectFrame && currentMotion.type === "lust-duel" && lustRootIsCurrent
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
       : currentMotion.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
         ? battlefieldLustCostCard()
@@ -6904,7 +6940,12 @@ function DuelCardJourney({
           ...old,
           actorName: event.actorName,
           cardFace: event.cardFace,
+          cardFaces: event.cardFaces,
           ariaLabel: event.ariaLabel,
+          publicNotice: event.publicNotice,
+          publicNoticeSegments: event.publicNoticeSegments,
+          publicNoticeCompact: event.publicNoticeCompact,
+          publicCardEffectFrame: event.publicCardEffectFrame,
           semanticLabel: event.semanticLabel,
           globalOrdinal: event.globalOrdinal,
           layoutPending: old.phase === "parked" && !actorParkedCard(event.actorId),
@@ -7247,9 +7288,12 @@ function DuelCardJourney({
         const events = duelJourneyEvents(currentAction, sourceNameRef.current);
         const fresh = new Set(currentMotion?.type === "duel" || currentMotion?.type === "lust-duel" ? currentMotion.freshEventIds : []);
         const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
+        const latestFreshFrame = latestFreshEvent?.publicCardEffectFrame;
         const lustRootIsCurrent = latestFreshEvent?.role === "root"
           || (!latestFreshEvent && events.at(-1)?.role === "root");
-        const center = currentAction.publicCardEffectFrame && currentMotion?.type === "lust-duel" && lustRootIsCurrent
+        const center = latestFreshFrame
+          ? battlefieldPublicEffectFrameCard(latestFreshFrame)
+          : currentAction.publicCardEffectFrame && currentMotion?.type === "lust-duel" && lustRootIsCurrent
           ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
           : currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
             ? battlefieldLustCostCard()
@@ -7327,13 +7371,26 @@ function DuelCardJourney({
     ?? journey.cards.find((card) => card.eventId === action.rootEventId)
     ?? null;
   const activeEventId = activeEvent?.eventId ?? action.rootEventId;
-  const announcementEventId = action.publicNoticeEventId ?? activeEventId;
+  const activePublicEffectFrame = activeEvent?.publicCardEffectFrame
+    ?? (activeEventId === action.publicCardEffectFrame?.eventId ? action.publicCardEffectFrame : undefined);
+  const announcementEventId = activePublicEffectFrame ? activeEventId : action.publicNoticeEventId ?? activeEventId;
   const currentPublicCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
   const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
-  const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById, activeEventId);
+  const activeMessage = activeEvent?.publicNotice ?? activeEvent?.ariaLabel ?? latestResponse?.publicNotice ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
+  const activeAnnouncementAction = activePublicEffectFrame ? {
+    ...action,
+    publicCardEffectFrame: activePublicEffectFrame,
+    publicNotice: activeEvent?.publicNotice ?? latestResponse?.publicNotice ?? activeMessage,
+    publicNoticeSegments: activeEvent?.publicNoticeSegments ?? latestResponse?.publicNoticeSegments,
+    publicNoticeCompact: activeEvent?.publicNoticeCompact ?? latestResponse?.publicNoticeCompact,
+    publicNoticeEventId: activeEventId,
+    ariaLabel: activeMessage,
+    publicInteractionNarration: action.publicInteractionNarration?.eventId === activeEventId
+      ? action.publicInteractionNarration : undefined,
+  } : action;
+  const announcementCopy = publicCardAnnouncementCopy(activeAnnouncementAction, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById, announcementEventId);
   const negationNarration = action.publicNegationNarration;
-  const committedFactCopy = publicCardCommittedFactCopy(action, announcementCopy);
+  const committedFactCopy = publicCardCommittedFactCopy(activeAnnouncementAction, announcementCopy);
   const announcement = committedFactCopy.message;
   const compactAnnouncement = committedFactCopy.compactMessage;
   const parkedHistoryCards = journey.cards.filter((card) => card.phase === "parked");
@@ -7440,8 +7497,8 @@ function DuelCardJourney({
         showOrdinal
         ordinalContext="duel"
         lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
-        publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
-          ? action.publicCardEffectFrame : undefined}
+        publicCardEffectFrame={card.publicCardEffectFrame
+          ?? (card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId ? action.publicCardEffectFrame : undefined)}
       />)}
       <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
         {parkedHistoryCards.map((card, index) => <li key={card.eventId} value={card.globalOrdinal ?? index + 1}>
@@ -7488,8 +7545,8 @@ function DuelCardJourney({
       showOrdinal
       ordinalContext="duel"
       lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
-      publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
-        ? action.publicCardEffectFrame : undefined}
+      publicCardEffectFrame={card.publicCardEffectFrame
+        ?? (card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId ? action.publicCardEffectFrame : undefined)}
     />)}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
       {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
@@ -7500,10 +7557,10 @@ function DuelCardJourney({
       eventId={negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
         ? action.lustCostFrame.activationEventId : announcementEventId)}
       h4Owner="PublicCardDisplay"
-      h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
+      h4PublicSequence={negationNarration?.publicSequence ?? activeAnnouncementAction.publicInteractionNarration?.publicSequence}
       publicSequenceForEvent={publicSequenceForEvent}
       eventCopyKey={publicCardAnnouncementCopyKey(
-        action,
+        activeAnnouncementAction,
         negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (action.motion?.type === "lust-duel" && announcementEventId === action.rootEventId && activeCard?.role === "root" && action.lustCostFrame
           ? action.lustCostFrame.activationEventId : announcementEventId),
         negationNarration?.actorId ?? action.publicInteractionNarration?.actorId ?? activeActorId,
@@ -7511,11 +7568,11 @@ function DuelCardJourney({
       )}
       announcementIdentity={action.publicAnnouncementIdentity}
       geometryKey={publicAnnouncementGeometryKey(roomCode, viewerId)}
-      copyLifecycleStage={publicCardAnnouncementLifecycleStage(action)}
+      copyLifecycleStage={publicCardAnnouncementLifecycleStage(activeAnnouncementAction)}
       // A new public response card needs a freshly measured H4 position. Reusing
       // the order caption's band can trap a longer response copy against the
       // newly centred card and hide it on short phones.
-      placementKey={`${publicCardAnnouncementPlacementKey(action)}${action.motion?.type === "lust-duel" ? `:${activeEventId}` : ""}`}
+      placementKey={`${publicCardAnnouncementPlacementKey(activeAnnouncementAction)}${action.motion?.type === "lust-duel" || activePublicEffectFrame ? `:${activeEventId}` : ""}`}
       viewerLayoutKey={viewerId}
       anchorEventId={announcementEventId}
       phase={activeEvent?.phase ?? "static"}
@@ -7525,19 +7582,21 @@ function DuelCardJourney({
       accessibleLabel={committedFactCopy.accessibleLabel}
       supportingMessage={negationNarration?.supportingMessage}
       compactSupportingMessage={negationNarration?.compactSupportingMessage}
-      presentationNarration={negationNarration ? undefined : action.publicInteractionNarration}
+      presentationNarration={negationNarration ? undefined : activeAnnouncementAction.publicInteractionNarration}
       negationNarration={negationNarration}
-      fallbackCardRect={action.motion?.type === "lust-duel" && action.lustCostFrame
-        ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
-      phaseNotice={negationNarration || action.publicInteractionNarration ? undefined : action.phaseNotice}
+      fallbackCardRect={activePublicEffectFrame && journey.center
+        ? battlefieldPublicEffectFrame(journey.center, activePublicEffectFrame)
+        : action.motion?.type === "lust-duel" && action.lustCostFrame
+          ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
+      phaseNotice={negationNarration || activeAnnouncementAction.publicInteractionNarration ? undefined : action.phaseNotice}
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(negationNarration || !action.publicInteractionNarration && action.phaseNotice?.includes("NEGATION"))}
-      stableCenterAnchor={action.motion?.type === "lust-duel"}
-      keepCenterAnchorClear={action.motion?.type === "duel"}
+      stableCenterAnchor={action.motion?.type === "lust-duel" || Boolean(activePublicEffectFrame)}
+      keepCenterAnchorClear={action.motion?.type === "duel" || Boolean(activePublicEffectFrame)}
       protectFirstParkedMiniature={action.motion?.type === "duel"}
-      preferredVerticalMode={action.motion?.type === "lust-duel" ? "below" : undefined}
+      preferredVerticalMode={activePublicEffectFrame ? "above" : action.motion?.type === "lust-duel" ? "below" : undefined}
       ignoreJourneyLayoutPending
-      clearCenterAnchorWhenParked={action.motion?.type === "duel" && action.publicNoticeEventId !== undefined}
+      clearCenterAnchorWhenParked={action.motion?.type === "duel" && (action.publicNoticeEventId !== undefined || Boolean(activePublicEffectFrame))}
     />}
   </section>;
 }
