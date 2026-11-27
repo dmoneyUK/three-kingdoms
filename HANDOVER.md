@@ -1,13 +1,11 @@
 # HANDOVER
 
-## Current task — §10.78 final Frost picker and Frame-title correction
+## Current task — §10.78 Frost Frame header visibility correction
 
-Design reviewed: latest `origin/ux-v2` `docs/UX2-refine.md` at `daf1bacf`. The newer revisions only close §10.76 and record later review; the active §10.78 boundary is unchanged. Preserve the eight previously accepted checks and all card, Frame position/layer, H4/PAC, End Turn, selection, and rules behavior.
+Design reviewed: `docs/UX2-refine.md` at `28150eccf4efa46a562e17703b61761c93548dea`.
 
-Implemented in this bounded change: Frost-only smaller painted Hand/Equipment tabs and Confirm/Skip surfaces, retaining 44px hit targets; a single-line `FROST SWORD · DISCARD` title with matching reduced Frame header reservation, retaining both 90×135 material faces. Kirin and other Frame titles keep existing presentation.
+Implemented in one bounded correction: Frost-only Frame hides the redundant visible material-count row while retaining the two real material identities, accessibility details and data attributes; its title header reservation is reduced from 43px to 28px; the existing shared H4–PAC lane anchor applies one deterministic +8px Frost preference. Card dimensions, H4/PAC, other Frame variants, picker behavior, End Turn and game rules remain unchanged.
 
-Flicker check: placement readiness and CSS visibility gating are present, but the available source and Owner video do not prove that a specific gate caused the reported disappearance. `FLICKER DEFERRED / UNVERIFIED`; no speculative lifecycle changes.
+Flicker source check: no specific size-feedback defect established; deferred as `UNVERIFIED` per the non-blocking design instruction. No local browser, UX or phone test run.
 
-Validation: focused Frame-layout test 6/6 passed; SSR Frame-title and room-render tests 34/34 passed; `git diff --check` passed. No local UX/browser/device test run. Before this change, latest relevant code CI was Actions `45910324685` success for `39c09fd9`; changes since that SHA on `origin/ux-v2` are documentation-only. This delivery's exact-SHA CI, deployment, and production smoke are required after push and remain unverified until observed.
-
-Stop after one commit is pushed and its exact-SHA CI, Worker deployment, and production smoke are verified. Status then: `PENDING OWNER iPHONE REVIEW`.
+Validation: focused layout/render/stage tests passed 42/42; `npm run build` passed; `git diff --check` passed. Latest relevant remote code baseline `b461907c3e60953469688a439c80493e7447ffd8` passed Actions `45917590779`, including deployment and production smoke; later commits through this design revision are documentation-only. This correction’s commit, exact-SHA CI, Worker deployment and production smoke are pending. Stop after technical delivery for Owner iPhone review; do not self-accept.

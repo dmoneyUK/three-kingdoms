@@ -254,6 +254,9 @@ export type PublicCardEffectFrameView = {
   title: string;
   titleParts?: { skillName: string; effectLabel?: string };
   titlePresentation?: PublicCardEffectFrameTitleLayout["titlePresentation"];
+  showMaterialCount?: boolean;
+  /** A deterministic preference relative to the shared Effect Frame lane center. */
+  preferredLaneTopOffset?: number;
   materials: readonly { card: Card; ownerId: string | null; ownerName?: string }[];
   accessibleLabel: string;
 };
@@ -265,6 +268,8 @@ export function createPublicCardEffectFrameView(
     title: string;
     titleParts?: { skillName: string; effectLabel?: string };
     titlePresentation?: PublicCardEffectFrameTitleLayout["titlePresentation"];
+    showMaterialCount?: boolean;
+    preferredLaneTopOffset?: number;
     accessibleLabel: string;
     activationOwnerName: string;
     ownerNamesById: Readonly<Record<string, string>>;
@@ -284,6 +289,8 @@ export function createPublicCardEffectFrameView(
   if (effect.semantics !== "PROVEN" || !effect.eventId || !effect.activationOwnerId || !classIsSupported || !hasRootIdentity
     || !copy.title.trim() || copy.title.length > 40 || !copy.accessibleLabel.trim() || copy.accessibleLabel.length > 240
     || copy.titlePresentation !== undefined && copy.titlePresentation !== "compact-single-line"
+    || copy.showMaterialCount !== undefined && typeof copy.showMaterialCount !== "boolean"
+    || copy.preferredLaneTopOffset !== undefined && !Number.isFinite(copy.preferredLaneTopOffset)
     || normalizedTitleParts && !normalizedTitleParts.skillName || !titlePartsMatch
     || !copy.activationOwnerName.trim() || !cards.length || cards.length !== materials.length
     || new Set(cards.map((card) => card.id)).size !== cards.length
@@ -311,6 +318,8 @@ export function createPublicCardEffectFrameView(
     title: copy.title.trim(),
     ...(normalizedTitleParts ? { titleParts: normalizedTitleParts } : {}),
     ...(copy.titlePresentation ? { titlePresentation: copy.titlePresentation } : {}),
+    ...(copy.showMaterialCount !== undefined ? { showMaterialCount: copy.showMaterialCount } : {}),
+    ...(copy.preferredLaneTopOffset !== undefined ? { preferredLaneTopOffset: copy.preferredLaneTopOffset } : {}),
     materials: cards.map((card, index) => ({
       card,
       ownerId: materials[index].ownerId,
@@ -337,6 +346,15 @@ export function PublicCardEffectFrameTitle({ frame, lustCostFrame = false }: {
         : null}
     </> : <span className="public-card-effect-frame-title-line">{frame.title}</span>}
   </strong>;
+}
+
+export function PublicCardEffectFrameMaterialCount({ frame, materialCount }: {
+  frame: PublicCardEffectFrameView;
+  materialCount: number;
+}) {
+  return materialCount > 1 && frame.showMaterialCount !== false
+    ? <small className="public-card-effect-frame-count">{materialCount} MATERIAL CARDS</small>
+    : null;
 }
 
 /** A public, proof-backed event with no physical card face or card anchor. */
@@ -606,7 +624,7 @@ function PublicJourneyCard({
       }}
     >
       <PublicCardEffectFrameTitle frame={publicCardEffectFrame} lustCostFrame={Boolean(lustCostFrame)} />
-      {frameMaterials.length > 1 && <small className="public-card-effect-frame-count">{frameMaterials.length} MATERIAL CARDS</small>}
+      <PublicCardEffectFrameMaterialCount frame={publicCardEffectFrame} materialCount={frameMaterials.length} />
       <span
         className="public-card-effect-frame-materials"
         data-public-card-frame-grid-columns={frameLayout.columns}
@@ -751,6 +769,7 @@ type BattlefieldCenterCardSafety = {
   respectFixedUpperH4?: boolean;
   fixedPublicBands?: boolean;
   stationarySurface?: PublicStageStationarySurface;
+  preferredEffectFrameTopOffset?: number;
 };
 type ProtectedBattlefieldCenterCardSafety = BattlefieldCenterCardSafety & { requireProtectedClearance: true };
 
@@ -783,7 +802,7 @@ function battlefieldCenterCard(
         const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
         const pacReserve = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance) : null;
         return h4Reserve && pacReserve
-          ? publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, size.height)
+          ? publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, size.height, safety.preferredEffectFrameTopOffset ?? 0)
           : null;
       })()
       : null;
@@ -974,6 +993,7 @@ function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): Ca
     respectFixedUpperH4: true,
     fixedPublicBands: true,
     stationarySurface: "effect-frame",
+    preferredEffectFrameTopOffset: frame?.preferredLaneTopOffset ?? 0,
   });
   if (!safeFrame) return null;
   return {

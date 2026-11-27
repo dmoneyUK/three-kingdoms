@@ -9715,6 +9715,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     publicCardEffectFrame: createPublicCardEffectFrameView(frostSwordEffectFrameCandidate.effect, {
       title: "FROST SWORD · DISCARD",
       titlePresentation: "compact-single-line",
+      showMaterialCount: false,
+      preferredLaneTopOffset: 8,
       accessibleLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
       activationOwnerName: frostSwordEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),

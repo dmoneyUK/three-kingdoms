@@ -723,6 +723,8 @@ test("full Effect Frame top centers in nominal H4-to-PAC lane without using live
   const pacReserve = { left: 50, top: 412, right: 390, bottom: 456 };
   assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 202), 213,
     "the observed complete frame is centered between fixed band edges");
+  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 202, 8), 221,
+    "the Frost-only preference shifts the shared lane anchor down by eight CSS pixels");
   assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 220), 204,
     "a different full frame footprint changes only its centered top");
   assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 0), null);

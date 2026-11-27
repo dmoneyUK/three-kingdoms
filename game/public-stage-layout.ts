@@ -25,10 +25,12 @@ export function publicEffectFrameLanePreferredTop(
   h4Reserve: PublicStageRect,
   pacReserve: PublicStageRect,
   frameHeight: number,
+  preferredTopOffset = 0,
 ): number | null {
   if (!finiteRect(h4Reserve) || !finiteRect(pacReserve)
-    || !Number.isFinite(frameHeight) || frameHeight <= 0) return null;
-  return (h4Reserve.bottom + pacReserve.top - frameHeight) / 2;
+    || !Number.isFinite(frameHeight) || frameHeight <= 0
+    || !Number.isFinite(preferredTopOffset)) return null;
+  return (h4Reserve.bottom + pacReserve.top - frameHeight) / 2 + preferredTopOffset;
 }
 
 /** Check actual measured bands against a stationary public visual. The caller
