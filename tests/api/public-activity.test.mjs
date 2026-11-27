@@ -1329,6 +1329,33 @@ test("committed HP, draw, discard, recovery and transfer results own the shared 
   assert.equal(active?.compactHeadline, expected);
   assert.deepEqual(playerIds(active?.headlineSegments), ["p2", "p1", "p2", "p2", "p2", "p2", "p1"]);
 
+  const canonicalCopy = {
+    eventId: outcome.eventId,
+    headline: "Test Player 2 caused Test Player 1 to discard [8♠ Attack], then the committed outcomes were retained.",
+    segments: [
+      { kind: "player", playerId: "p2", text: "Test Player 2" },
+      { kind: "text", text: " caused " },
+      { kind: "player", playerId: "p1", text: "Test Player 1" },
+      { kind: "text", text: " to discard [8♠ Attack], then the committed outcomes were retained." },
+    ],
+  };
+  const canonicalActive = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
+    canonicalDiscardCopy: canonicalCopy,
+  });
+  assert.equal(canonicalActive?.headline, canonicalCopy.headline,
+    "a verified same-event discard copy replaces the competing generic count-only committed-result sentence");
+  assert.deepEqual(playerIds(canonicalActive?.headlineSegments), ["p2", "p1"],
+    "canonical player spans remain typed for the shared H4");
+  const staleCanonical = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
+    canonicalDiscardCopy: { ...canonicalCopy, eventId: "stale-event" },
+  });
+  assert.equal(staleCanonical?.headline, expected,
+    "a copy for another event cannot replace the committed outcome");
+
   const retained = derivePublicInteractionNarration({ ...input, snapshot: {
     identity: null, interaction: null, stable: { kind: "REST" }, publicEventFacts: [],
     retainedPublicEvent: outcome, retainedPublicEventFacts: [root, outcome],

@@ -162,6 +162,17 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.equal(stauchnessDiscardCopy?.headline,
     `${resolved.target.name} used Stauchness, causing ${resolved.source.name} to discard 2 cards: ${stauchnessCardList}.`,
     "the actual committed identities, true activator and material owner feed one detailed public H4 copy");
+  const canonicalStauchnessH4 = derivePublicInteractionNarration({
+    snapshot: discarded.data.room.presentationSnapshot,
+    players: discarded.data.room.players,
+    rootEventId: discardedStauchness.fact.rootEventId,
+    interactionId: discardedStauchness.fact.identity.interactionId,
+    rootFrameId: discardedStauchness.fact.identity.rootFrameId,
+    eventId: stauchnessCost.id,
+    canonicalDiscardCopy: stauchnessDiscardCopy,
+  });
+  assert.equal(canonicalStauchnessH4?.headline, stauchnessDiscardCopy?.headline,
+    "the shared interaction H4 consumes the exact canonical Stauchness discard copy");
   const observerDiscardedView = (await state(resolved.code, resolved.members[3].token)).data;
   const observerStauchnessDiscard = normalizePublicDiscardSettlements({
     timeline: observerDiscardedView.timeline,

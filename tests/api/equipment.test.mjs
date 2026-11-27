@@ -2,7 +2,7 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { latestSerpentSpearGroupResponseEventId } from "../../game/serpent-spear-group-response-routing.ts";
-import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
+import { selectPublicH4AnnouncementOwner, uniquePublicH4Facts } from "../../app/public-presentation-routing.ts";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
 import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
@@ -819,6 +819,22 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.equal(forcedDamage.publicFact.committedOutcome.source.label, "Attack",
     "the Axe modifier does not replace the actual Attack source in public H4");
   const snapshot = forced.data.room.presentationSnapshot;
+  const axePublicFacts = uniquePublicH4Facts([
+    ...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? []),
+  ]);
+  const axeSettlement = normalizePublicDiscardSettlements({
+    timeline: forced.data.room.timeline,
+    publicCardEffects: snapshot.publicCardEffects ?? [],
+    dismantleSettlements: forced.data.room.presentationV2.dismantleSettlements,
+    publicEventFacts: axePublicFacts,
+  }).find((settlement) => settlement.eventId === axeCostEvent.id && settlement.presentation === "eligible");
+  assert.ok(axeSettlement, "the mixed Hand/Equipment Axe cost has one canonical discard settlement");
+  const axeCanonicalCopy = publicDiscardSettlementCopyForFacts({
+    settlement: axeSettlement, players: forced.data.room.players, publicEventFacts: axePublicFacts,
+  });
+  assert.ok(axeCanonicalCopy, "the committed Axe cost has a shared canonical copy");
+  assert.deepEqual(axeCanonicalCopy.cards?.map(({ id }) => id), axeCostEvent.cards.map(({ id }) => id),
+    "the canonical copy preserves both real mixed-zone Axe cost faces in server order");
   const forcedNarration = derivePublicInteractionNarration({
     snapshot, players: forced.data.room.players,
     rootEventId: forcedDamage.publicFact.rootEventId,

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createPublicCardEffectFrameView } from "../app/public-card-display.tsx";
-import { verifiedRockCleavingAxeCostFrameForEvent, verifiedStauchnessCostFrameForEvent } from "../app/page.tsx";
+import { attachCanonicalPublicDiscardCopy, verifiedRockCleavingAxeCostFrameForEvent, verifiedStauchnessCostFrameForEvent } from "../app/page.tsx";
 import { selectPublicCardActionAtCursor, selectPublicCardActionForCursor } from "../game/public-announcement.ts";
 
 const axeOwner = { id: "axe-owner", name: "Axe Owner" };
@@ -19,7 +20,7 @@ const stauchnessCards = [
 function frameFor(proof, ownerNamesById) {
   return createPublicCardEffectFrameView(proof.effect, {
     title: proof.effect.effectId === "xiahou_dun_ganglie" ? "STAUCHNESS" : "ROCK CLEAVING AXE · FORCE HIT",
-    accessibleLabel: proof.h4Copy.message,
+    accessibleLabel: "Verified public cost materials.",
     activationOwnerName: proof.activationOwner.name,
     ownerNamesById,
   });
@@ -54,7 +55,7 @@ test("stale cursor-bound cost frames cannot re-enter through the latest hero fal
     "ordinary latest hero announcements keep their existing fallback");
 });
 
-test("Stauchness cost proof retains both real Hand faces and names both in H4", () => {
+test("Stauchness cost proof retains both real Hand faces without producing a competing H4 copy", () => {
   const effect = {
     semantics: "PROVEN", eventId: "stauchness-cost", effectId: "xiahou_dun_ganglie", effectClass: "COST",
     interactionId: "stauchness-interaction", rootFrameId: "stauchness-frame",
@@ -76,10 +77,8 @@ test("Stauchness cost proof retains both real Hand faces and names both in H4", 
   );
 
   assert.ok(proof);
-  assert.equal(proof.h4Copy.message,
-    "Xiahou Dun used Stauchness, causing Damage Source to discard 2 cards: [8♠ Attack] · [Q♥ Peach].");
-  assert.deepEqual(proof.h4Copy.segments.filter((part) => part.kind === "player").map((part) => part.playerId),
-    [xiahou.id, damageSource.id]);
+  assert.equal("h4Copy" in proof, false, "proof validation no longer formats a second H4 sentence");
+  assert.deepEqual(proof.costCards.map(({ id }) => id), stauchnessCards.map(({ id }) => id));
   assert.equal(proof.effect.interactionId, effect.interactionId);
   assert.equal(proof.effect.rootFrameId, effect.rootFrameId);
 
@@ -89,7 +88,7 @@ test("Stauchness cost proof retains both real Hand faces and names both in H4", 
     stauchnessCards.map((card) => [card.id, damageSource.id]));
 });
 
-test("Axe COST recorded as play retains both ordered materials and truthful H4", () => {
+test("Axe COST recorded as play retains both ordered materials without guessing a copy", () => {
   const effect = {
     semantics: "PROVEN", eventId: "axe-cost", effectId: "rock_cleaving_axe_attack_dodged", effectClass: "COST",
     interactionId: "axe-interaction", rootFrameId: "axe-frame",
@@ -111,11 +110,52 @@ test("Axe COST recorded as play retains both ordered materials and truthful H4",
   );
 
   assert.ok(proof);
-  assert.equal(proof.h4Copy.message,
-    "Axe Owner used [Rock Cleaving Axe] and discarded 2 cards: [A♥ Peach] · [2♣ Dodge].");
-  assert.doesNotMatch(proof.h4Copy.message, /took damage|damage applied/i);
+  assert.equal("h4Copy" in proof, false, "proof validation leaves copy ownership to the canonical settlement");
   const frame = frameFor(proof, { [axeOwner.id]: axeOwner.name, [damageSource.id]: damageSource.name });
   assert.ok(frame);
   assert.deepEqual(frame.materials.map(({ card, ownerId }) => [card.id, ownerId]),
     axeCards.map((card) => [card.id, axeOwner.id]));
+});
+
+test("the exact canonical discard copy is attached before H4 and Frame consume the action", () => {
+  const headline = "Xiahou Dun used Stauchness, causing Damage Source to discard 2 cards: [8♠ Attack] · [Q♥ Peach].";
+  const segments = [{ kind: "text", text: headline }];
+  const copy = { eventId: "stauchness-cost", order: 2, cards: stauchnessCards.map((card) => ({ ...card, name: card.kind })), headline,
+    segments, accessibleLabel: headline };
+  const settlement = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "stauchness-cost", order: 2,
+    affectedPlayerIds: [damageSource.id], source: { kind: "skill", label: "Stauchness" }, mode: "forced",
+    materials: stauchnessCards.map((card) => ({ card, physicalCardId: card.id, ownerId: damageSource.id, fromZone: "HAND", toZone: "DISCARD" })),
+    presentation: "eligible",
+  };
+  const presentations = new Map([[settlement.eventId, { settlement, copy }]]);
+  const oldCopy = "Xiahou Dun caused Damage Source to discard 2 cards.";
+  const action = {
+    key: "stauchness-cost", rootEventId: "stauchness-cost", publicNotice: oldCopy, ariaLabel: oldCopy,
+    publicCardEffectFrame: { eventId: "stauchness-cost", materials: stauchnessCards.map((card) => ({ card, ownerId: damageSource.id })), accessibleLabel: oldCopy },
+  };
+
+  const canonical = attachCanonicalPublicDiscardCopy(action, presentations);
+  assert.equal(canonical.publicNotice, headline);
+  assert.equal(canonical.ariaLabel, headline);
+  assert.equal(canonical.publicNoticeSegments, segments);
+  assert.equal(canonical.publicDiscardSettlement, copy);
+  assert.equal(canonical.publicCardEffectFrame.accessibleLabel, headline);
+  assert.equal(attachCanonicalPublicDiscardCopy({ ...action, publicCardEffectFrame: {
+    ...action.publicCardEffectFrame, materials: [...action.publicCardEffectFrame.materials].reverse(),
+  } }, presentations).publicNotice, oldCopy, "wrong material order does not receive another event's canonical copy");
+});
+
+test("discard proof and selected actions have one copy source, before cursor selection", () => {
+  const source = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const proofBuilders = source.slice(source.indexOf("type VerifiedStauchnessCostFrameProof"), source.indexOf("type VerifiedKirinBowEffectFrameProof"));
+  assert.doesNotMatch(proofBuilders, /h4Copy|publicH4Copy\(/);
+  assert.doesNotMatch(source, /selectedPublicDiscardSettlement/);
+  assert.match(source, /const stauchnessCostFrameAction = withCanonicalPublicDiscardCopy\(/);
+  assert.match(source, /const rockCleavingAxeCostFrameAction = withCanonicalPublicDiscardCopy\(/);
+  assert.match(source, /const latestHeroPublicCardEffectFrameAction = withCanonicalPublicDiscardCopy\(/);
+  assert.match(source, /const nonHeroLivePublicCardAction = withCanonicalPublicDiscardCopy\(/);
+  assert.match(source, /canonicalPublicDiscardPresentationByEvent\.get\(currentInteractionFact\.eventId\)\?\.copy/,
+    "the current shared H4 receives the canonical copy only for its exact committed discard event");
+  assert.match(source, /const publicCardActionCursorSelection = selectPublicCardActionForCursor/);
 });

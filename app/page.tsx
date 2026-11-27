@@ -68,7 +68,7 @@ import { isCommittedPublicEquipmentPlay, publicEquipmentArrivalCompletionMatches
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementReplacementOwnsActiveTimer, publicJudgementReplacementRevealCompletion, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
-import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials } from "./public-discard-settlement";
+import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { layoutPublicResultCards } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
@@ -142,6 +142,55 @@ type CardEvent = PresentationEventMeta & { id: string; player: string; actorId?:
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
+type CanonicalPublicDiscardPresentation = {
+  settlement: CanonicalPublicDiscardSettlement;
+  copy: NonNullable<ReturnType<typeof publicDiscardSettlementCopyForFacts>>;
+};
+
+function canonicalPublicDiscardPresentationForMaterials(
+  presentations: ReadonlyMap<string, CanonicalPublicDiscardPresentation>,
+  eventId: string | undefined,
+  physicalCardIds: readonly string[],
+): CanonicalPublicDiscardPresentation | null {
+  if (!eventId || physicalCardIds.length === 0) return null;
+  const presentation = presentations.get(eventId);
+  if (!presentation) return null;
+  const matched = publicDiscardSettlementForMaterials({
+    settlements: [presentation.settlement], eventId, physicalCardIds,
+  });
+  return matched === presentation.settlement ? presentation : null;
+}
+
+export function attachCanonicalPublicDiscardCopy(
+  action: PublicCardDisplayAction | null,
+  presentations: ReadonlyMap<string, CanonicalPublicDiscardPresentation>,
+): PublicCardDisplayAction | null {
+  if (!action) return null;
+  const frame = action.publicCardEffectFrame;
+  const dismantleMovement = action.settlement?.outcome === "DISMANTLE_RESOLVED"
+    ? action.settlement.targetCardMovement : undefined;
+  const eventId = frame?.eventId
+    ?? (dismantleMovement?.destinationZone === "discard" ? action.settlement?.eventId : undefined);
+  const physicalCardIds = frame?.materials.map((material) => material.card.id)
+    ?? (dismantleMovement?.destinationZone === "discard" && dismantleMovement.affectedCardFace?.id
+      ? [dismantleMovement.affectedCardFace.id] : []);
+  const presentation = canonicalPublicDiscardPresentationForMaterials(presentations, eventId, physicalCardIds);
+  if (!presentation) return action;
+  const { settlement, copy } = presentation;
+  return {
+    ...action,
+    interactionId: action.interactionId ?? settlement.interactionId,
+    rootFrameId: action.rootFrameId ?? settlement.frameId,
+    ariaLabel: copy.accessibleLabel,
+    publicNotice: copy.headline,
+    publicNoticeSegments: copy.segments,
+    publicNoticeCompact: copy.headline,
+    publicNoticeEventId: copy.eventId,
+    publicDiscardSettlement: copy,
+    ...(frame ? { publicCardEffectFrame: { ...frame, accessibleLabel: copy.accessibleLabel } } : {}),
+  };
+}
+
 type NormalDrawPresentationState = {
   roomCode: string;
   viewerId: string;
@@ -1235,7 +1284,6 @@ type VerifiedStauchnessCostFrameProof = {
   costCards: readonly [Card, Card];
   activationOwner: Player;
   materialOwner: Player;
-  h4Copy: ReturnType<typeof publicH4Copy>;
 };
 export function verifiedStauchnessCostFrameForEvent(
   timeline: readonly GameEvent[],
@@ -1296,12 +1344,7 @@ export function verifiedStauchnessCostFrameForEvent(
   if (!activationOwner?.name || !materialOwner?.name || activationOwner.id === materialOwner.id
     || costEvent.player !== materialOwner.name || costEvent.target !== materialOwner.name) return null;
   const costCards: readonly [Card, Card] = [costEvent.cards[0], costEvent.cards[1]];
-  const h4Copy = publicH4Copy([
-    activationOwner, " used Stauchness, causing ", materialOwner,
-    " to discard 2 cards: ", publicH4CardFaceReference(costCards[0], "a card"),
-    " · ", publicH4CardFaceReference(costCards[1], "a card"), ".",
-  ]);
-  return { costEvent, effect, rootEvent, costCards, activationOwner, materialOwner, h4Copy };
+  return { costEvent, effect, rootEvent, costCards, activationOwner, materialOwner };
 }
 type VerifiedRockCleavingAxeCostFrameProof = {
   costEvent: CardGroupEvent;
@@ -1310,7 +1353,6 @@ type VerifiedRockCleavingAxeCostFrameProof = {
   costCards: readonly [Card, Card];
   activationOwner: Player;
   target: Player;
-  h4Copy: ReturnType<typeof publicH4Copy>;
 };
 export function verifiedRockCleavingAxeCostFrameForEvent(
   timeline: readonly GameEvent[],
@@ -1378,12 +1420,7 @@ export function verifiedRockCleavingAxeCostFrameForEvent(
   if (!activationOwner?.name || !target?.name || activationOwner.id === target.id || !isAttackRoot
     || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
     || costEvent.player !== activationOwner.name || costEvent.target !== target.name) return null;
-  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target,
-    h4Copy: publicH4Copy([
-      activationOwner, " used ", PUBLIC_H4_CARD_KIND_REFERENCES.RockCleavingAxe,
-      " and discarded 2 cards: ", publicH4CardFaceReference(costEvent.cards[0], "a card"),
-      " · ", publicH4CardFaceReference(costEvent.cards[1], "a card"), ".",
-    ]) };
+  return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target };
 }
 type VerifiedKirinBowEffectFrameProof = {
   effectEvent: CardGroupEvent;
@@ -2331,6 +2368,7 @@ function publicInteractionNarrationForStage(
   liveKirinBowEffectEventId?: string,
   retaliationSettlementOwnsCurrentFact = false,
   committedPublicFacts: readonly PublicPresentationEvent[] = [],
+  canonicalDiscardCopy?: PublicDiscardSettlementCopy,
 ): PublicInteractionNarration | null {
   if (retaliation) return retaliation;
   if (fanjian) return fanjian;
@@ -2343,6 +2381,7 @@ function publicInteractionNarrationForStage(
     rootFrameId: currentFact.identity.rootFrameId,
     eventId: currentFact.eventId,
     committedPublicFacts,
+    ...(canonicalDiscardCopy ? { canonicalDiscardCopy } : {}),
     ...(liveKirinBowEffectEventId ? { liveKirinBowEffectEventId } : {}),
   });
 }
@@ -5869,6 +5908,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     dismantleSettlements,
     publicEventFacts: canonicalPublicDiscardFacts,
   }), [room.timeline, room.presentationSnapshot?.publicCardEffects, canonicalPublicDiscardFacts, dismantleSettlements]);
+  const canonicalPublicDiscardPresentationByEvent = useMemo(() => {
+    const settlementsByEventId = new Map<string, typeof canonicalPublicDiscardSettlements>();
+    for (const settlement of canonicalPublicDiscardSettlements) {
+      if (settlement.presentation !== "eligible") continue;
+      const matches = settlementsByEventId.get(settlement.eventId) ?? [];
+      matches.push(settlement);
+      settlementsByEventId.set(settlement.eventId, matches);
+    }
+    const presentations = new Map<string, CanonicalPublicDiscardPresentation>();
+    for (const [eventId, settlements] of settlementsByEventId) {
+      if (settlements.length !== 1) continue;
+      const settlement = settlements[0];
+      const copy = publicDiscardSettlementCopyForFacts({
+        settlement,
+        players: room.players,
+        publicEventFacts: canonicalPublicDiscardFacts,
+      });
+      if (copy) presentations.set(eventId, { settlement, copy });
+    }
+    return presentations;
+  }, [canonicalPublicDiscardSettlements, canonicalPublicDiscardFacts, room.players]);
+  const withCanonicalPublicDiscardCopy = (action: PublicCardDisplayAction | null) =>
+    attachCanonicalPublicDiscardCopy(action, canonicalPublicDiscardPresentationByEvent);
   const validatedPublicDiscardTransitionEventIds = useMemo(() => new Set(room.timeline.flatMap((event) => {
     const route = routePublicDiscardTransition({
       event: event as PublicDiscardTimelineEvent,
@@ -5892,14 +5954,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (!route) return null;
     const ordinary = publicDiscardAnnouncement({ event, route, players: room.players });
-    const settlement = publicDiscardSettlementForMaterials({
-      settlements: canonicalPublicDiscardSettlements,
-      eventId: event.id,
-      physicalCardIds: route.transitions.map((transition) => transition.physicalCardId),
-    });
-    const copy = settlement ? publicDiscardSettlementCopyForFacts({
-      settlement, players: room.players, publicEventFacts: canonicalPublicDiscardFacts,
-    }) : null;
+    const presentation = canonicalPublicDiscardPresentationForMaterials(canonicalPublicDiscardPresentationByEvent,
+      event.id, route.transitions.map((transition) => transition.physicalCardId));
+    const { settlement, copy } = presentation ?? {};
     return copy ? {
       ...ordinary,
       order: copy.order,
@@ -5910,7 +5967,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       accessibleLabel: copy.accessibleLabel,
     } : ordinary;
   }, [room.timeline, room.code, room.meId, room.players, presentedEventIds, validatedPublicDiscardTransitionEventIds,
-    canonicalPublicDiscardSettlements, canonicalPublicDiscardFacts]);
+    canonicalPublicDiscardPresentationByEvent]);
   const latestDismantleSettlementPublicSequence = useMemo(() => {
     const publicOutcomeFacts = uniquePublicH4Facts([
       ...(room.presentationSnapshot?.publicEventFacts ?? []),
@@ -10103,7 +10160,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
   })();
-  const stauchnessCostFrameAction: PublicCardDisplayAction | null = stauchnessCostFrameCandidate ? {
+  const stauchnessCostFrameAction = withCanonicalPublicDiscardCopy(stauchnessCostFrameCandidate ? {
     key: ["stauchness-cost", stauchnessCostFrameCandidate.costEvent.id].join(":"),
     rootEventId: stauchnessCostFrameCandidate.costEvent.id,
     interactionId: stauchnessCostFrameCandidate.effect.interactionId,
@@ -10112,11 +10169,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: stauchnessCostFrameCandidate.materialOwner.id,
     cardFace: stauchnessCostFrameCandidate.costCards[0],
     cardLabel: "STAUCHNESS · TWO HAND CARDS",
-    ariaLabel: stauchnessCostFrameCandidate.h4Copy.message,
-    publicNotice: stauchnessCostFrameCandidate.h4Copy.message,
-    publicNoticeSegments: stauchnessCostFrameCandidate.h4Copy.segments,
-    publicNoticeCompact: stauchnessCostFrameCandidate.h4Copy.message,
-    publicNoticeEventId: stauchnessCostFrameCandidate.costEvent.id,
+    ariaLabel: `${stauchnessCostFrameCandidate.activationOwner.name} · Stauchness cost cards.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "xiahou_dun_ganglie", stauchnessCostFrameCandidate.costEvent.id].join(":"),
@@ -10125,11 +10178,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(stauchnessCostFrameCandidate.effect, {
       title: "STAUCHNESS",
-      accessibleLabel: stauchnessCostFrameCandidate.h4Copy.message,
+      accessibleLabel: "Stauchness public cost materials.",
       activationOwnerName: stauchnessCostFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
-  } : null;
+  } : null);
   const rockCleavingAxeCostFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "rock_cleaving_axe_attack_dodged"
@@ -10140,7 +10193,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     return proved.sort((left, right) => room.timeline.indexOf(right.costEvent) - room.timeline.indexOf(left.costEvent))[0] ?? null;
   })();
-  const rockCleavingAxeCostFrameAction: PublicCardDisplayAction | null = rockCleavingAxeCostFrameCandidate ? {
+  const rockCleavingAxeCostFrameAction = withCanonicalPublicDiscardCopy(rockCleavingAxeCostFrameCandidate ? {
     key: ["rock-cleaving-axe-cost", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
     rootEventId: rockCleavingAxeCostFrameCandidate.costEvent.id,
     interactionId: rockCleavingAxeCostFrameCandidate.effect.interactionId,
@@ -10149,11 +10202,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: rockCleavingAxeCostFrameCandidate.target.id,
     cardFace: rockCleavingAxeCostFrameCandidate.costCards[0],
     cardLabel: "ROCK CLEAVING AXE · TWO CARD COST",
-    ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used ${PUBLIC_H4_CARD_KIND_REFERENCES.RockCleavingAxe}, paying two real cards to force the original ${PUBLIC_H4_CARD_KIND_REFERENCES.Attack} through after ${PUBLIC_H4_CARD_KIND_REFERENCES.Dodge} against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
-    publicNotice: rockCleavingAxeCostFrameCandidate.h4Copy.message,
-    publicNoticeSegments: rockCleavingAxeCostFrameCandidate.h4Copy.segments,
-    publicNoticeCompact: rockCleavingAxeCostFrameCandidate.h4Copy.message,
-    publicNoticeEventId: rockCleavingAxeCostFrameCandidate.costEvent.id,
+    ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} · Rock Cleaving Axe cost cards.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "rock_cleaving_axe_attack_dodged", rockCleavingAxeCostFrameCandidate.costEvent.id].join(":"),
@@ -10162,11 +10211,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(rockCleavingAxeCostFrameCandidate.effect, {
       title: "ROCK CLEAVING AXE · FORCE HIT",
-      accessibleLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} paid exactly two of their own Hand or Equipment cards. The original Attack on ${rockCleavingAxeCostFrameCandidate.target.name} continued to damage resolution after Dodge.`,
+      accessibleLabel: "Rock Cleaving Axe public cost materials.",
       activationOwnerName: rockCleavingAxeCostFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
-  } : null;
+  } : null);
   const kirinBowEffectFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "kirin_bow_damage_about_to_apply"
@@ -10304,7 +10353,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
-  const latestHeroPublicCardEffectFrameAction = [
+  const latestHeroPublicCardEffectFrameAction = withCanonicalPublicDiscardCopy([
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
     equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrame.action,
@@ -10319,7 +10368,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (!latest) return action;
       return room.timeline.findIndex((event) => event.id === action.rootEventId)
         > room.timeline.findIndex((event) => event.id === latest.rootEventId) ? action : latest;
-    }, null);
+    }, null));
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
       lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
@@ -10800,7 +10849,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ?? cardAcquisitionDisplayAction(stealSettlementCandidate, room.code, publicCardJourneySeenEventIds)
     ?? nonHeroLivePublicCardActionAfterAcquisition;
   }
-  const nonHeroLivePublicCardAction = selectNonHeroLivePublicCardAction();
+  const nonHeroLivePublicCardAction = withCanonicalPublicDiscardCopy(selectNonHeroLivePublicCardAction());
   const publicCardActionCheckpointEventId = (action: PublicCardDisplayAction) =>
     action.publicNegationNarration?.latestCommittedEventId
     ?? action.settlement?.eventId
@@ -10811,14 +10860,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const canonicalDiscardFallbackAction: PublicCardDisplayAction | null = (() => {
     const eventId = activeEvent?.id;
     if (!eventId || activePublicDiscardTransition?.eventId === eventId) return null;
-    const settlement = canonicalPublicDiscardSettlements.find((candidate) => candidate.eventId === eventId
-      && candidate.presentation === "eligible");
-    if (!settlement) return null;
+    const candidate = canonicalPublicDiscardPresentationByEvent.get(eventId);
+    if (!candidate) return null;
+    const settlement = candidate.settlement;
     const effects = (room.presentationSnapshot?.publicCardEffects ?? []).filter((effect) => effect.eventId === eventId);
     if (effects.length !== 1) return null;
     const effect = effects[0];
     const materialIds = settlement.materials.map((material) => material.physicalCardId);
-    const matched = publicDiscardSettlementForMaterials({ settlements: [settlement], eventId, physicalCardIds: materialIds });
+    const presentation = canonicalPublicDiscardPresentationForMaterials(canonicalPublicDiscardPresentationByEvent, eventId, materialIds);
+    const matched = presentation?.settlement;
     if (!matched || effect.cards.length !== materialIds.length || effect.materials.length !== materialIds.length
       || effect.cards.some((card, index) => card.id !== materialIds[index])
       || effect.materials.some((material, index) => material.cardId !== materialIds[index]
@@ -10830,7 +10880,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!effect.activationOwnerId || !publicDiscardMaterialsHaveKnownOwners(effect.materials, room.players)) return null;
     const activationOwner = room.players.filter((player) => player.id === effect.activationOwnerId);
     if (activationOwner.length !== 1 || !activationOwner[0].name.trim()) return null;
-    const copy = publicDiscardSettlementCopyForFacts({ settlement, players: room.players, publicEventFacts: canonicalPublicDiscardFacts });
+    const copy = presentation.copy;
     if (!copy) return null;
     const sourceLabel = effect.source?.label?.trim();
     const title = sourceLabel && sourceLabel.length <= 40 ? sourceLabel.toUpperCase() : "PUBLIC EFFECT";
@@ -10902,42 +10952,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     retainedAttackDodge: heldAttackDodgeReadAction,
     latestCommitted: livePublicCardAction,
   });
-  const selectedPublicDiscardSettlement = selectedPublicCardActionBase ? (() => {
-    const frame = selectedPublicCardActionBase.publicCardEffectFrame;
-    const dismantleMovement = selectedPublicCardActionBase.settlement?.outcome === "DISMANTLE_RESOLVED"
-      ? selectedPublicCardActionBase.settlement.targetCardMovement : undefined;
-    const eventId = frame?.eventId
-      ?? (dismantleMovement?.destinationZone === "discard" ? selectedPublicCardActionBase.settlement?.eventId : undefined);
-    const physicalCardIds = frame?.materials.map((material) => material.card.id)
-      ?? (dismantleMovement?.destinationZone === "discard" && dismantleMovement.affectedCardFace?.id
-        ? [dismantleMovement.affectedCardFace.id] : []);
-    if (!eventId || !physicalCardIds.length) return null;
-    const settlement = publicDiscardSettlementForMaterials({
-      settlements: canonicalPublicDiscardSettlements,
-      eventId,
-      physicalCardIds,
-    });
-    if (!settlement) return null;
-    const copy = publicDiscardSettlementCopyForFacts({
-      settlement, players: room.players, publicEventFacts: canonicalPublicDiscardFacts,
-    });
-    return copy ? { settlement, copy } : null;
-  })() : null;
-  const selectedPublicCardAction: PublicCardDisplayAction | null = selectedPublicCardActionBase
-    ? {
-      ...selectedPublicCardActionBase,
-      ...(selectedPublicDiscardSettlement ? {
-        interactionId: selectedPublicCardActionBase.interactionId ?? selectedPublicDiscardSettlement.settlement.interactionId,
-        rootFrameId: selectedPublicCardActionBase.rootFrameId ?? selectedPublicDiscardSettlement.settlement.frameId,
-        ariaLabel: selectedPublicDiscardSettlement.copy.accessibleLabel,
-        publicNotice: selectedPublicDiscardSettlement.copy.headline,
-        publicNoticeSegments: selectedPublicDiscardSettlement.copy.segments,
-        publicNoticeCompact: selectedPublicDiscardSettlement.copy.headline,
-        publicNoticeEventId: selectedPublicDiscardSettlement.copy.eventId,
-        publicDiscardSettlement: selectedPublicDiscardSettlement.copy,
-      } : {}),
-    }
-    : null;
+  const selectedPublicCardAction: PublicCardDisplayAction | null = selectedPublicCardActionBase;
   const activeJudgementRevealRoute = useMemo(() => {
     if (!activeEvent) return null;
     const selectedActionCardIds = selectedPublicCardAction ? [
@@ -11052,6 +11067,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     freshKirinBowEffectEventId(selectedPublicCardAction),
     publicRetaliationSettlementOwnsEvent(currentInteractionFact?.eventId, cardAcquisitionSettlements),
     [...queuedPublicH4Facts.values()],
+    currentInteractionFact
+      ? canonicalPublicDiscardPresentationByEvent.get(currentInteractionFact.eventId)?.copy
+      : undefined,
   );
   const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
     && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId

@@ -1099,8 +1099,9 @@ test("generic committed H4 forwards producer-verified player fragments to the sh
   assert.equal(matchingPublicH4Segments(mismatched.message, mismatched.segments), undefined);
 });
 
-test("verified Axe cost has compact factual H4 without premature damage and keeps full accessibility", async () => {
-  const { verifiedRockCleavingAxeCostFrameForEvent } = await import("../app/page.tsx");
+test("Axe cost proof defers copy to the canonical discard descriptor shared by H4 and Frame", async () => {
+  const { attachCanonicalPublicDiscardCopy, verifiedRockCleavingAxeCostFrameForEvent } = await import("../app/page.tsx");
+  const { publicDiscardSettlementCopy } = await import("../app/public-discard-settlement.ts");
   const actor = { id: "a", name: "ACTOR" }, target = { id: "b", name: "TARGET" };
   const cards = [{ id: "cost1", kind: "Peach", rank: "A", suit: "♥" }, { id: "cost2", kind: "Dodge", rank: "2", suit: "♣" }];
   const effect = { semantics: "PROVEN", eventId: "cost", effectId: "rock_cleaving_axe_attack_dodged", effectClass: "COST",
@@ -1112,14 +1113,28 @@ test("verified Axe cost has compact factual H4 without premature damage and keep
     card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "7" }, player: "ACTOR", target: "TARGET" };
   const proof = verifiedRockCleavingAxeCostFrameForEvent([root, cost], [effect], [actor, target], "cost");
   assert.ok(proof);
-  assert.equal(proof.h4Copy.message, "ACTOR used [Rock Cleaving Axe] and discarded 2 cards: [A♥ Peach] · [2♣ Dodge].");
-  assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied|damage resolution/i);
+  assert.equal("h4Copy" in proof, false, "proof validation does not create a competing H4 copy");
+  const settlement = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "cost", order: 3, rootEventId: "attack",
+    resolutionId: "cost-resolution", interactionId: "interaction", frameId: "frame", activationOwnerId: "a",
+    affectedPlayerIds: ["a"], source: { kind: "equipment", label: "RockCleavingAxe" }, mode: "cost",
+    materials: cards.map((card) => ({ card, physicalCardId: card.id, ownerId: "a", fromZone: "HAND", toZone: "DISCARD" })),
+    presentation: "eligible",
+  };
+  const canonicalCopy = publicDiscardSettlementCopy({ settlement, players: [actor, target] });
+  assert.equal(canonicalCopy?.headline, "ACTOR used [Rock Cleaving Axe] and discarded 2 cards: [A♥ Peach] · [2♣ Dodge].");
+  assert.doesNotMatch(canonicalCopy?.headline ?? "", /took damage|hit|damage applied|damage resolution/i);
   const action = { sourceId: "a", targetId: "b", rootEventId: "cost", cardLabel: "COST",
-    publicNotice: proof.h4Copy.message, publicNoticeSegments: proof.h4Copy.segments,
-    publicCardEffectFrame: { effectClass: "COST", accessibleLabel: "ACTOR paid exactly two of their own Hand or Equipment cards. The original Attack on TARGET continued to damage resolution after Dodge." } };
-  const copy = publicCardAnnouncementCopy(action, "", "ACTOR", "a", "ACTOR", "TARGET", {}, "cost");
-  assert.equal(copy.message, proof.h4Copy.message);
-  assert.match(copy.accessibleLabel, /paid exactly two/);
+    publicNotice: "ACTOR used Rock Cleaving Axe and discarded 2 cards.",
+    publicCardEffectFrame: { eventId: "cost", effectClass: "COST", materials: cards.map((card) => ({ card, ownerId: "a" })),
+      accessibleLabel: "A separate count-only copy." } };
+  const canonicalAction = attachCanonicalPublicDiscardCopy(action, new Map([[
+    "cost", { settlement, copy: canonicalCopy },
+  ]]));
+  const copy = publicCardAnnouncementCopy(canonicalAction, "", "ACTOR", "a", "ACTOR", "TARGET", {}, "cost");
+  assert.equal(copy.message, canonicalCopy.headline);
+  assert.equal(copy.accessibleLabel, canonicalCopy.accessibleLabel);
+  assert.equal(canonicalAction.publicCardEffectFrame.accessibleLabel, canonicalCopy.accessibleLabel);
   assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
   assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, cost], [{ ...effect, targetId: "wrong" }], [actor, target], "cost"), null);
   assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, { ...cost, cards: [cards[0]] }], [effect], [actor, target], "cost"), null);

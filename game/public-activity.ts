@@ -653,6 +653,12 @@ export function derivePublicInteractionNarration(input: {
   committedPublicFacts?: readonly PresentationSnapshot["publicEventFacts"][number][];
   /** Exact live Kirin Bow frame whose own committed discard and Attack hit may share H4. */
   liveKirinBowEffectEventId?: string;
+  /** Canonical exact discard copy supplied by the verified settlement owner. */
+  canonicalDiscardCopy?: {
+    eventId: string;
+    headline: string;
+    segments?: readonly VerifiedPlayerCopySegment[];
+  };
 }): PublicInteractionNarration | null {
   const snapshot = input.snapshot;
   const identity = snapshot?.identity;
@@ -794,9 +800,19 @@ export function derivePublicInteractionNarration(input: {
   const targetPart = affectedParts.length === 1 ? affectedParts[0] : null;
   const target = targetPart?.name ?? null;
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
-  const committedOutcomeCopy = latest.committedOutcome
-    ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players, verifiedFacts)
+  const hasDiscardOutcome = latest.category === "CARD_DISCARDED"
+    || latest.committedOutcome?.changes.some((change) => change.kind === "CARD_DISCARDED") === true;
+  const canonicalDiscardCopy = input.canonicalDiscardCopy?.eventId === latest.eventId
+    && hasDiscardOutcome && input.canonicalDiscardCopy.headline.trim()
+    ? {
+      message: input.canonicalDiscardCopy.headline,
+      segments: [...(input.canonicalDiscardCopy.segments ?? [])],
+    }
     : null;
+  const committedOutcomeCopy = canonicalDiscardCopy
+    ?? (latest.committedOutcome
+      ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players, verifiedFacts)
+      : null);
   if (latest.committedOutcome && !committedOutcomeCopy) return null;
   let headlineCopy: { message: string; segments: VerifiedPlayerCopySegment[] } | null = null;
   const fromParts = (parts: readonly (string | { id: string; name: string })[]) => {
