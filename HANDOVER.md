@@ -2,10 +2,8 @@
 
 ## Latest verified delivery
 
-§10.79 title refinement, commit `4232d5fae439549d838c806127e3f84962930035`; Actions `45992980780` passed and deployed, Worker `01302a56-5bde-4b5c-9804-93fe5a311a89`. Owner iPhone review remains pending.
+§10.81-B correction, commit `60247d3859953971654291b14dee74301330ebdf`; exact-SHA Actions `46015771654` passed API tests, lint/fast tests, builds, two remote startup/H4 smoke tests, D1 migration, Worker deployment and production `/` plus `/api/health` smoke. Worker Version ID: `507ba148-dff7-43d0-a263-f787111c2c07`.
 
-## Current task — §10.81-B UNIVERSAL-JUDGEMENT-REPLACEMENT-PRESENTATION-01 correction
+## Current task — §10.81-B Owner iPhone review
 
-Latest design reviewed: `docs/UX2-refine.md` at `1a8977828a289cb8affadd0ff789009b9d908857`. Three implementation attempts (`34bb598`, `9441507`, `72319b4`) failed exact-SHA lint with `react-hooks/rules-of-hooks` `countPathsToEnd` stack overflow at `LocalPlayerDock`; latest run `46012598210` passed API tests, build and two startup/H4 smoke tests, but failed lint, so deployment was skipped. Focused Judgement/routing tests now pass 42/42; `git diff --check` passes. Standalone `tsc --noEmit` is not a valid project check here: it reports missing Cloudflare worker/D1 types and numerous existing cross-project diagnostics; exact CI build remains authoritative.
-
-Current correction preserves the existing Judgement behavior and isolates the large hook-free Dock rendering tree from its layout hooks to address the lint graph overflow. It also keeps public queue coalescing and replacement identity derivation outside the large GameRoom effect. No local UI/browser/device tests were run. Next: commit this single bounded correction, push to `ux-v2`, then verify exact-SHA CI, Worker deployment and production smoke. Owner iPhone review remains required; no acceptance inferred.
+Latest design reviewed: `docs/UX2-refine.md` at `1a8977828a289cb8affadd0ff789009b9d908857`. The correction coalesces the proven original activation/reveal, gives the exact committed replacement its sole shared renderer owner, and retires it only on matching visible CardFace completion; a hook-free Dock view also prevents the prior React Hooks lint graph overflow. Focused Judgement/routing tests: 42/42 pass; `git diff --check` passes. No local UI/browser/device tests. Standalone `tsc --noEmit` lacks the Cloudflare type environment and reports unrelated existing diagnostics; CI build passed. Await Owner iPhone review of immediate original reveal, actual replacement face with matching two-line H4, and normal continuation; do not mark accepted or start another task before this review boundary.
