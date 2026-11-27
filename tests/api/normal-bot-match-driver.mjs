@@ -74,7 +74,8 @@ function publicTransitionIntegrity(room) {
 function privateIsolation(view) {
   const players = Array.isArray(view?.players) ? view.players : [];
   return players.filter((player) => player?.isBot).every((player) =>
-    !Object.hasOwn(player, "hand") && !Object.hasOwn(player, "handCards") && !Object.hasOwn(player, "roleCards"));
+    !Object.hasOwn(player, "hand") && !Object.hasOwn(player, "roleCards")
+    && (!Object.hasOwn(player, "handCards") || Array.isArray(player.handCards) && player.handCards.length === 0));
 }
 
 function genuineBots(view) {
@@ -138,6 +139,25 @@ function oneLegalHumanAction(view, humanId) {
   if (legal.has("choose_borrowed_sword_target")) {
     const choice = current.borrowedSwordTargets?.find((candidate) => candidate.targetIds?.length);
     return choice ? { action: "choose_borrowed_sword_target", values: { cardId: choice.cardId, targetId: choice.targetIds[0] } } : { kind: "unsupported" };
+  }
+  if (legal.has("choose_target_card")) {
+    const selection = current.targetCardSelection;
+    const key = selection?.eligibleKeys?.[0];
+    if (!selection || !key) return { kind: "unsupported" };
+    if (key.startsWith("hand:")) {
+      const targetCardIndex = Number(key.slice("hand:".length));
+      return Number.isInteger(targetCardIndex) && targetCardIndex >= 0
+        ? { action: "choose_target_card", values: { targetCardZone: "hand", targetCardIndex } }
+        : { kind: "unsupported" };
+    }
+    const target = view.players?.find((player) => player.id === selection.targetId);
+    if (target?.equipmentCards?.some((card) => card.id === key)) {
+      return { action: "choose_target_card", values: { targetCardZone: "equipment", targetCardId: key } };
+    }
+    if (target?.judgementCards?.some((card) => card.id === key)) {
+      return { action: "choose_target_card", values: { targetCardZone: "judgement", targetCardId: key } };
+    }
+    return { kind: "unsupported" };
   }
   if (legal.has("play_card")) {
     // Only play a card when the server has projected a concrete legal target;
