@@ -85,6 +85,7 @@ type TargetSelectProps = SharedProps & {
   handCountHeading?: string;
   handRailDescription?: string;
   compactDensity?: boolean;
+  compactControlSurfaces?: boolean;
   compactSelectionCount?: string;
   stableMultiSelectTabs?: boolean;
   selectionCount: string;
@@ -144,6 +145,7 @@ export function CardPoolDecisionFooter({
   cancelAction,
   className = "",
   compactDensity = false,
+  compactControlSurfaces = false,
 }: {
   selectionCount?: string;
   selectionCountDisplay?: string;
@@ -152,10 +154,11 @@ export function CardPoolDecisionFooter({
   cancelAction?: { accessibleLabel?: string; disabled: boolean; onClick: () => void };
   className?: string;
   compactDensity?: boolean;
+  compactControlSurfaces?: boolean;
 }) {
   const hasSelectionCount = Boolean(selectionCount?.trim());
   return <footer
-    className={`card-pool-panel__footer card-pool-decision-footer${compactDensity ? " card-pool-decision-footer--compact-density" : ""}${className ? ` ${className}` : ""}`}
+    className={`card-pool-panel__footer card-pool-decision-footer${compactDensity ? " card-pool-decision-footer--compact-density" : ""}${compactControlSurfaces ? " card-pool-decision-footer--compact-control-surfaces" : ""}${className ? ` ${className}` : ""}`}
     data-pool-action-footer="true"
     data-skip-visible={skipAction ? "true" : undefined}
   >
@@ -309,7 +312,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
       : zone.cards,
   })).filter((zone) => targetReadOnly ? zone.cards.length > 0 : zone.id === activeTargetZoneTab.id) : [];
   return <section
-    className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}${actorTargetProps?.compactDensity ? " card-pool-panel--compact-density" : ""}`}
+    className={`card-pool-panel card-pool-panel--${props.mode} harvest-choice-panel${actorSelect || targetSelect ? " harvest-choice-panel--actor" : ""}${actorTargetProps?.compactDensity ? " card-pool-panel--compact-density" : ""}${actorTargetProps?.compactControlSurfaces ? " card-pool-panel--compact-control-surfaces" : ""}`}
     data-choice-mode={props.mode}
     data-target-card-pool-readonly={targetReadOnly ? "true" : undefined}
     aria-label={props.accessibilityLabel}
@@ -478,6 +481,7 @@ export function CardPoolPanel(props: CardPoolPanelProps) {
           confirmAction={{ accessibleLabel: actorTargetProps.confirmAccessibleLabel, disabled: actorTargetProps.confirmDisabled, pending: actorTargetProps.confirmPending, onClick: actorTargetProps.onConfirm }}
           skipAction={actorTargetProps.skipAction}
           compactDensity={actorTargetProps.compactDensity}
+          compactControlSurfaces={actorTargetProps.compactControlSurfaces}
         />
         {actorTargetProps.error && <p className="card-pool-panel__error error" role="alert">{actorTargetProps.error}</p>}
       </>}

@@ -625,7 +625,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       const announcement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
       if (await page.evaluate(() => innerWidth) > 520) {
         await expect(announcement).toHaveCount(1);
-        await expect(announcement).toContainText("SOURCE played Burning Bridges on TARGET.");
+        await expect(announcement).toContainText("SOURCE played [Burning Bridges] on TARGET.");
         await expect(announcement.locator("small,span,strong")).toHaveCount(0);
       }
     }

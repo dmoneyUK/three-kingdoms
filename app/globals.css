@@ -1287,6 +1287,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-lust-cost-frame-panel.is-moving{opacity:0;transition:none}
 .public-card-lust-cost-frame-panel::after{content:"";position:absolute;inset:4px;border:1px solid #d7bd7860;pointer-events:none}
 .public-card-effect-frame-title{position:relative;z-index:1;display:block;width:100%;margin:0;color:#e7c974;font:700 clamp(12px,3.6vw,14px)/1.08 Arial,sans-serif;letter-spacing:.06em;text-align:center;text-transform:uppercase;overflow-wrap:anywhere;word-break:normal}
+.public-card-effect-frame-title.is-compact-single-line{font-size:clamp(10px,3vw,12px);letter-spacing:.02em;line-height:1.08;white-space:nowrap;overflow-wrap:normal;word-break:keep-all}
 .public-card-effect-frame-title-line{display:block;max-width:100%;overflow-wrap:anywhere}
 .public-card-effect-frame-title-line.is-effect{font-size:clamp(10px,2.8vw,11px);line-height:1.08;letter-spacing:.05em}
 .public-card-effect-frame-title-separator{white-space:pre}

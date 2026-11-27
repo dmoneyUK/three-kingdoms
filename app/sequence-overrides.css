@@ -4250,9 +4250,15 @@
   visibility: hidden;
 }
 
-/* The public status can cover a parked miniature; active cards and H4 remain
-   protected by measured placement. Keep an open Inspector above the status. */
+/* The public status can cover parked history. Keep an open Inspector above it. */
 .game-shell .play-table:has(.public-card-journey-card[data-public-card-journey-phase="parked"]) > .public-activity-chip {
+  z-index: 35;
+}
+/* A committed reveal is passive paint. Lift PAC above the journey stacking
+   context so its fixed lower anchor remains visible over the card; H4 keeps
+   its existing foreground position inside that context. PAC never captures
+   input, and actionable choice/confirmation stages retain their higher layer. */
+.game-shell .play-table:has(> .public-card-display-journey > .public-card-journey-card.is-current[data-public-card-journey-phase="reveal"]):not(:has(> .battlefield-choice-stage)):not(:has(> .card-pool-target-stage)):not(:has(> .end-turn-confirmation-stage)) > .public-activity-chip {
   z-index: 35;
 }
 .game-shell .play-table:has(> .public-activity-chip) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
@@ -7469,15 +7475,26 @@
   pointer-events: none !important;
 }
 
-/* §10.26: the End confirmation uses the battlefield choice shell without a
-   backdrop. Only the measured panel captures input; an unsafe placement waits
-   until the active reveal/other protected content clears. */
-.game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="false"] {
-  visibility: hidden;
+/* §10.78: one shared H4 foreground layer may overlap only passive committed
+   CardFace/Frame paint. Its fixed position and normal geometry reserve stay
+   owned by the shared layout; copy and passive cards never capture input. */
+.game-shell .play-table > .public-card-display-journey > .public-card-display-journey-copy {
+  z-index: 38;
   pointer-events: none;
 }
-.game-shell .play-table > .end-turn-confirmation-stage[data-end-turn-confirmation-ready="true"] {
+.game-shell .public-card-display-journey-copy > b {
+  display: block;
+  overflow: visible;
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: unset;
+}
+
+/* §10.26 / §10.78: an authorized End confirmation is painted immediately at
+   the battlefield's fixed center anchor. Its stage has no backdrop or async
+   placement gate; only the compact panel receives input. */
+.game-shell .play-table > .end-turn-confirmation-stage {
   visibility: visible;
+  z-index: 40;
 }
 .game-shell .end-turn-confirmation-panel {
   box-sizing: border-box;
@@ -8471,6 +8488,35 @@
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__target-public-zone-title {
     align-self: center;
   }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tabs--stable-multi-select {
+    width: max-content;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: max-content;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px 6px;
+    white-space: nowrap;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select > span,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select > small {
+    display: inline;
+    flex: 0 0 auto;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-density .card-pool-panel__tab--stable-multi-select > small {
+    font: 700 8px/1 Arial, sans-serif;
+  }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density {
     --wtk-card-pool-action-width: 72px;
     --wtk-card-pool-action-height: 44px;
@@ -8483,8 +8529,12 @@
     min-height: 48px;
   }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-density .card-pool-decision-footer__count {
+    justify-self: center;
     min-width: 0;
+    width: max-content;
+    max-width: 100%;
     overflow: visible;
+    font-size: 9px;
     text-overflow: clip;
     white-space: nowrap;
   }
@@ -8510,6 +8560,54 @@
     height: 44px;
     min-height: 44px;
     max-height: 44px;
+  }
+
+  /* §10.78 Frost-only compact painted controls. The button/tab hit boxes keep
+     their 44px touch height; the inset surfaces reduce visual bulk without
+     changing the shared Kirin pool or the selectable card area. */
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-control-surfaces .card-pool-panel__tab--stable-multi-select {
+    position: relative;
+    isolation: isolate;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-control-surfaces .card-pool-panel__tab--stable-multi-select::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 8px 2px;
+    border: 1px solid #675532;
+    border-radius: 2px;
+    background: #11140e;
+    pointer-events: none;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-control-surfaces .card-pool-panel__tab--stable-multi-select[aria-selected="true"]::before {
+    border-color: #e3c36e;
+    background: #382d17;
+    box-shadow: inset 0 0 0 1px #e3c36e55;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .card-pool-decision-footer__button {
+    position: relative;
+    isolation: isolate;
+    border-color: transparent;
+    background: transparent;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .card-pool-decision-footer__button::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 8px 6px;
+    border: 1px solid #d5b96e;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .wtk-card-pool-action--confirm::before {
+    background: #be9b53;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .wtk-card-pool-action--skip::before {
+    border-color: #c3a46b;
+    background: #8b302a;
   }
 }
 

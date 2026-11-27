@@ -34,6 +34,26 @@ test("a newly committed transfer is shown once and the receipt is tied to its re
   assert.deepEqual(result.drawn, [], "polling the same committed transfer cannot show it twice");
 });
 
+test("a committed normal Draw Phase receipt retains its exact public H4 event association", () => {
+  const previous = baselineHand("me", [], [], { now: 10_000 });
+  const events = [arrival("private-draw-card", "me", "drawn-card", {
+    now: 10_000,
+    overrides: { rootEventId: "public-draw-phase-event" },
+  })];
+  const result = updatePrivateHand(previous, "me", [card("drawn-card")], events, { now: 10_000 });
+  assert.deepEqual(result.presentedTransfers, [{
+    transferId: "private-draw-card",
+    cardId: "drawn-card",
+    rootEventId: "public-draw-phase-event",
+    sourceZone: "deck",
+    initialDeal: false,
+    recipientId: "me",
+    committedAt: 9_900,
+    revealUntil: 12_900,
+  }]);
+  assert.equal(JSON.stringify(result).includes("other-viewer-card"), false);
+});
+
 test("a refresh baseline admits only unseen, still-current recipient arrivals", () => {
   const now = 10_000;
   const events = [

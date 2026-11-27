@@ -156,6 +156,8 @@ export type AttackDodgedTriggerContinuation = CausalFields & {
   resumePhase: string;
   resumePlayerId?: string;
   sequenceStartCardId: string;
+  /** Exact physical materials of the committed original Attack, in source order. */
+  originalAttackCards?: Card[];
   rootEventId?: string;
   origin?: AttackOrigin;
   resolutionId?: string;
@@ -278,6 +280,8 @@ export type JudgementContinuation = CausalFields & {
   purpose: JudgementPurpose;
   revealedCard: Card;
   revealedEventId?: string;
+  /** Exact public action event which caused this Judgement, when known. */
+  actionRootEventId?: string;
   resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | { kind: "attack_targeted"; declaration: AttackDeclaration; group?: GroupResponsePending } | JudgementResponseResume | DamageSufferedJudgementResume;
   resolutionId?: string;
 };

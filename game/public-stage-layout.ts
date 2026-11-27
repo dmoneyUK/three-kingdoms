@@ -2,15 +2,35 @@ export type PublicStageRect = { left: number; top: number; right: number; bottom
 export type PublicStageSize = { width: number; height: number };
 export type PublicStagePhase = "REVEAL" | "MOVE" | "PARKED";
 export type PublicStageStationarySurface = "card" | "effect-frame";
+export type PublicStageH4Geometry = {
+  /** Fixed, message-independent band used to position passive public reveals. */
+  reserve: PublicStageRect;
+  /** The full painted H4 bounds at its fixed anchor; it may cover a passive reveal. */
+  paint: PublicStageRect;
+  overlapPolicy: "PASSIVE_REVEAL_FOREGROUND";
+};
 
 export const PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX = 8;
 export const PUBLIC_STAGE_EFFECT_FRAME_BAND_CLEARANCE_PX = 5;
-const PUBLIC_STAGE_EFFECT_FRAME_SOLVER_HEADROOM_PX = 0.5;
 
 export function publicStageBandClearance(surface: PublicStageStationarySurface = "card") {
   return surface === "effect-frame"
     ? PUBLIC_STAGE_EFFECT_FRAME_BAND_CLEARANCE_PX
     : PUBLIC_STAGE_CARD_BAND_CLEARANCE_PX;
+}
+
+/** Preferred top for a complete passive Effect Frame centered in the fixed
+ * H4-to-PAC display lane. The inputs are nominal reserves, never live copy. */
+export function publicEffectFrameLanePreferredTop(
+  h4Reserve: PublicStageRect,
+  pacReserve: PublicStageRect,
+  frameHeight: number,
+  preferredTopOffset = 0,
+): number | null {
+  if (!finiteRect(h4Reserve) || !finiteRect(pacReserve)
+    || !Number.isFinite(frameHeight) || frameHeight <= 0
+    || !Number.isFinite(preferredTopOffset)) return null;
+  return (h4Reserve.bottom + pacReserve.top - frameHeight) / 2 + preferredTopOffset;
 }
 
 /** Check actual measured bands against a stationary public visual. The caller
@@ -155,9 +175,13 @@ export type PublicStageLayoutInput = {
     phase: "REVEAL" | "MOVE";
   };
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
-  upperH4?: { top: number; reservedHeight: number; gap: number };
+  upperH4?: PublicStageH4Geometry & { gap: number };
   /** Permanent message-free H4/PAC reservations used for stationary reveals. */
-  fixedBands?: { h4: PublicStageRect; pac: PublicStageRect };
+  fixedBands?: { h4: PublicStageH4Geometry; pac: PublicStageRect };
+  /** Measured H4 paint when mounted; a reserve is not painted content. */
+  announcementPaint?: PublicStageRect | null;
+  /** Actual visible PAC paint, separate from its nominal fixed reserve. */
+  activityPaint?: PublicStageRect | null;
   /** Set only when the primary visual is a validated, complete public Effect Frame. */
   stationarySurface?: PublicStageStationarySurface;
   announcementCardGap?: number;
@@ -200,6 +224,14 @@ function makeRect(centerX: number, top: number, size: PublicStageSize): PublicSt
 function overlaps(left: PublicStageRect, right: PublicStageRect): boolean {
   return left.left < right.right && left.right > right.left
     && left.top < right.bottom && left.bottom > right.top;
+}
+
+/** H4 may cover part of a passive CardFace, but never its entire visible surface. */
+export function publicStageHasVisibleAreaAfterForegroundOverlay(visual: PublicStageRect, overlay: PublicStageRect): boolean {
+  if (!finiteRect(visual) || !finiteRect(overlay)) return false;
+  const intersectionWidth = Math.max(0, Math.min(visual.right, overlay.right) - Math.max(visual.left, overlay.left));
+  const intersectionHeight = Math.max(0, Math.min(visual.bottom, overlay.bottom) - Math.max(visual.top, overlay.top));
+  return visual.right - visual.left > intersectionWidth || visual.bottom - visual.top > intersectionHeight;
 }
 
 /**
@@ -325,16 +357,14 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
 
   const { viewport, table, card, announcement, activity } = input;
   const announcementCardGap = input.announcementCardGap ?? 8;
-  // Keep the ordinary-card safety margin while allowing the approved tighter
-  // clearance for a complete, validated Effect Frame.
+  // The configured gap remains a soft layout preference during committed reveals.
   const cardActivityGap = input.cardActivityGap ?? 9;
-  const minimumCardActivityGap = publicStageBandClearance(input.stationarySurface);
   if (!finiteRect(viewport) || !finiteRect(table)
     || !finiteSize(card) || !finiteSize(announcement) || !finiteSize(activity)
     || input.activityBottom !== undefined && !Number.isFinite(input.activityBottom)
     || !Number.isFinite(input.preferredCard.left) || !Number.isFinite(input.preferredCard.top)
     || !Number.isFinite(announcementCardGap) || announcementCardGap < 0
-    || !Number.isFinite(cardActivityGap) || cardActivityGap < minimumCardActivityGap
+    || !Number.isFinite(cardActivityGap) || cardActivityGap < 0
     || !Array.isArray(input.obstacles)
     || input.obstacles.some((obstacle) => !obstacle || typeof obstacle.id !== "string"
       || !obstacle.id.trim() || !finiteRect(obstacle.rect))) {
@@ -379,73 +409,76 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
     activity,
   );
   if (input.scene.phase === "REVEAL" && input.fixedBands) {
-    const { h4, pac } = input.fixedBands;
-    const bandClearance = publicStageBandClearance(input.stationarySurface)
-      + (input.stationarySurface === "effect-frame" ? PUBLIC_STAGE_EFFECT_FRAME_SOLVER_HEADROOM_PX : 0);
-    if (!finiteRect(h4) || !finiteRect(pac) || h4.left < safeBounds.left || h4.right > safeBounds.right
-      || pac.left < safeBounds.left || pac.right > safeBounds.right
-      || pac.bottom > activityBottom + 2 || pac.bottom < activityBottom - 2
-      || h4.bottom >= pac.top) {
-      return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
-    }
+    const { h4 } = input.fixedBands;
+    // H4/PAC are independently painted foreground layers. Their nominal or
+    // actual rectangles are useful for placement and diagnostics, but never
+    // veto a proven passive reveal, including when the layers intersect.
+    const announcementRect = finiteRect(h4.paint) ? h4.paint
+      : finiteRect(h4.reserve) ? h4.reserve
+        : makeRect((safeBounds.left + safeBounds.right) / 2, safeBounds.top, input.announcement);
     const centerX = (safeBounds.left + safeBounds.right) / 2;
-    const announcementRect = makeRect(centerX, h4.top, announcement);
     const activityRect = makeRect(centerX, activityBottom - activity.height, activity);
-    const laneTop = Math.max(safeBounds.top, h4.bottom + bandClearance);
-    const laneBottom = Math.min(safeBounds.bottom, pac.top - bandClearance);
-    const minLeft = safeBounds.left;
-    const maxLeft = safeBounds.right - card.width;
-    const maxTop = laneBottom - card.height;
-    if (maxLeft < minLeft || maxTop < laneTop
-      || announcementRect.left < safeBounds.left || announcementRect.right > safeBounds.right
-      || announcement.height > h4.bottom - h4.top
-      || activityRect.top < pac.top || activityRect.bottom > pac.bottom + 2) {
+    // Keep the existing canonical card position. H4/PAC reserves and preferred
+    // clearance are placement guides, not hard gates for a committed reveal.
+    const cardRect = {
+      left: input.preferredCard.left,
+      top: input.preferredCard.top,
+      right: input.preferredCard.left + card.width,
+      bottom: input.preferredCard.top + card.height,
+    };
+    if (cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
+      || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
+      || activityRect.bottom > activityBottom + 2
+      || cardObstacles.some((obstacle) => overlaps(cardRect, obstacle.rect))) {
       return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     }
-    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-    const preferredLeft = clamp(centerX - card.width / 2, minLeft, maxLeft);
-    const preferredTop = laneTop + (laneBottom - laneTop - card.height) / 2;
-    const lefts = new Set([preferredLeft]);
-    const tops = new Set([preferredTop]);
-    for (const { rect } of cardObstacles) {
-      lefts.add(clamp(rect.left - card.width - 8, minLeft, maxLeft));
-      lefts.add(clamp(rect.right + 8, minLeft, maxLeft));
-      tops.add(clamp(rect.top - card.height - 8, laneTop, maxTop));
-      tops.add(clamp(rect.bottom + 8, laneTop, maxTop));
-    }
-    const candidates = [...lefts].flatMap((left) => [...tops].map((top) => ({
-      left, top, right: left + card.width, bottom: top + card.height,
-      distance: Math.abs(left - preferredLeft) + Math.abs(top - preferredTop),
-    }))).sort((left, right) => left.distance - right.distance || left.top - right.top || left.left - right.left);
-    const cardRect = candidates.find((candidate) => candidate.left >= minLeft && candidate.right <= safeBounds.right
-      && candidate.top >= laneTop && candidate.bottom <= laneBottom
-      && !cardObstacles.some((obstacle) => overlaps(candidate, obstacle.rect)));
-    if (!cardRect) return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     return { status: "placed", layout: { identity, variant: "fixed-bands", generation: input.scene.generation,
       scene: input.scene, safeBounds,
       protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-      announcement: announcementRect, card: { left: cardRect.left, top: cardRect.top, right: cardRect.right, bottom: cardRect.bottom },
+      announcement: announcementRect, card: cardRect,
       activity: activityRect, cardActivityGap: activityRect.top - cardRect.bottom } };
   }
   if (input.upperH4) {
-    const { top, reservedHeight, gap } = input.upperH4;
-    const effectFrameClearance = input.stationarySurface === "effect-frame"
-      ? publicStageBandClearance(input.stationarySurface)
-      : null;
-    if (![top, reservedHeight, gap].every(Number.isFinite) || reservedHeight < announcement.height || gap < 0) {
+    const { reserve, paint: h4Paint, gap, overlapPolicy } = input.upperH4;
+    if (input.scene.phase === "REVEAL") {
+      const announcementRect = finiteRect(h4Paint) ? h4Paint
+        : finiteRect(reserve) ? reserve
+          : makeRect((safeBounds.left + safeBounds.right) / 2, safeBounds.top, input.announcement);
+      const activityRect = anchoredActivity;
+      const cardRect = {
+        left: input.preferredCard.left,
+        top: input.preferredCard.top,
+        right: input.preferredCard.left + card.width,
+        bottom: input.preferredCard.top + card.height,
+      };
+      if (cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
+        || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
+        || cardObstacles.some(({ rect }) => overlaps(cardRect, rect))) {
+        return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
+      }
+      return { status: "placed", layout: { identity, variant: "stack", generation: input.scene.generation,
+        scene: input.scene, safeBounds,
+        protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
+        announcement: announcementRect, card: cardRect, activity: activityRect,
+        cardActivityGap: activityRect.top - cardRect.bottom } };
+    }
+    const reservedHeight = finiteRect(reserve) ? reserve.bottom - reserve.top : Number.NaN;
+    if (overlapPolicy !== "PASSIVE_REVEAL_FOREGROUND"
+      || !finiteRect(reserve) || !finiteRect(h4Paint)
+      || Math.abs(h4Paint.left - reserve.left) > 1
+      || Math.abs(h4Paint.right - reserve.right) > 1
+      || Math.abs(h4Paint.top - reserve.top) > 1
+      || ![reservedHeight, gap].every(Number.isFinite) || gap < 0) {
       return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
     }
-    const centerX = (safeBounds.left + safeBounds.right) / 2;
-    const h4 = makeRect(centerX, top, announcement);
+    const h4 = h4Paint;
     const activityRect = input.scene.phase === "REVEAL" || input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
-    const cardRect = input.scene.phase === "REVEAL"
-      ? makeRect(centerX, top + reservedHeight + (effectFrameClearance ?? gap), card)
-      : input.phaseRects!.card;
+    const cardRect = input.phaseRects!.card;
     const stageRects = input.scene.phase === "REVEAL" ? [h4, cardRect, activityRect] : [h4, activityRect];
     if (stageRects.some((rect, index) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom
       || (input.scene.phase === "REVEAL" && index === 1 ? cardObstacles : input.obstacles).some((obstacle) => overlaps(rect, obstacle.rect)))
-      || overlaps(h4, activityRect) || input.scene.phase === "REVEAL" && (overlaps(h4, cardRect)
-        || cardRect.bottom + (effectFrameClearance ?? cardActivityGap) > activityRect.top)) {
+      || overlaps(h4, activityRect)
+      || input.scene.phase === "REVEAL" && cardRect.bottom > activityRect.top) {
       return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     }
     return { status: "placed", layout: { identity, variant: input.scene.phase === "REVEAL" ? "stack" : input.scene.phase === "MOVE" ? "move" : "parked", generation: input.scene.generation, scene: input.scene, safeBounds,

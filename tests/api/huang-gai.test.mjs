@@ -197,7 +197,7 @@ test("1 HP Self Sacrifice resumes after Peach rescue and draws exactly once", as
     targetId: setup.source.id,
     sourceLabel: "Peach",
     amount: 1,
-    expectedHeadline: `${setup.rescuer.name} played Peach. ${setup.source.name} recovered 1 HP.`,
+    expectedHeadline: `${setup.rescuer.name} played [Peach]. ${setup.source.name} recovered 1 HP.`,
   });
   const outcome = publicSkillOutcomeFact(after, skillRoot.eventId);
   assert.ok(outcome, "the resumed public result is linked to the original committed skill root");

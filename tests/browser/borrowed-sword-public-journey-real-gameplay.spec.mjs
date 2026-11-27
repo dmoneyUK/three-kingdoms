@@ -162,7 +162,7 @@ test("real Borrowed Sword keeps one public root Journey through Negation, target
   const attackDisplay = page.locator(`[data-public-card-display="true"][data-public-card-root-event-id="${actualAttack.id}"]`);
   await expect(attackDisplay).toHaveAttribute("data-public-card-motion", "attack-dodge");
   await expect(attackDisplay).toHaveAttribute("data-public-card-actor-id", seed.players[1].id);
-  await expect(attackDisplay.locator('[data-public-card-announcement="true"]')).toContainText("HOLDER played Attack on VICTIM.");
+  await expect(attackDisplay.locator('[data-public-card-announcement="true"]')).toContainText("HOLDER played [Attack] on VICTIM.");
 
   const victim = await roomView(request, seed, 2);
   expect(victim.currentAction?.requirement).toBe("dodge");

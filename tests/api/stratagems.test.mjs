@@ -203,7 +203,7 @@ test("Oath H4 binds the committed card source and only actual positive recoverie
   ]);
   const singleH4 = assertPublicOutcomeHasH4Owner(single.settled, singleEvent.id);
   assert.equal(singleH4.narration.headline,
-    `${single.source.name} played Oath of the Peach Garden. ${single.players[1].name} recovered 1 HP.`);
+    `${single.source.name} played [Oath of the Peach Garden]. ${single.players[1].name} recovered 1 HP.`);
   assert.equal(singleH4.owner.eventId, singleEvent.id);
 
   const multiple = await settleOath("multiple", [3, 2, 4, 4]);
@@ -215,7 +215,7 @@ test("Oath H4 binds the committed card source and only actual positive recoverie
     { kind: "HP_RECOVERED", playerId: multiple.players[1].id, amount: 1 },
   ], "the source and other wounded character are both reported from actual recovery records");
   assert.equal(assertPublicOutcomeHasH4Owner(multiple.settled, multipleEvent.id).narration.headline,
-    `${multiple.source.name} played Oath of the Peach Garden. ${multiple.source.name} and ${multiple.players[1].name} each recovered 1 HP.`);
+    `${multiple.source.name} played [Oath of the Peach Garden]. ${multiple.source.name} and ${multiple.players[1].name} each recovered 1 HP.`);
 
   const none = await settleOath("none", [4, 4, 4, 4]);
   const fabricatedRecoveries = none.settled.timeline.flatMap((event) => event.publicFact?.committedOutcome?.changes ?? [])
@@ -1071,6 +1071,32 @@ test("Steal and Burning Bridges publish committed outcomes and one shared H4 own
     const { eventId: settlementEventId, ...proofOnEvent } = proof;
     assert.equal(settlementEvent.id, settlementEventId);
     assert.deepEqual(effect === "Steal" ? settlementEvent.publicStealSettlement : settlementEvent.publicDismantleSettlement, proofOnEvent);
+    if (effect === "Dismantle") {
+      const canonicalFor = (view) => normalizePublicDiscardSettlements({
+        timeline: view.timeline,
+        publicCardEffects: view.presentationV2.publicCardEffects,
+        dismantleSettlements: view.presentationV2.dismantleSettlements,
+        publicEventFacts: [
+          ...(view.presentationSnapshot.publicEventFacts ?? []),
+          ...(view.presentationSnapshot.retainedPublicEventFacts ?? []),
+        ],
+      }).filter((entry) => entry.eventId === settlementEvent.id);
+      const canonical = canonicalFor(sourceView);
+      assert.equal(canonical.length, 1, `${zone} Burning Bridges has one canonical settlement owner`);
+      assert.equal(canonical[0].presentation, zone === "judgement" ? "excluded" : "eligible",
+        `${zone} source preserves the already-read Judgement exclusion`);
+      if (zone !== "judgement") {
+        const copy = publicDiscardSettlementCopy({ settlement: canonical[0], players: sourceView.players });
+        const face = copy?.cards?.[0];
+        assert.equal(face?.id, sourceZoneCard.id, `${zone} discard copy keeps the exact physical card`);
+        assert.equal(copy?.headline,
+          `${source.name} used [Burning Bridges] to discard ${target.name}’s [${face?.rank}${face?.suit} ${face?.name}].`,
+          `${zone} H4 copy names the real card and both players`);
+      }
+      for (const { data: viewer } of settledViews) {
+        assert.deepEqual(canonicalFor(viewer), canonical, `${zone} canonical proof is identical for every viewer`);
+      }
+    }
     const h4 = assertPublicOutcomeHasH4Owner(sourceView, settlementEvent.id);
     const sourceLabel = effect === "Dismantle" ? "Burning Bridges" : "Steal";
     const fromZone = zone === "hand" ? "HAND" : zone === "equipment" ? "EQUIPMENT" : "JUDGEMENT";
@@ -1082,8 +1108,8 @@ test("Steal and Burning Bridges publish committed outcomes and one shared H4 own
       kind: "CARD_DISCARDED", playerId: target.id, amount: 1, fromZone, toZone: "DISCARD",
     }], `${effect}/${zone} H4 reports the actual public zone change without a card identity`);
     assert.equal(h4.narration.headline, effect === "Steal"
-      ? `${source.name} Steal: ${source.name} received 1 card from ${target.name}.`
-      : `${target.name} Burning Bridges: ${target.name} discarded 1 card.`,
+      ? `${source.name} [Steal]: ${source.name} received 1 card from ${target.name}.`
+      : `${target.name} [Burning Bridges]: ${target.name} discarded 1 card.`,
     `${effect}/${zone} H4 uses shared copy for the verified settlement result`);
     assert.equal(JSON.stringify(h4.fact.committedOutcome).includes(sourceZoneCard.id), false,
       `${effect}/${zone} committed outcome contains no physical card identity`);

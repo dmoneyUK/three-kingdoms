@@ -175,5 +175,5 @@ test("Raining Arrows damage publishes its linked card source and actual recipien
     retainedFacts: snapshot.retainedPublicEventFacts?.map(({ eventId, rootEventId, frameId, category, order }) => ({ eventId, rootEventId, frameId, category, order })),
     selectedFact: { eventId: damageEvent.id, rootEventId: damageEvent.publicFact.rootEventId },
   }));
-  assert.equal(narration?.headline, `${source.name} dealt 1 damage to ${firstTarget.name} with Raining Arrows.`);
+  assert.equal(narration?.headline, `${source.name} dealt 1 damage to ${firstTarget.name} with [Raining Arrows].`);
 });

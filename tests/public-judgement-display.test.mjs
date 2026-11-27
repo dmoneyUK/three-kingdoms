@@ -8,6 +8,7 @@ import {
   publicJudgementNarrationForPresentation,
   publicJudgementPresentationAtCursor,
   publicJudgementReplacementFrameMatches,
+  publicJudgementReplacementFrameOwnsCursor,
 } from "../game/public-judgement-presentation.ts";
 
 const original = {
@@ -85,10 +86,43 @@ test("only the exact committed replacement Effect Frame can own the replacement 
   ]) assert.equal(publicJudgementReplacementFrameMatches({ ...proof, ...change }), false);
 });
 
+test("the exact replacement CardFace owns the public-card cursor only during its matching H4 stage", () => {
+  const action = {
+    rootEventId: "replacement-event",
+    cardFace: { id: "replacement-card" },
+    sourceId: "sima-yi",
+    targetId: "target-1",
+    interactionId: "interaction-1",
+    rootFrameId: "judgement-frame-1",
+    publicCardEffectFrame: {
+      eventId: "replacement-event", rootEventId: "judgement-1", rootResolutionId: "resolution-1",
+      effectId: "sima_yi_guicai", effectClass: "JUDGEMENT", activationOwnerId: "sima-yi",
+      materials: [{ card: { id: "replacement-card" } }],
+    },
+  };
+  assert.equal(publicJudgementReplacementFrameOwnsCursor({
+    cursorEventId: "replacement-event", presentation: replacement, action,
+  }), true);
+  assert.equal(publicJudgementReplacementFrameOwnsCursor({
+    cursorEventId: "judgement-1", presentation: replacement, action,
+  }), false, "the original reveal keeps its own stage");
+  assert.equal(publicJudgementReplacementFrameOwnsCursor({
+    cursorEventId: "later-unrelated-event", presentation: replacement, action,
+  }), false, "a later committed stage can interrupt normally");
+  assert.equal(publicJudgementReplacementFrameOwnsCursor({
+    cursorEventId: "replacement-event", presentation: replacement, action: { ...action, cardFace: { id: "wrong-card" } },
+  }), false, "a different physical card cannot claim the replacement H4");
+  assert.equal(publicJudgementReplacementFrameOwnsCursor({
+    cursorEventId: "replacement-event", presentation: original, action,
+  }), false, "an original Judgement stage cannot claim the replacement Frame");
+});
+
 test("replacement narration follows the newest public stage and only its exact Effect Frame", () => {
   const narration = publicJudgementNarrationForPresentation(replacement);
   const laterStage = { ...narration, eventId: "later-public-stage", publicSequence: 12 };
   assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration), laterStage);
+  assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration, true), narration,
+    "a same-resolution terminal Judgement fact cannot replace the canonical original/replacement H4");
   assert.equal(publicInteractionNarrationWithJudgement(narration, null), narration);
 
   const action = {

@@ -5,6 +5,7 @@ import {
   coalescePresentationQueue,
   presentationEventBlocksActions,
   publicH4FactAtPresentationCursor,
+  publicRetaliationSettlementOwnsEvent,
   routePublicPresentation,
   selectPublicH4AnnouncementOwner,
   uniquePublicH4Facts,
@@ -142,15 +143,25 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
     "an exact physical discard keeps its approved H4 owner when no composite result is attached");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
-    discard: { eventId: rootFact.eventId, order: rootFact.order },
-  }), { eventId: rootFact.eventId, owner: "PublicInteractionAnnouncementLayer" },
-    "a same-event composite result keeps its complete public deltas in the shared narrator");
+    discard: { eventId: rootFact.eventId, order: rootFact.order, materialIds: ["discard-a", "discard-b"] },
+  }), { eventId: rootFact.eventId, owner: "PublicDiscardAnnouncementLayer" },
+    "a same-event discard with exact public materials uses the richer canonical copy when no matching display frame owns it");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
     cardDisplay: { enabled: true, rootEventId: "frame-event", interactionId: rootFact.identity.interactionId,
-      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId },
+      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId,
+      discardEventId: rootFact.eventId, discardMaterialIds: ["discard-a", "discard-b"] },
+    discard: { eventId: rootFact.eventId, order: rootFact.order, materialIds: ["discard-a", "discard-b"] },
   }), { eventId: rootFact.eventId, owner: "PublicCardDisplay" },
     "a committed discard with its exact frame keeps detail and same-event outcome on one H4 owner");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: { ...rootFact, category: "CARD_DISCARDED", committedOutcome: { eventId: rootFact.eventId } },
+    cardDisplay: { enabled: true, rootEventId: "frame-event", interactionId: rootFact.identity.interactionId,
+      rootFrameId: rootFact.identity.rootFrameId, causalRootEventId: rootFact.rootEventId,
+      discardEventId: rootFact.eventId, discardMaterialIds: ["discard-b", "discard-a"] },
+    discard: { eventId: rootFact.eventId, order: rootFact.order, materialIds: ["discard-a", "discard-b"] },
+  }), { eventId: rootFact.eventId, owner: "PublicDiscardAnnouncementLayer" },
+    "a display frame with the same event but a different material order cannot own the discard H4");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: rootFact, discard: { eventId: "later-discard", order: rootFact.order + 1 },
   }), { eventId: "later-discard", owner: "PublicDiscardAnnouncementLayer" },
@@ -171,6 +182,24 @@ test("all public fact categories resolve to one H4 owner and duplicate projectio
     "contradictory facts for one durable event ID fail closed");
   assert.deepEqual(uniquePublicH4Facts([rootFact, { ...rootFact, resolutionId: "other-resolution" }]), [],
     "contradictory resolution identities for one durable event ID fail closed");
+});
+
+test("a proven Retaliation settlement owns its exact event and prevents a generic duplicate notice", () => {
+  const retaliation = {
+    eventId: "retaliation-settlement", semantics: "PROVEN", acquisitionKind: "RETALIATION", outcome: "RETALIATION_RESOLVED",
+  };
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [retaliation]), true);
+  assert.equal(publicRetaliationSettlementOwnsEvent("later-independent-event", [retaliation]), false,
+    "a later independent public event retains its own H4");
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [
+    retaliation, { ...retaliation },
+  ]), false, "ambiguous duplicate proof must fail closed");
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [
+    { ...retaliation, semantics: "UNPROVEN" },
+  ]), false, "unproven acquisition facts cannot suppress generic public feedback");
+  assert.equal(publicRetaliationSettlementOwnsEvent(retaliation.eventId, [
+    { ...retaliation, acquisitionKind: "STEAL", outcome: "STEAL_RESOLVED" },
+  ]), false, "existing Steal notice ownership remains unchanged");
 });
 
 test("presentation queue keeps validated H4 facts in public order across resolution coalescing", () => {
@@ -233,6 +262,26 @@ test("Judgement H4 selects one owner, with the replacement frame claiming only i
   assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
     presentation: replacement, isActive: true, replacementFrameMatches: false,
   } }), { eventId: "replacement-1", owner: "PublicInteractionAnnouncementLayer" });
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: fact("stauchness-judgement-result", 12, "judgement-1", "target-1", {
+      resolutionId: "judgement-resolution", effect: { kind: "judgement", label: "Stauchness" },
+    }),
+    judgement: {
+      presentation: { ...replacement, resolutionId: "judgement-resolution" },
+      isActive: false, replacementFrameMatches: true,
+    },
+  }), { eventId: "replacement-1", owner: "PublicCardDisplay" },
+  "a same-resolution terminal Judgement fact cannot take H4 away from the exact replacement frame");
+  assert.deepEqual(selectPublicH4AnnouncementOwner({
+    fact: fact("stauchness-consequence", 13, "judgement-1", "source-1", {
+      resolutionId: "judgement-resolution", effect: { kind: "skill_result", label: "Stauchness" },
+    }),
+    judgement: {
+      presentation: { ...replacement, resolutionId: "judgement-resolution" },
+      isActive: false, replacementFrameMatches: true,
+    },
+  }), { eventId: "stauchness-consequence", owner: "PublicInteractionAnnouncementLayer" },
+  "a later committed non-Judgement consequence may advance H4 normally");
   assert.deepEqual(selectPublicH4AnnouncementOwner({ judgement: {
     presentation: replacement, isActive: false, replacementFrameMatches: false,
   }, discard: { eventId: "later-discard", order: 12 } }), {

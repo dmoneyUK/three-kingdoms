@@ -575,10 +575,13 @@ test("End Turn opens the in-battlefield confirmation and preserves legal action 
   await act(async () => { endTurn.props.onClick(); });
   const stage = nodeWithClass(renderer, "end-turn-confirmation-stage");
   assert.equal(renderedNodeText(stage).includes("End your Play Phase?"), true);
+  assert.equal(stage.props["data-end-turn-confirmation-ready"], "true", "the authorized confirmation is mounted immediately without measurement");
+  assert.equal(stage.props["data-end-turn-confirmation-placement"], "fixed-foreground");
+  assert.equal(stage.props["aria-hidden"], undefined, "an authorized confirmation is not hidden behind a layout-ready gate");
   assert.equal(browserConfirmCalls, 0, "End Turn no longer opens a browser confirmation");
   assert.equal(actionCalls.length, 0, "opening the confirmation does not submit end_turn");
   const confirmEnd = button(renderer, { children: "Confirm End" });
-  assert.equal(confirmEnd.props.disabled, true, "confirmation stays unavailable until the battlefield placement is measured");
+  assert.equal(confirmEnd.props.disabled, false, "currentAction-authorized confirmation is immediately actionable");
   const previousRequestAnimationFrame = globalThis.window.requestAnimationFrame;
   globalThis.window.requestAnimationFrame = (callback) => setTimeout(() => callback(Date.now()), 0);
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
@@ -586,6 +589,9 @@ test("End Turn opens the in-battlefield confirmation and preserves legal action 
   assert.equal(renderer.root.findAll((node) => node.type === "div" && node.props?.["data-end-turn-confirmation"] === "true").length, 0, "Cancel closes the in-battlefield confirmation");
   assert.equal(actionCalls.length, 0, "Cancel sends no gameplay action");
   assert.equal(browserConfirmCalls, 0);
+  await act(async () => { button(renderer, { children: "End" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm End" }).props.onClick(); await Promise.resolve(); });
+  assert.deepEqual(actionCalls, [["end_turn"]], "the second confirmation sends exactly one authorized end_turn request");
   await act(async () => { renderer.unmount(); });
   globalThis.window.confirm = () => false;
 });

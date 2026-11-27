@@ -1,7 +1,14 @@
 "use client";
 
-import { publicH4Copy, matchingPublicH4Segments, publicH4WidthLimit, type PublicH4Segment } from "../game/public-h4-copy";
-import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, parkedCardSize } from "./public-upper-anchor";
+import {
+  publicH4CardFaceReference,
+  publicH4CardKindReference,
+  publicH4Copy,
+  matchingPublicH4Segments,
+  publicH4WidthLimit,
+  type PublicH4Segment,
+} from "../game/public-h4-copy";
+import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, measuredPublicH4PaintRect, parkedCardSize } from "./public-upper-anchor";
 
 import { publicCorridorWidth } from "./public-corridor";
 
@@ -12,14 +19,13 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
-import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
+import { publicCardEffectFrameLayout, type PublicCardEffectFrameTitleLayout } from "../game/public-card-effect-frame-layout";
 import {
+  publicEffectFrameLanePreferredTop,
   positionLabeledCardAboveBand,
-  publicStageBandClearance,
   publicStageEffectFrameRevealTargetMatches,
   publicStageJourneyPhaseReady,
   publicStageJourneyTargetReady,
-  publicStageMeasuredBandClearanceSatisfied,
   publicStagePrimaryOriginFromVisualRect,
   publicStageRevealCanRetire,
   publicStageSceneMatchesCard,
@@ -138,6 +144,8 @@ export type PublicCardDisplayAction = {
   targetId: string | null;
   cardKind?: CardKind;
   cardLabel: string;
+  /** Typed public count for an already-proven group outcome. */
+  publicResolvedCount?: { count: number; noun: "targets" | "choices" };
   ariaLabel: string;
   publicNotice?: string;
   publicNoticeSegments?: readonly PublicH4Segment[];
@@ -254,6 +262,10 @@ export type PublicCardEffectFrameView = {
   activationOwnerName: string;
   title: string;
   titleParts?: { skillName: string; effectLabel?: string };
+  titlePresentation?: PublicCardEffectFrameTitleLayout["titlePresentation"];
+  showMaterialCount?: boolean;
+  /** A deterministic preference relative to the shared Effect Frame lane center. */
+  preferredLaneTopOffset?: number;
   materials: readonly { card: Card; ownerId: string | null; ownerName?: string }[];
   accessibleLabel: string;
 };
@@ -264,6 +276,9 @@ export function createPublicCardEffectFrameView(
   copy: {
     title: string;
     titleParts?: { skillName: string; effectLabel?: string };
+    titlePresentation?: PublicCardEffectFrameTitleLayout["titlePresentation"];
+    showMaterialCount?: boolean;
+    preferredLaneTopOffset?: number;
     accessibleLabel: string;
     activationOwnerName: string;
     ownerNamesById: Readonly<Record<string, string>>;
@@ -282,6 +297,9 @@ export function createPublicCardEffectFrameView(
     || `${normalizedTitleParts.skillName}${normalizedTitleParts.effectLabel ? ` · ${normalizedTitleParts.effectLabel}` : ""}` === copy.title.trim();
   if (effect.semantics !== "PROVEN" || !effect.eventId || !effect.activationOwnerId || !classIsSupported || !hasRootIdentity
     || !copy.title.trim() || copy.title.length > 40 || !copy.accessibleLabel.trim() || copy.accessibleLabel.length > 240
+    || copy.titlePresentation !== undefined && copy.titlePresentation !== "compact-single-line"
+    || copy.showMaterialCount !== undefined && typeof copy.showMaterialCount !== "boolean"
+    || copy.preferredLaneTopOffset !== undefined && !Number.isFinite(copy.preferredLaneTopOffset)
     || normalizedTitleParts && !normalizedTitleParts.skillName || !titlePartsMatch
     || !copy.activationOwnerName.trim() || !cards.length || cards.length !== materials.length
     || new Set(cards.map((card) => card.id)).size !== cards.length
@@ -308,6 +326,9 @@ export function createPublicCardEffectFrameView(
     activationOwnerName: copy.activationOwnerName,
     title: copy.title.trim(),
     ...(normalizedTitleParts ? { titleParts: normalizedTitleParts } : {}),
+    ...(copy.titlePresentation ? { titlePresentation: copy.titlePresentation } : {}),
+    ...(copy.showMaterialCount !== undefined ? { showMaterialCount: copy.showMaterialCount } : {}),
+    ...(copy.preferredLaneTopOffset !== undefined ? { preferredLaneTopOffset: copy.preferredLaneTopOffset } : {}),
     materials: cards.map((card, index) => ({
       card,
       ownerId: materials[index].ownerId,
@@ -315,6 +336,34 @@ export function createPublicCardEffectFrameView(
     })),
     accessibleLabel: `${copy.title.trim()} ${effect.effectClass.toLowerCase()} frame. Material cards: ${materialsAccessibleLabel}. ${copy.accessibleLabel.trim()}`,
   };
+}
+
+/** Renders the public title using the layout already validated for this Frame. */
+export function PublicCardEffectFrameTitle({ frame, lustCostFrame = false }: {
+  frame: PublicCardEffectFrameView;
+  lustCostFrame?: boolean;
+}) {
+  return <strong className={`public-card-effect-frame-title${lustCostFrame ? " public-card-lust-cost-frame-title" : ""}${frame.titlePresentation === "compact-single-line" ? " is-compact-single-line" : ""}`}>
+    {frame.titlePresentation === "compact-single-line"
+      ? <span className="public-card-effect-frame-title-line">{frame.title}</span>
+      : frame.titleParts ? <>
+      <span className="public-card-effect-frame-title-line">
+        {frame.titleParts.skillName}{frame.titleParts.effectLabel ? <span className="public-card-effect-frame-title-separator">{" · "}</span> : null}
+      </span>
+      {frame.titleParts.effectLabel
+        ? <span className="public-card-effect-frame-title-line is-effect">{frame.titleParts.effectLabel}</span>
+        : null}
+    </> : <span className="public-card-effect-frame-title-line">{frame.title}</span>}
+  </strong>;
+}
+
+export function PublicCardEffectFrameMaterialCount({ frame, materialCount }: {
+  frame: PublicCardEffectFrameView;
+  materialCount: number;
+}) {
+  return materialCount > 1 && frame.showMaterialCount !== false
+    ? <small className="public-card-effect-frame-count">{materialCount} MATERIAL CARDS</small>
+    : null;
 }
 
 /** A public, proof-backed event with no physical card face or card anchor. */
@@ -583,17 +632,8 @@ function PublicJourneyCard({
         opacity: card.phase === "move" ? 0 : 1,
       }}
     >
-      <strong className={`public-card-effect-frame-title${lustCostFrame ? " public-card-lust-cost-frame-title" : ""}`}>
-        {publicCardEffectFrame.titleParts ? <>
-          <span className="public-card-effect-frame-title-line">
-            {publicCardEffectFrame.titleParts.skillName}{publicCardEffectFrame.titleParts.effectLabel ? <span className="public-card-effect-frame-title-separator">{" · "}</span> : null}
-          </span>
-          {publicCardEffectFrame.titleParts.effectLabel
-            ? <span className="public-card-effect-frame-title-line is-effect">{publicCardEffectFrame.titleParts.effectLabel}</span>
-            : null}
-        </> : <span className="public-card-effect-frame-title-line">{publicCardEffectFrame.title}</span>}
-      </strong>
-      {frameMaterials.length > 1 && <small className="public-card-effect-frame-count">{frameMaterials.length} MATERIAL CARDS</small>}
+      <PublicCardEffectFrameTitle frame={publicCardEffectFrame} lustCostFrame={Boolean(lustCostFrame)} />
+      <PublicCardEffectFrameMaterialCount frame={publicCardEffectFrame} materialCount={frameMaterials.length} />
       <span
         className="public-card-effect-frame-materials"
         data-public-card-frame-grid-columns={frameLayout.columns}
@@ -692,12 +732,6 @@ const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
-// Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
-// borders. Used only before the mounted announcement can be measured.
-const PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 46;
-// A single 15px line plus mobile padding and borders, used to reserve a
-// compact-copy position when the full sentence cannot fit above the card.
-const COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 32;
 const PUBLIC_CARD_ANNOUNCEMENT_GAP = 7;
 const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
@@ -744,6 +778,7 @@ type BattlefieldCenterCardSafety = {
   respectFixedUpperH4?: boolean;
   fixedPublicBands?: boolean;
   stationarySurface?: PublicStageStationarySurface;
+  preferredEffectFrameTopOffset?: number;
 };
 type ProtectedBattlefieldCenterCardSafety = BattlefieldCenterCardSafety & { requireProtectedClearance: true };
 
@@ -759,11 +794,6 @@ function battlefieldCenterCard(
     : boundCardRect((window.innerWidth - size.width) / 2, (window.innerHeight - size.height) / 2, size.width, size.height);
   const bounds = table.getBoundingClientRect();
   if (safety.fixedPublicBands || safety.respectFixedUpperH4) {
-    const announcement = table.querySelector<HTMLElement>("[data-public-card-announcement='true']");
-    const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-    const h4Band = fixedPublicH4Band(table, announcement);
-    const pacBand = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance,
-      table.querySelector<HTMLElement>("[data-public-activity-chip='true']")) : null;
     const viewport = window.visualViewport;
     const viewportLeft = viewport?.offsetLeft ?? 0;
     const viewportTop = viewport?.offsetTop ?? 0;
@@ -773,57 +803,44 @@ function battlefieldCenterCard(
     const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8, viewportRight - 8);
     const safeTop = Math.max(8, bounds.top + 8, viewportTop + 8);
     const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
-    if (!h4Band || !pacBand || safeRight - safeLeft < size.width) return null;
-    const bandClearance = publicStageBandClearance(safety.stationarySurface);
-    const laneTop = Math.max(safeTop, h4Band.bottom + bandClearance);
-    const laneBottom = Math.min(safeBottom, pacBand.top - bandClearance);
+    if (safeRight - safeLeft < size.width) return null;
     const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
-    const top = laneTop + (laneBottom - laneTop - size.height) / 2;
-    if (laneBottom - laneTop < size.height) return null;
+    const fixedFrameLaneTop = safety.stationarySurface === "effect-frame"
+      ? (() => {
+        const h4Reserve = fixedPublicH4Band(table);
+        const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+        const pacReserve = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance) : null;
+        return h4Reserve && pacReserve
+          ? publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, size.height, safety.preferredEffectFrameTopOffset ?? 0)
+          : null;
+      })()
+      : null;
+    const preferredTop = Math.max(safeTop, Math.min(safeBottom - size.height,
+      fixedFrameLaneTop ?? bounds.top + (bounds.height - size.height) / 2));
+    if (safeBottom - safeTop < size.height) return null;
     const obstacles = [...document.querySelectorAll<HTMLElement>(
       ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .interaction-stage-dying, .dying-handoff-compact, .card-pool-target-stage, .battlefield-choice-stage, .local-player-dock, .local-hand-rail, .local-hand, .console-guidance",
     )].filter((element) => {
       const style = window.getComputedStyle(element);
       return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0;
     }).map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-    const maxLeft = safeRight - size.width;
-    const maxTop = laneBottom - size.height;
-    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-    const lefts = new Set([preferredLeft]);
-    const tops = new Set([top]);
-    for (const rect of obstacles) {
-      lefts.add(clamp(rect.left - size.width - 8, safeLeft, maxLeft));
-      lefts.add(clamp(rect.right + 8, safeLeft, maxLeft));
-      tops.add(clamp(rect.top - size.height - 8, laneTop, maxTop));
-      tops.add(clamp(rect.bottom + 8, laneTop, maxTop));
-    }
-    const candidates = [...lefts].flatMap((left) => [...tops].map((candidateTop) => ({
-      left, top: candidateTop,
-      distance: Math.abs(left - preferredLeft) + Math.abs(candidateTop - top),
-    }))).sort((first, second) => first.distance - second.distance || first.top - second.top || first.left - second.left);
-    const selected = candidates.find(({ left, top: candidateTop }) => obstacles.every((rect) =>
-      left + size.width <= rect.left || left >= rect.right || candidateTop + size.height <= rect.top || candidateTop >= rect.bottom));
-    if (!selected) return null;
-    return { left: selected.left, top: selected.top, width: size.width, height: size.height };
+    const cardRect = { left: preferredLeft, top: preferredTop, right: preferredLeft + size.width, bottom: preferredTop + size.height };
+    const intersects = (rect: DOMRect) => cardRect.left < rect.right && cardRect.right > rect.left
+      && cardRect.top < rect.bottom && cardRect.bottom > rect.top;
+    if (cardRect.left < safeLeft || cardRect.right > safeRight || cardRect.top < safeTop || cardRect.bottom > safeBottom
+      || obstacles.some(intersects)) return null;
+    return { left: preferredLeft, top: preferredTop, width: size.width, height: size.height };
   }
   const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
   const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
-  const fixedUpperH4 = safety.respectFixedUpperH4
-    ? table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']")
-    : null;
-  const fixedUpperH4Rect = fixedUpperH4?.getBoundingClientRect();
-  const requiredTop = fixedUpperH4Rect && fixedUpperH4Rect.width > 0 && fixedUpperH4Rect.height > 0
-    ? fixedUpperH4Rect.bottom + 8
-    : null;
   const obstacles = [...document.querySelectorAll<HTMLElement>(
     ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
   if (safety.requireProtectedClearance || safety.respectFixedUpperH4) {
     const protectedSelectors = [
-      ".public-activity-chip", ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
+      ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
       ".interaction-stage-dying", ".dying-handoff-compact", ".card-pool-target-stage", ".battlefield-choice-stage",
       ".local-player-dock", ".local-hand-rail", ".local-hand", ".console-guidance",
-      ".public-card-display-journey-copy", "[data-public-card-announcement='true']",
     ].join(", ");
     for (const element of document.querySelectorAll<HTMLElement>(protectedSelectors)) {
       const style = window.getComputedStyle(element);
@@ -845,7 +862,6 @@ function battlefieldCenterCard(
       if (reserved) obstacles.push(new DOMRect(reserved.left, reserved.top, reserved.width, reserved.height));
     }
   }
-  const announcementWidth = publicH4WidthLimit(window.innerWidth, bounds.width - 16, bounds.width - 16);
   const offsets: Array<[number, number]> = [[0, 0]];
   for (let distance = 8; distance <= 200; distance += 8) {
     offsets.push([0, -distance], [0, distance]);
@@ -859,40 +875,9 @@ function battlefieldCenterCard(
     width: size.width,
     height: size.height,
   }));
-  if (requiredTop !== null) {
-    const pac = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
-    const pacStyle = pac ? window.getComputedStyle(pac) : null;
-    const pacRect = pac?.getBoundingClientRect();
-    const lowerEdge = pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden"
-      && pacRect.width > 0 && pacRect.height > 0 ? Math.min(bounds.bottom, pacRect.top - 8) : bounds.bottom - 8;
-    const minimum = Math.max(bounds.top + 8, requiredTop);
-    if (lowerEdge - minimum >= size.height) {
-      candidates.unshift({
-        left: preferredLeft,
-        top: minimum + (lowerEdge - minimum - size.height) / 2,
-        width: size.width,
-        height: size.height,
-      });
-    }
-  }
-  // Eight-pixel stepping can miss the only safe fit on short screens by a
-  // fraction of a pixel: the full sentence may fit below the Hero row while
-  // the next stepped card position falls just past the battlefield's bottom.
-  // Add exact card positions derived from obstacle edges so the announcement
-  // can clear those edges without forcing the layout into its overlap fallback.
-  const boundaryCandidateTops = obstacles.flatMap((obstacle) => [
-    obstacle.bottom + PUBLIC_CARD_ANNOUNCEMENT_HEIGHT + PUBLIC_CARD_ANNOUNCEMENT_GAP + 2,
-    obstacle.bottom + COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT + PUBLIC_CARD_ANNOUNCEMENT_GAP + 2,
-    obstacle.top - size.height - 8,
-  ]);
-  for (const top of boundaryCandidateTops) {
-    if (candidates.some((candidate) => Math.abs(candidate.top - top) < 0.5 && candidate.left === preferredLeft)) continue;
-    candidates.push({ left: preferredLeft, top, width: size.width, height: size.height });
-  }
   const cardFits = (candidate: CardRect) => candidate.left >= bounds.left + 8
       && candidate.left + candidate.width <= bounds.right - 8
       && candidate.top >= bounds.top + 8
-      && (requiredTop === null || candidate.top >= requiredTop)
       && candidate.top + candidate.height <= bounds.bottom
       && candidate.left >= 8
       && candidate.left + candidate.width <= window.innerWidth - 8
@@ -902,25 +887,7 @@ function battlefieldCenterCard(
         || candidate.left - 8 >= obstacle.right
         || candidate.top + candidate.height + 8 <= obstacle.top
         || candidate.top - 8 >= obstacle.bottom);
-  const fitsFullWidthAnnouncement = (candidate: CardRect, height: number) => {
-    const announcement = {
-      left: candidate.left + candidate.width / 2 - announcementWidth / 2,
-      top: candidate.top - height - PUBLIC_CARD_ANNOUNCEMENT_GAP,
-      width: announcementWidth,
-      height,
-    };
-    return announcement.left >= bounds.left + 8
-      && announcement.left + announcement.width <= bounds.right - 8
-      && announcement.top >= bounds.top + 8
-      && announcement.left >= 8
-      && announcement.left + announcement.width <= window.innerWidth - 8
-      && obstacles.every((obstacle) => !rectsOverlap(announcement, obstacle, 2));
-  };
-  const safe = candidates.find((candidate) => cardFits(candidate)
-      && fitsFullWidthAnnouncement(candidate, PUBLIC_CARD_ANNOUNCEMENT_HEIGHT))
-    ?? candidates.find((candidate) => cardFits(candidate)
-      && fitsFullWidthAnnouncement(candidate, COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT))
-    ?? candidates.find(cardFits);
+  const safe = candidates.find(cardFits);
   return safe ?? (safety.requireProtectedClearance ? null : boundCardRect(preferredLeft, preferredTop, size.width, size.height));
 }
 
@@ -1035,6 +1002,7 @@ function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): Ca
     respectFixedUpperH4: true,
     fixedPublicBands: true,
     stationarySurface: "effect-frame",
+    preferredEffectFrameTopOffset: frame?.preferredLaneTopOffset ?? 0,
   });
   if (!safeFrame) return null;
   return {
@@ -1126,9 +1094,17 @@ function hasPaintedLargePublicEffectFrame(
   frame: PublicCardEffectFrameView,
   identity: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
   element: HTMLElement,
+  onFailure?: (reason: string) => void,
 ): boolean {
+  const fail = (reason: string) => {
+    onFailure?.(reason);
+    return false;
+  };
   const table = element.closest<HTMLElement>(".play-table");
-  const shared = table ? committedPublicStageLayout(table) : null;
+  if (!table) return fail("missing-play-table");
+  const shared = committedPublicStageLayout(table);
+  if (!shared) return fail("missing-shared-layout");
+  if (!shared.revealReady) return fail("shared-reveal-not-ready");
   const expectedCardIds = frame.materials.map(({ card }) => card.id).join(",");
   const expectedOwnerIds = frame.materials.map(({ ownerId }) => ownerId ?? "deck").join(",");
   const panels = [...element.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")];
@@ -1139,10 +1115,8 @@ function hasPaintedLargePublicEffectFrame(
   const announcement = display && shared ? [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
     .find((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared?.announcementEventId
       && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : null;
-  const activityChip = table?.querySelector<HTMLElement>("[data-public-activity-chip='true']") ?? null;
-  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-  if (!table || !shared?.revealReady || !panel || !footprint
-    || !display || !announcement || !consoleGuidance
+  if (!panel || !footprint
+    || !display || !announcement
     || frame.eventId !== eventId
     || element.dataset.publicCardJourneyEventId !== eventId
     || element.dataset.publicCardJourneyCardIds !== expectedCardIds
@@ -1166,56 +1140,46 @@ function hasPaintedLargePublicEffectFrame(
       primaryCardId: shared.primaryCardId,
       announcementEventId: shared.announcementEventId,
       announcementAnchorEventId: shared.announcementAnchorEventId,
-    })) return false;
+    })) return fail("frame-or-h4-public-identity-mismatch");
 
   const primaryRect = element.getBoundingClientRect();
   const visualRect = footprint.rect;
   const layoutCard = shared.layout.card;
   const announcementStyle = window.getComputedStyle(announcement);
-  const announcementRect = announcement.getBoundingClientRect();
-  const announcementTarget = shared.layout.announcement;
-  const pacBand = fixedPublicActivityBand(table, consoleGuidance, activityChip);
-  const h4Band = fixedPublicH4Band(table, announcement);
-  const pacStyle = activityChip ? window.getComputedStyle(activityChip) : null;
-  const pacRect = activityChip?.getBoundingClientRect();
-  const activityTarget = shared.layout.activity;
-  const pacVisibleAndSafe = !activityChip || Boolean(pacStyle && pacRect
-    && pacStyle.display !== "none" && pacStyle.visibility !== "hidden" && Number(pacStyle.opacity) > 0
-    && pacRect.width > 0 && pacRect.height > 0
-    && pacRect.left >= activityTarget.left - 1 && pacRect.right <= activityTarget.right + 1
-    && pacRect.top >= activityTarget.top - 1 && pacRect.bottom <= activityTarget.bottom + 1
-    && Math.abs(pacRect.bottom - consoleGuidance.getBoundingClientRect().top) <= 2);
+  const announcementPaint = measuredPublicH4PaintRect(announcement);
   const visibleViewport = window.visualViewport;
   const viewportLeft = visibleViewport?.offsetLeft ?? 0;
   const viewportTop = visibleViewport?.offsetTop ?? 0;
   const viewportRight = viewportLeft + (visibleViewport?.width ?? window.innerWidth);
   const viewportBottom = viewportTop + (visibleViewport?.height ?? window.innerHeight);
-  const clearance = publicStageBandClearance("effect-frame");
+  const tableRect = table.getBoundingClientRect();
   const withinOnePixel = (left: number, right: number) => Math.abs(left - right) <= 1;
-  return element.isConnected && element.getClientRects().length > 0
-    && primaryStyle.display !== "none" && primaryStyle.visibility !== "hidden" && Number(primaryStyle.opacity) > 0
-    && announcement.isConnected && announcement.getClientRects().length > 0
-    && announcementStyle.display !== "none" && announcementStyle.visibility !== "hidden" && Number(announcementStyle.opacity) > 0
-    && announcement.dataset.publicCardAnnouncementPositioned === "true"
-    && withinOnePixel(announcementRect.left, announcementTarget.left)
-    && withinOnePixel(announcementRect.top, announcementTarget.top)
-    && withinOnePixel(announcementRect.right, announcementTarget.right)
-    && pacVisibleAndSafe && Boolean(pacBand && h4Band)
-    && withinOnePixel(primaryRect.width, REVEAL_CARD.width) && withinOnePixel(primaryRect.height, REVEAL_CARD.height)
-    && withinOnePixel(visualRect.left, layoutCard.left) && withinOnePixel(visualRect.top, layoutCard.top)
-    && withinOnePixel(visualRect.right, layoutCard.right) && withinOnePixel(visualRect.bottom, layoutCard.bottom)
-    && visualRect.left >= viewportLeft && visualRect.top >= viewportTop
-    && visualRect.right <= viewportRight && visualRect.bottom <= viewportBottom
-    && publicStageMeasuredBandClearanceSatisfied({
-      visual: visualRect,
-      upperBands: [h4Band!, rectOfAnnouncement(announcementRect)],
-      lowerBands: [pacBand!, ...(pacRect ? [rectOfAnnouncement(pacRect)] : [])],
-      minimumGap: clearance,
-    });
-}
-
-function rectOfAnnouncement(rect: DOMRect): { left: number; top: number; right: number; bottom: number } {
-  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  if (!consoleGuidance) return fail("missing-console-boundary");
+  const consoleStyle = window.getComputedStyle(consoleGuidance);
+  const consoleRect = consoleGuidance.getBoundingClientRect();
+  if (consoleStyle.display === "none" || consoleStyle.visibility === "hidden" || Number(consoleStyle.opacity) <= 0
+    || consoleRect.width <= 0 || consoleRect.height <= 0) return fail("console-boundary-not-paint-enabled");
+  const consoleTop = consoleRect.top;
+  if (!element.isConnected || element.getClientRects().length === 0
+    || primaryStyle.display === "none" || primaryStyle.visibility === "hidden" || Number(primaryStyle.opacity) <= 0) {
+    return fail("frame-not-paint-enabled");
+  }
+  if (!announcement.isConnected || announcement.getClientRects().length === 0
+    || announcementStyle.display === "none" || announcementStyle.visibility === "hidden"
+    || Number(announcementStyle.opacity) <= 0 || !announcementPaint) return fail("matching-h4-not-paint-enabled");
+  if (!withinOnePixel(primaryRect.width, REVEAL_CARD.width) || !withinOnePixel(primaryRect.height, REVEAL_CARD.height)) {
+    return fail("card-face-size-mismatch");
+  }
+  if (!withinOnePixel(visualRect.left, layoutCard.left) || !withinOnePixel(visualRect.top, layoutCard.top)
+    || !withinOnePixel(visualRect.right, layoutCard.right) || !withinOnePixel(visualRect.bottom, layoutCard.bottom)) {
+    return fail("frame-not-at-canonical-anchor");
+  }
+  if (visualRect.left < Math.max(viewportLeft, tableRect.left)
+    || visualRect.right > Math.min(viewportRight, tableRect.right)
+    || visualRect.top < Math.max(viewportTop, tableRect.top)
+    || visualRect.bottom > Math.min(viewportBottom, tableRect.bottom, consoleTop)) return fail("frame-outside-safe-scene");
+  return true;
 }
 
 function hasPaintedLargePublicCard(
@@ -1223,23 +1187,100 @@ function hasPaintedLargePublicCard(
   size: Pick<CardRect, "width" | "height">,
   effectFrame?: PublicCardEffectFrameView,
   identity?: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
+  onFailure?: (reason: string) => void,
 ) {
   const elements = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
     .filter((candidate) => candidate.dataset.publicCardJourneyEventId === eventId);
-  if (elements.length !== 1) return false;
+  if (elements.length !== 1) {
+    onFailure?.(elements.length === 0 ? "missing-card-node" : "ambiguous-card-nodes");
+    return false;
+  }
   const element = elements[0];
   if (effectFrame || identity) return Boolean(effectFrame && identity
-    && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element));
+    && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element, onFailure));
   const face = element?.querySelector<HTMLElement>(".played-card");
   const rect = element?.getBoundingClientRect();
   const elementStyle = element ? window.getComputedStyle(element) : null;
   const faceStyle = face ? window.getComputedStyle(face) : null;
-  return Boolean(element && face && rect && elementStyle && faceStyle
+  const painted = Boolean(element && face && rect && elementStyle && faceStyle
     && element.isConnected && element.getClientRects().length > 0
     && elementStyle.display !== "none" && elementStyle.visibility !== "hidden" && Number(elementStyle.opacity) > 0
     && faceStyle.display !== "none" && faceStyle.visibility !== "hidden" && Number(faceStyle.opacity) > 0
     && Math.abs(rect.width - size.width) < 1 && Math.abs(rect.height - size.height) < 1
     && rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight);
+  if (!painted) onFailure?.("card-face-not-paint-enabled");
+  return painted;
+}
+
+function observeUntilPublicCardFirstPaint(table: HTMLElement | null, check: () => boolean): () => void {
+  let stopped = false;
+  let scheduled = false;
+  let firstFrame = 0;
+  let secondFrame = 0;
+  const observedSizes = new Set<Element>();
+  const relevantSelector = ".public-card-display, .public-card-journey-card, .public-card-effect-frame-panel, .public-card-display-journey-copy, [data-public-activity-chip='true'], .console-guidance";
+  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => schedule());
+  const observeCurrentNodes = () => {
+    if (!table || !resizeObserver) return;
+    const nodes: Element[] = [table, ...table.querySelectorAll(relevantSelector)];
+    for (const node of nodes) {
+      if (observedSizes.has(node)) continue;
+      observedSizes.add(node);
+      resizeObserver.observe(node);
+    }
+  };
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    if (firstFrame) window.cancelAnimationFrame(firstFrame);
+    if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    mutationObserver?.disconnect();
+    resizeObserver?.disconnect();
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.visualViewport?.removeEventListener("resize", schedule);
+    window.visualViewport?.removeEventListener("scroll", schedule);
+  };
+  const runCheck = () => {
+    scheduled = false;
+    if (stopped || document.visibilityState !== "visible") return;
+    if (check()) stop();
+  };
+  function schedule() {
+    if (stopped || scheduled) return;
+    scheduled = true;
+    observeCurrentNodes();
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(runCheck);
+    });
+  }
+  function onVisibilityChange() {
+    if (document.visibilityState === "visible") schedule();
+  }
+  const mutationObserver = typeof MutationObserver === "undefined" || !table ? null : new MutationObserver((records) => {
+    const relevant = records.some((record) => {
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (target === table) {
+        if (record.type === "attributes") return ["data-public-stage-layout-status", "data-public-stage-layout-phase", "data-public-stage-layout-identity"].includes(record.attributeName ?? "");
+        return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
+          && (node.matches(relevantSelector) || Boolean(node.querySelector(relevantSelector))));
+      }
+      return Boolean(target?.closest(relevantSelector));
+    });
+    if (!relevant) return;
+    observeCurrentNodes();
+    schedule();
+  });
+  observeCurrentNodes();
+  mutationObserver?.observe(table!, { attributes: true, childList: true, subtree: true, characterData: true });
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  window.visualViewport?.addEventListener("resize", schedule);
+  window.visualViewport?.addEventListener("scroll", schedule);
+  schedule();
+  return stop;
 }
 
 function renderedJourneyCardRect(eventId: string): CardRect | null {
@@ -2175,22 +2216,9 @@ function settlementLabel(action: PublicCardDisplayAction, targetName: string | n
   }
 }
 
-function compactPublicNotice(notice: string, actorName: string | null) {
-  const deflection = notice.trim().match(/^.+? used Deflection, discarding (.+?) and redirecting Attack to (.+?)[.!?]?$/i);
-  if (deflection) return `Deflection: ${actorName ?? "A player"} redirected Attack to ${deflection[2]}; discarded ${deflection[1]}.`;
-
-  const playedTarget = notice.trim().match(/^.+? played (.+?) targeting (.+?)[.!?]?$/i);
-  if (playedTarget) return `${actorName ?? "A player"} played ${playedTarget[1]} on ${playedTarget[2]}.`;
-
-  const usedTarget = notice.trim().match(/^.+? used (.+?) targeting (.+?)[.!?]?$/i);
-  if (usedTarget) return `${actorName ?? "A player"} used ${usedTarget[1]} on ${usedTarget[2]}.`;
-
-  return notice.trim();
-}
-
 export function publicCardAnnouncement(
   action: PublicCardDisplayAction,
-  notice: string,
+  _notice: string,
   actorName: string | null,
   sourceName: string | null,
   targetName: string | null,
@@ -2199,38 +2227,43 @@ export function publicCardAnnouncement(
   const source = sourceName ?? "A player";
   const target = targetName ?? "the target";
   const actor = actorName ?? targetName ?? "The target";
-  const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+  const publicCardKind = action.cardKind ?? action.cardFace?.kind;
+  const cardName = publicCardKind ? publicH4CardKindReference(publicCardKind) : "a card";
   const targetCardMovement = action.settlement?.targetCardMovement;
   const targetCardSourceZone = targetCardMovement?.sourceZone === "hand" ? "Hand"
     : targetCardMovement?.sourceZone === "equipment" ? "Equipment"
       : targetCardMovement?.sourceZone === "judgement" ? "Judgement" : null;
   const targetCardFace = targetCardMovement?.affectedCardFace;
   const targetCardName = targetCardFace
-    ? cardDefinition(targetCardFace.kind).name
+    ? publicH4CardFaceReference(targetCardFace) ?? "a public card"
     : "one card";
   const dismantleFaceCopy = publicDismantleCardFaceCopy(action, sourceName, targetName, action.settlement?.eventId);
 
   if ((action.cardKind === "BumperHarvest" || action.cardFace?.kind === "BumperHarvest")
     && action.motion?.type === "negation" && !action.publicNegationNarration) {
-    return action.ariaLabel;
+    return `${source} played ${publicH4CardKindReference("BumperHarvest")}.`;
   }
 
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
-      return targetName ? `${targetName} took damage from ${source}'s Attack.` : notice;
+      return targetName ? `${targetName} took damage from ${source}'s ${publicH4CardKindReference("Attack")}.`
+        : `${source} resolved ${publicH4CardKindReference("Attack")}.`;
     case "ATTACK_BLOCKED_BY_DODGE":
       return action.response?.semanticLabel === "AS DODGE"
-        ? `${actor} used Attack as Dodge against ${source}'s Attack.`
-        : `${actor} played Dodge against ${source}'s Attack.`;
+        ? `${actor} used ${publicH4CardKindReference("Attack")} as ${publicH4CardKindReference("Dodge")} against ${source}'s ${publicH4CardKindReference("Attack")}.`
+        : `${actor} played ${publicH4CardKindReference("Dodge")} against ${source}'s ${publicH4CardKindReference("Attack")}.`;
     case "SUITS_MATCHED":
     case "SUITS_DIFFERED":
-      return `${source} used ${cardName} on ${target}; suits ${outcome === "SUITS_MATCHED" ? "matched" : "differed"}.`;
+      return publicCardKind
+        ? `${source} used ${cardName} on ${target}; suits ${outcome === "SUITS_MATCHED" ? "matched" : "differed"}.`
+        : action.ariaLabel;
     case "GROUP_RESOLVED":
     case "BUMPER_HARVEST_RESOLVED": {
-      const count = action.ariaLabel.match(/(\d+)\s+(targets|choices) resolved/i);
-      return count
-        ? `${source} played ${cardName}; ${count[1]} ${count[2].toLowerCase()} resolved.`
-        : compactPublicNotice(action.ariaLabel, actorName);
+      if (!publicCardKind) return "A public group effect resolved.";
+      const resolved = action.publicResolvedCount;
+      const resolutionCopy = resolved && Number.isSafeInteger(resolved.count) && resolved.count >= 0
+        ? `. ${resolved.count} ${resolved.noun} resolved.` : ".";
+      return `${source} played ${cardName}${resolutionCopy}`;
     }
     case "DISMANTLE_RESOLVED":
       return dismantleFaceCopy?.message ?? `${source} resolved ${cardName} on ${target}.`;
@@ -2251,11 +2284,13 @@ export function publicCardAnnouncement(
       }
       return `${source} resolved ${cardName} on ${target}.`;
     case "ROOT_CANCELLED":
-      return `${actor}'s Negation cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+      return `${actor}'s ${publicH4CardKindReference("Negation")} cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     case "ROOT_RESTORED":
-      return `${actor}'s Negation restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+      return `${actor}'s ${publicH4CardKindReference("Negation")} restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     default:
-      return settlementLabel(action, targetName) ?? compactPublicNotice(notice, actorName);
+      return settlementLabel(action, targetName) ?? (publicCardKind
+        ? targetName ? `${source} played ${cardName} on ${targetName}.` : `${source} played ${cardName}.`
+        : "A public effect resolved.");
   }
 }
 
@@ -2268,7 +2303,7 @@ function publicTargetCardSettlementAccessibleLabel(
   const source = sourceName ?? "A player";
   const target = targetName ?? "the target";
   const face = movement?.affectedCardFace;
-  const faceDescription = face ? `${cardDefinition(face.kind).name} (${face.rank}${face.suit})` : null;
+  const faceDescription = face ? publicH4CardFaceReference(face) : null;
   const zone = movement?.sourceZone === "hand" ? "Hand"
     : movement?.sourceZone === "equipment" ? "Equipment"
       : movement?.sourceZone === "judgement" ? "Judgement" : null;
@@ -2354,10 +2389,12 @@ export function PublicDismantleCardFaceH4({ copy }: { copy: PublicDismantleCardF
       data-card-id={copy.cardId}
       aria-hidden="true"
     >
+      {"["}
       <span className={`public-dismantle-card-suit-rank ${copy.suit === "♥" || copy.suit === "♦" ? "is-red" : "is-black"}`}>
-        {copy.suit}{copy.rank}
+        {copy.rank}{copy.suit}
       </span>
       <strong className="public-dismantle-card-name">{copy.name}</strong>
+      {"]"}
     </span>
     <PublicH4Text message={copy.suffix} segments={copy.suffixSegments} />
   </>;
@@ -2414,7 +2451,9 @@ function publicDismantleCardFaceCopy(
   const zone = movement.sourceZone === "hand" ? "Hand" : movement.sourceZone === "equipment" ? "Equipment" : "Judgement";
   const prefix = `${source} discarded `;
   const suffix = ` from ${target} (${zone}).`;
-  const message = `${prefix}${face.suit}${rank ?? ""} ${name}${suffix}`;
+  const faceReference = publicH4CardFaceReference(face);
+  if (!faceReference) return undefined;
+  const message = `${prefix}${faceReference}${suffix}`;
   const prefixCopy = sourceName && settlement.sourceId === action.sourceId
     ? publicH4Copy([{ id: settlement.sourceId, name: sourceName }, " discarded "])
     : undefined;
@@ -2448,17 +2487,19 @@ function publicCardPlayerSegments(action: PublicCardDisplayAction, message: stri
   const actor = actorName && actorId ? { id: actorId, name: actorName } : null;
   const sentences: ReturnType<typeof publicH4Copy>[] = [];
   if (source) {
-    const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
-    sentences.push(publicH4Copy([source, " played ", cardName, "."]));
+    const publicCardKind = action.cardKind ?? action.cardFace?.kind;
+    const typedCardName = publicCardKind ? publicH4CardKindReference(publicCardKind) : "a card";
+    sentences.push(publicH4Copy([source, " played ", typedCardName, "."]));
     if (target) {
-      sentences.push(publicH4Copy([source, " played ", cardName, " on ", target, "."]));
-      sentences.push(publicH4Copy([source, " played ", cardName, " targeting ", target, "."]));
+      sentences.push(publicH4Copy([source, " played ", typedCardName, " on ", target, "."]));
+      sentences.push(publicH4Copy([source, " played ", typedCardName, " targeting ", target, "."]));
       if (action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED")
-        sentences.push(publicH4Copy([target, " took damage from ", source, "'s Attack."]));
+        sentences.push(publicH4Copy([target, " took damage from ", source, "'s ", publicH4CardKindReference("Attack"), "."]));
     }
     if (actor && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE")
       sentences.push(publicH4Copy([actor, action.response?.semanticLabel === "AS DODGE"
-        ? " used Attack as Dodge against " : " played Dodge against ", source, "'s Attack."]));
+        ? ` used ${publicH4CardKindReference("Attack")} as ${publicH4CardKindReference("Dodge")} against `
+        : ` played ${publicH4CardKindReference("Dodge")} against `, source, "'s ", publicH4CardKindReference("Attack"), "."]));
   }
   return sentences.find((copy) => copy.message === message)?.segments;
 }
@@ -2494,9 +2535,9 @@ export function publicCardAnnouncementCopy(
     && action.settlement.publicOutcomeMessage && action.sourceId && sourceName
     && action.targetId && targetName && action.response?.actorId && action.response.actorName
     ? publicH4Copy([
-      { id: action.sourceId, name: sourceName }, "'s Attack on ",
+      { id: action.sourceId, name: sourceName }, "'s ", publicH4CardKindReference("Attack"), " on ",
       { id: action.targetId, name: targetName }, " was blocked by ",
-      { id: action.response.actorId, name: action.response.actorName }, "'s Dodge.",
+      { id: action.response.actorId, name: action.response.actorName }, "'s ", publicH4CardKindReference("Dodge"), ".",
     ])
     : undefined;
   if (blockedAttackCopy && blockedAttackCopy.message === action.settlement?.publicOutcomeMessage) {
@@ -2540,8 +2581,7 @@ export function publicCardAnnouncementCopy(
         const compact = compactLustDuelAttackMessage(responseActorName, response.targetName);
         return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact ?? compact ?? notice, accessibleLabel: notice };
       }
-      const compact = compactPublicNotice(notice, responseActorName);
-      return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact ?? (compact === notice ? undefined : compact), accessibleLabel: notice };
+      return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact, accessibleLabel: notice };
     }
     return {
       message: action.lustCostFrame.message,
@@ -3229,6 +3269,41 @@ function PublicCardAnnouncement({
             copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
           ],
         }));
+      if (sharedStageCandidate && sharedTable && (phase === "reveal" || phase === "move")) {
+        // Keep the independently anchored factual H4 paint-enabled while the
+        // same-event shared card geometry is being measured. Passive card/H4
+        // intersections and parked-slot reservations never suppress copy.
+        const tableBounds = sharedTable.getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+        const viewportTop = window.visualViewport?.offsetTop ?? 0;
+        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
+        const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
+        const band = fixedPublicH4Band(sharedTable);
+        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
+        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const width = Math.max(1, Math.min(band?.width ?? tableBounds.width - 16, safeRight - safeLeft));
+        const left = band && width >= band.width - 1 ? band.left : (safeLeft + safeRight - width) / 2;
+        const top = upper?.top ?? band?.top ?? Math.max(tableBounds.top + 8, viewportTop + 8);
+        setPx("left", left);
+        setPx("top", top);
+        setPx("width", width);
+        if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
+        setData("data-public-stage-layout-identity", undefined);
+        setData("data-public-card-announcement-positioned", "true");
+        setData("data-public-card-announcement-fixed-upper", "true");
+        setData("data-public-card-announcement-fixed-upper-top", `${Math.round(top * 2) / 2}`);
+        setData("data-public-card-announcement-width", `${Math.round(width)}`);
+        setData("data-public-card-announcement-placement", "independent-upper-anchor-shared-pending");
+        setData("data-public-card-announcement-stability", "canonical-anchor-during-shared-measurement");
+        setDelivery("VISIBLE", currentEventCopyKey);
+        const rect = copy.getBoundingClientRect();
+        reportH4Placement({
+          geometryEpoch: null, obstacleIds: [], decision: "reuse", reason: "canonical-upper-anchor-shared-layout-pending",
+          compact: copy.dataset.publicCardAnnouncementCompact === "true",
+          rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, visible: true,
+        });
+        return;
+      }
       if (sharedStageCandidate && sharedTable && copy.style.visibility === "visible") {
         // A measured viewport reflow can briefly outpace the shared context.
         // Keep the same committed copy visible only after validating its new
@@ -3245,18 +3320,22 @@ function PublicCardAnnouncement({
           setPx("top", upper.top);
           setPx("width", width);
           const rect = copy.getBoundingClientRect();
-          const currentCard = display.querySelector<HTMLElement>('.public-card-journey-card[data-public-card-journey-phase="reveal"]');
-          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".player-square, .public-activity-chip, .visible-countdown, .stage-system-cluster, .card-pool-target-stage")];
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")];
           const collision = (element: HTMLElement) => {
             const style = window.getComputedStyle(element);
             const other = element.getBoundingClientRect();
-            return style.display !== "none" && style.visibility !== "hidden" && other.width > 0 && other.height > 0
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && other.width > 0 && other.height > 0
               && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
           };
-          const cardRect = currentCard?.getBoundingClientRect();
-          const safeCard = !cardRect || cardRect.width <= 0 || rect.bottom + 3 <= cardRect.top;
-          const safeSlots = upper.slots.every(({ rect: slot }) => rect.top >= slot.top + slot.height - 0.5);
-          if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safeCard && safeSlots && !controls.some(collision)) {
+          const tableBottom = Math.min(tableBounds.bottom, (window.visualViewport?.offsetTop ?? 0)
+            + (window.visualViewport?.height ?? window.innerHeight));
+          const consoleTop = document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableBottom;
+          const viewportTop = window.visualViewport?.offsetTop ?? 0;
+          const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
+          const safePaint = rect.top >= viewportTop && rect.bottom <= Math.min(tableBottom, consoleTop, viewportBottom)
+            && upper.slots.every(({ rect: slot }) => rect.right <= slot.left || rect.left >= slot.left + slot.width
+              || rect.bottom <= slot.top || rect.top >= slot.top + slot.height);
+          if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safePaint && !controls.some(collision)) {
             setData("data-public-card-announcement-positioned", "true");
             setData("data-public-card-announcement-fixed-upper", "true");
             setData("data-public-card-announcement-fixed-upper-top", `${Math.round(upper.top * 2) / 2}`);
@@ -5898,23 +5977,57 @@ function SingleTargetCardJourney({
   useEffect(() => {
     if (!journeyEnabled || !documentVisible || journey.scopeKey !== scopeKey || !journey.center || !activeCard || activeCard.phase !== "reveal"
       || activeCard.revealStartedAtMs != null || activeCard.awaitingParkingTarget) return;
-    let firstFrame = 0;
-    let secondFrame = 0;
-    const markFirstPaint = () => {
+    let lastFailureSignature = "";
+    const table = document.querySelector<HTMLElement>(".play-table");
+    const checkFirstPaint = () => {
       const latestAction = actionRef.current;
       const expectedFrame = latestAction.publicCardEffectFrame?.eventId === activeCard.eventId
         ? latestAction.publicCardEffectFrame : undefined;
+      let failureReason = "card-face-not-paint-enabled";
       const safePainted = expectedFrame
         ? hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, expectedFrame, {
           roomId: roomCode,
           rootEventId: latestAction.rootEventId,
           interactionId: latestAction.interactionId,
           viewerId: viewerIdRef.current,
-        })
-        : hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD);
-      if (!documentVisibleRef.current || document.visibilityState !== "visible" || !safePainted) {
-        firstFrame = window.requestAnimationFrame(markFirstPaint);
-        return;
+        }, (reason) => { failureReason = reason; })
+        : hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, undefined, undefined,
+          (reason) => { failureReason = reason; });
+      if (!documentVisibleRef.current || document.visibilityState !== "visible") return false;
+      if (!safePainted) {
+        const shared = table ? committedPublicStageLayout(table) : null;
+        const primary = table ? [...table.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
+          .find((candidate) => candidate.dataset.publicCardJourneyEventId === activeCard.eventId) : null;
+        const footprint = primary && expectedFrame ? publicEffectFrameVisualFootprint(primary) : null;
+        const announcement = shared && table ? [...table.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+          .find((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared.announcementEventId
+            && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : null;
+        const activity = table?.querySelector<HTMLElement>("[data-public-activity-chip='true']") ?? null;
+        const activityStyle = activity ? window.getComputedStyle(activity) : null;
+        const activityRect = activity?.getBoundingClientRect();
+        const signature = JSON.stringify([failureReason, shared?.layout.identity ?? null, shared?.revealReady ?? false,
+          primary?.style.visibility ?? null, footprint?.rect ?? null, announcement?.style.visibility ?? null]);
+        if (isAttackDodgeUxTraceActive() && signature !== lastFailureSignature) {
+          lastFailureSignature = signature;
+          recordAttackDodgeUxTrace("public-stage-reveal-first-paint", {
+            reason: failureReason,
+            eventId: activeCard.eventId,
+            viewerId: viewerIdRef.current,
+            sharedIdentity: shared?.layout.identity ?? null,
+            revealReady: shared?.revealReady ?? false,
+            frame: footprint?.rect ?? (primary ? roundedRect(primary.getBoundingClientRect()) : null),
+            target: shared?.layout.card ?? null,
+            h4Visible: Boolean(announcement && visibleForMeasure(announcement)),
+            pacVisible: Boolean(activity && activityStyle && activityRect && activityStyle.display !== "none"
+              && activityStyle.visibility !== "hidden" && Number(activityStyle.opacity) > 0),
+            pacActual: activity && activityStyle && activityRect && activityStyle.display !== "none"
+              && activityStyle.visibility !== "hidden" && Number(activityStyle.opacity) > 0 ? roundedRect(activityRect) : null,
+            pacTarget: shared?.layout.activity ?? null,
+            timerStatus: activeCard.revealStartedAtMs === null ? "not-started" : "running",
+            remainingMs: activeCard.revealRemainingMs ?? null,
+          });
+        }
+        return false;
       }
       const startedAt = performance.now();
       const startedAtIso = new Date().toISOString();
@@ -5928,11 +6041,14 @@ function SingleTargetCardJourney({
         journeyRef.current = next;
         return next;
       });
+      if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("public-stage-reveal-first-paint", {
+        reason: "paint-enabled-clock-started", eventId: activeCard.eventId, viewerId: viewerIdRef.current,
+        sharedIdentity: table ? committedPublicStageLayout(table)?.layout.identity ?? null : null,
+        timerStatus: "start-requested", remainingMs: activeCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+      });
+      return true;
     };
-    firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(markFirstPaint);
-    });
-    return () => { window.cancelAnimationFrame(firstFrame); window.cancelAnimationFrame(secondFrame); };
+    return observeUntilPublicCardFirstPaint(table, checkFirstPaint);
   }, [journeyEnabled, documentVisible, journey.center, journey.scopeKey, scopeKey, activeCard?.eventId, activeCard?.phase,
     activeCard?.revealStartedAtMs, activeCard?.awaitingParkingTarget, action.publicCardEffectFrame?.eventId,
     action.rootEventId, action.interactionId, roomCode, viewerId, sharedPublicStage?.layout.identity, sharedPublicStage?.revealReady]);
@@ -7028,12 +7144,21 @@ function DuelCardJourney({
   const activeCardRevealStartedAtMs = activeCard?.revealStartedAtMs ?? null;
   useEffect(() => {
     if (!enabled || !documentVisible || journey.scopeKey !== scopeKey || !activeCardEventId || activeCardPhase !== "reveal" || activeCardRevealStartedAtMs !== null) return;
-    let firstFrame = 0;
-    let secondFrame = 0;
-    const markFirstPaint = () => {
-      if (!documentVisibleRef.current || document.visibilityState !== "visible" || !hasPaintedLargePublicCard(activeCardEventId, DUEL_REVEAL_CARD)) {
-        firstFrame = window.requestAnimationFrame(markFirstPaint);
-        return;
+    let lastFailureReason = "";
+    const table = document.querySelector<HTMLElement>(".play-table");
+    return observeUntilPublicCardFirstPaint(table, () => {
+      let failureReason = "card-face-not-paint-enabled";
+      const painted = hasPaintedLargePublicCard(activeCardEventId, DUEL_REVEAL_CARD, undefined, undefined,
+        (reason) => { failureReason = reason; });
+      if (!documentVisibleRef.current || document.visibilityState !== "visible") return false;
+      if (!painted) {
+        if (isAttackDodgeUxTraceActive() && failureReason !== lastFailureReason) {
+          lastFailureReason = failureReason;
+          recordAttackDodgeUxTrace("public-stage-reveal-first-paint", {
+            reason: failureReason, eventId: activeCardEventId, timerStatus: "not-started", revealKind: "duel",
+          });
+        }
+        return false;
       }
       const startedAtMs = performance.now();
       const startedAtIso = new Date().toISOString();
@@ -7049,14 +7174,11 @@ function DuelCardJourney({
         journeyRef.current = next;
         return next;
       });
-    };
-    firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(markFirstPaint);
+      if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("public-stage-reveal-first-paint", {
+        reason: "paint-enabled-clock-started", eventId: activeCardEventId, timerStatus: "start-requested", revealKind: "duel",
+      });
+      return true;
     });
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
-    };
   }, [enabled, documentVisible, scopeKey, journey.scopeKey, activeCardEventId, activeCardPhase, activeCardRevealStartedAtMs]);
 
   const timerEventId = activeCard?.eventId ?? null;

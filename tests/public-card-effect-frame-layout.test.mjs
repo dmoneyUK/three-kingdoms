@@ -28,6 +28,40 @@ test("two and many-card frames stay within short and tall phone viewports", () =
   }
 });
 
+test("Frost discard's compact single-line title reduces only its header, not the genuine two-card faces", () => {
+  const frost = publicCardEffectFrameLayout(2, 390, 844, {
+    title: "FROST SWORD · DISCARD",
+    titlePresentation: "compact-single-line",
+    showMaterialCount: false,
+  });
+  const compactWithVisibleCount = publicCardEffectFrameLayout(2, 390, 844, {
+    title: "FROST SWORD · DISCARD",
+    titlePresentation: "compact-single-line",
+  });
+  const ordinarySplitTitle = publicCardEffectFrameLayout(2, 390, 844, {
+    title: "FROST SWORD · DISCARD",
+    titleParts: { skillName: "FROST SWORD", effectLabel: "DISCARD" },
+  });
+  assert.equal(frost.headerHeight, 28, "Frost omits the redundant count row and its generic minimum header floor");
+  assert.equal(compactWithVisibleCount.headerHeight, 43, "other compact titles retain their count row and header floor");
+  assert.ok(frost.headerHeight < ordinarySplitTitle.headerHeight);
+  assert.deepEqual(
+    [frost.frameWidth, frost.cardWidth, frost.cardHeight, frost.cardOffsetTop],
+    [ordinarySplitTitle.frameWidth, 90, 135, 28],
+  );
+  assert.equal(frost.frameHeight, frost.headerHeight + frost.gridHeight + 12);
+});
+
+test("Kirin discard uses the same compact single-line title without changing the real Mount face size", () => {
+  const kirin = publicCardEffectFrameLayout(1, 390, 844, {
+    title: "KIRIN BOW · DISCARD",
+    titlePresentation: "compact-single-line",
+    showMaterialCount: false,
+  });
+  assert.equal(kirin.headerHeight, 28);
+  assert.deepEqual([kirin.frameWidth, kirin.cardWidth, kirin.cardHeight], [168, 90, 135]);
+});
+
 test("the two-card Serpent Spear frame hugs two full-size CardFaces at the approved phone width", () => {
   const layout = publicCardEffectFrameLayout(2, 390, 844, {
     title: "SERPENT SPEAR · AS ATTACK",

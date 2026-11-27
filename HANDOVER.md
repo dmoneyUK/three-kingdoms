@@ -1,15 +1,9 @@
 # HANDOVER
 
-**Latest verified delivery:** §10.82-B at `7c6e517737ea6da74429b32d0c6fbf8cdc3b7756`; Actions `45778351943` passed, deployed Worker `24de5ac0-ec16-461b-b21d-2f5537fc7b2d`, production `/` and `/api/health` smoke passed.
+## Latest delivery — §10.84 UNIVERSAL-H4-CARD-BRACKET-FORMAT-01
 
-**Design reviewed:** `docs/UX2-refine.md`, revision 2026-11-25 23:53 UTC; execution workflow reviewed.
+Implemented and deployed at `29c624b92dabe27a4c044a6934fe634fc4e2e78e`. Exact-SHA Actions `45991295539` passed lint/fast, full API, browser startup/H4 smoke, D1 migration, Worker deploy and production smoke. Worker version `d9b2fe92-12ba-41ab-8e48-06f928eaf9e4`. Local build, 60 focused pure tests, 81 targeted API tests and `git diff --check` passed; no local UI/browser/device test. H4 bracket formatting is technically complete and remains pending Owner iPhone review; it is not marked USER-ACCEPTED.
 
-## Current bounded task — §10.83 SERPENT-SPEAR-PUBLIC-CONVERSION-FRAME-01
+## Current task — §10.79 H4-DAMAGE-SOURCE-ATTRIBUTION-01 title-only refinement
 
-**Status:** implementation and focused local validation complete; one task commit/push and exact-SHA CI/deploy verification remain. Do not split this task into feature commits. Owner iPhone review remains required; not USER-ACCEPTED.
-
-**Scope:** show the two actual Serpent Spear Attack materials in one compact shared Effect Frame and provide matching proof-based H4 for direct Attack, Duel/Lust Duel, Barbarian Invasion, Borrowed Sword and authorized Influencing contexts. Preserve actual card owner, semantic actor, target, causal proof, response ordinal and privacy.
-
-**Validation:** build passed; focused API suites passed 40/40 and privacy suite 24/24; presentation/snapshot/layout tests passed 77/77; targeted ESLint had 0 errors and 15 existing hook-dependency warnings; `git diff --check` passed. Local browser/UI was not run; the focused real-game regression is in CI, within the five-minute local UI limit.
-
-**Review boundary:** Owner iPhone review of compact two-face frame, exact material names/ranks/suits, matching H4, one logical Attack and representative response contexts.
+Latest design reviewed: remote `ux-v2` design commit `04b0a2906ccd2d4deb8cf933131a2a41260b5fe4`. Functional §10.79 is Owner-accepted. Implemented the remaining title-only refinement in `app/page.tsx`: `KIRIN BOW · DISCARD`, compact single-line styling, no material count; the visible card label now matches. The layout assertion passes (7/7 focused tests) and `git diff --check` passes. No local UI/browser test. Preserve accepted damage attribution, H4 copy, frame geometry/size/anchor, card identity, picker, timing, retirement, rules and privacy. Next: commit/push this bounded change once, then verify exact-SHA CI, deployment and production smoke. Owner iPhone review checks only title consistency.

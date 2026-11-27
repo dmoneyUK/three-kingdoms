@@ -269,7 +269,7 @@ test("Diao Qiao Overindulgence publishes a single 2 club reveal with current PAC
   assert.equal(judgementPresentations[0].originalCard.id, judgeCard.id);
   assert.equal(judgementPresentations[0].effectiveCard.id, judgeCard.id);
   assert.equal(judgementPresentations[0].copy.message,
-    `${daqiao.name} is judging Overindulgence. Judgement: 2♣. Not Match.`);
+    `${daqiao.name} is judging Overindulgence. Judgement: [2♣]. Not Match.`);
   const facts = [...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? [])];
   const revealFact = facts.find((fact) => fact.eventId === reveal.id);
   assert.equal(revealFact?.actorId, daqiao.id);
@@ -348,10 +348,10 @@ test("E15: committed discard supersedes the completed Overindulgence Judgement f
   assert.deepEqual(announcement, {
     eventId: discardEvent.id, actorId: sima.id, order: discardEvent.publicSequence, count: 2,
     cards: retained.slice(0, 2).map((held) => ({ id: held.id, name: held.kind, rank: held.rank, suit: held.suit })),
-    headline: `${sima.name} discarded 2 cards: A♠ Dodge · A♠ Peach.`,
+    headline: `${sima.name} discarded 2 cards: [A♠ Dodge] · [A♠ Peach].`,
     segments: [{ kind: "player", playerId: sima.id, text: sima.name },
-      { kind: "text", text: " discarded 2 cards: A♠ Dodge · A♠ Peach." }],
-    accessibleLabel: `${sima.name} discarded 2 cards: A♠ Dodge · A♠ Peach.`,
+      { kind: "text", text: " discarded 2 cards: [A♠ Dodge] · [A♠ Peach]." }],
+    accessibleLabel: `${sima.name} discarded 2 cards: [A♠ Dodge] · [A♠ Peach].`,
   });
   assert.ok(discardEvent.publicSequence > judgementResult.order, "the committed discard supersedes the earlier Judgement H4");
   assert.equal(discarded.data.room.phase, "resolving");

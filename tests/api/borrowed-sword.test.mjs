@@ -82,7 +82,7 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
     interactionId: retainedTransferFact.identity.interactionId,
     rootFrameId: retainedTransferFact.identity.rootFrameId,
   });
-  assert.equal(transferNarration?.headline, `${source.name} Green Dragon Blade: ${source.name} received 1 card from ${holder.name}.`);
+  assert.equal(transferNarration?.headline, `${source.name} [Green Dragon Blade]: ${source.name} received 1 card from ${holder.name}.`);
   await assertSameBorrowedSwordPublicProjection(game);
   assert.equal(refused.data.room.causalEnvelope.interactionId, childEnvelope.interactionId);
   assert.equal(refused.data.room.causalEnvelope.activeFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
@@ -164,7 +164,7 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
     players: firstCommitted.players,
     rootEventId: rootEvent.id,
   });
-  assert.match(cancelledNarration?.headline ?? "", /Borrowed Sword effect/);
+  assert.match(cancelledNarration?.headline ?? "", /\[Borrowed Sword\] effect/);
   const counterWindowId = firstCommitted.currentAction.negationWindowId;
   assert.ok(counterWindowId);
 
@@ -241,7 +241,7 @@ test("Borrowed Sword public root, private Negation, counter, chooser and forced 
     interactionId: attackInteraction.interactionId,
     rootFrameId: attackInteraction.rootFrameId,
   }) : null;
-  assert.equal(attackNarration?.headline, `${holder.name} played Attack targeting ${target.name}.`);
+  assert.equal(attackNarration?.headline, `${holder.name} played [Attack] targeting ${target.name}.`);
   assert.equal(borrowedSwordPublicStatus(targetView).text, `Waiting for ${target.name} to respond to ${holder.name}'s Attack.`);
   const dodgeResult = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
   assert.equal(dodgeResult.status, 200, JSON.stringify(dodgeResult.data));

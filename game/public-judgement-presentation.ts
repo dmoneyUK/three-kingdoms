@@ -1,5 +1,6 @@
 import { judgementResolutionFor, judgementSucceeds, type JudgementPurpose } from "./decisions/judgement";
 import { CARD_DEFINITIONS } from "./cards";
+import { publicH4RankSuitReference } from "./public-h4-copy";
 import type { Card, CardKind, CardRank, CardSuit } from "./model";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 import type { PublicInteractionNarration } from "./public-activity";
@@ -19,6 +20,7 @@ export type PublicJudgementPresentationRecord = {
   judgingPlayerId: string;
   purpose: JudgementPurpose;
   continuationKind: PublicJudgementContinuationKind;
+  originatingAction?: { eventId: string; resolutionId: string };
   sourceCard?: PublicJudgementCardFace;
   resolutionId?: string;
   causal?: { interactionId: string; frameId: string; parentFrameId?: string };
@@ -48,6 +50,7 @@ export type PublicJudgementPresentation = {
   judgingPlayerId: string;
   purpose: JudgementPurpose;
   continuationKind: PublicJudgementContinuationKind;
+  originatingAction?: { eventId: string; resolutionId: string };
   sourceCard?: PublicJudgementCardFace;
   resolutionId?: string;
   causal?: { interactionId: string; frameId: string; parentFrameId?: string };
@@ -151,9 +154,11 @@ function copyFor(input: {
   replacementActor?: PublicJudgementPlayer;
 }): { message: string; segments: readonly VerifiedPlayerCopySegment[] } | null {
   const label = judgementResolutionFor(input.purpose).label;
+  const originalFace = publicH4RankSuitReference(input.originalCard.rank, input.originalCard.suit) ?? "a Judgement card";
+  const effectiveFace = publicH4RankSuitReference(input.effectiveCard.rank, input.effectiveCard.suit) ?? "a Judgement card";
   const originalLead = input.continuationKind === "delayed"
-    ? [input.target, ` is judging ${label}. Judgement: ${input.originalCard.rank}${input.originalCard.suit}.`]
-    : [input.target, ` used ${label}. Judgement: ${input.originalCard.rank}${input.originalCard.suit}.`];
+    ? [input.target, ` is judging ${label}. Judgement: ${originalFace}.`]
+    : [input.target, ` used ${label}. Judgement: ${originalFace}.`];
   if (input.phase === "ORIGINAL") {
     const formatted = verifiedPlayerCopy(input.includeStatus ? [...originalLead, ` ${statusCopy(input.judgementStatus)}`] : originalLead);
     return { message: formatted.message, segments: formatted.segments };
@@ -161,7 +166,7 @@ function copyFor(input: {
   if (!input.replacementActor) return null;
   const replacementLine = verifiedPlayerCopy([
     input.replacementActor,
-    ` used Necromancy to replace the Judgement card with ${input.effectiveCard.rank}${input.effectiveCard.suit}. ${statusCopy(input.judgementStatus)}`,
+    ` used Necromancy to replace the Judgement card with ${effectiveFace}. ${statusCopy(input.judgementStatus)}`,
   ]);
   const firstLine = verifiedPlayerCopy(originalLead);
   const segments = [...firstLine.segments, { kind: "text" as const, text: "\n" }, ...replacementLine.segments];
@@ -304,6 +309,18 @@ export function projectPublicJudgementPresentations(
     const originalCard = eventCard(originalEvent);
     const target = players.find((player) => player.id === raw.targetId);
     const sourceCard = raw.sourceCard === undefined ? undefined : publicCardFace(raw.sourceCard);
+    const rawOriginatingAction = raw.originatingAction === undefined ? undefined : record(raw.originatingAction);
+    const originatingAction = rawOriginatingAction && nonEmptyString(rawOriginatingAction.eventId)
+      && nonEmptyString(rawOriginatingAction.resolutionId)
+      ? { eventId: rawOriginatingAction.eventId, resolutionId: rawOriginatingAction.resolutionId }
+      : undefined;
+    const originatingActionEvent = originatingAction ? byEventId.get(originatingAction.eventId) : undefined;
+    if (raw.originatingAction !== undefined && (!originatingAction
+      || eventIdCounts.get(originatingAction.eventId) !== 1
+      || !originatingActionEvent
+      || originatingActionEvent.presentation === false
+      || typeof originatingActionEvent.privateToPlayerId === "string"
+      || originatingActionEvent.resolutionId !== originatingAction.resolutionId)) continue;
     if (raw.sourceCard !== undefined && !sourceCard) continue;
     if (!originalCard || !target?.name || originalEvent.player !== target.name || originalEvent.target !== target.name
       || statusFor(raw.purpose as JudgementPurpose, originalCard) !== raw.originalStatus
@@ -324,6 +341,7 @@ export function projectPublicJudgementPresentations(
       judgingPlayerId: raw.judgingPlayerId,
       purpose: raw.purpose as JudgementPurpose,
       continuationKind: raw.continuationKind as PublicJudgementContinuationKind,
+      ...(originatingAction ? { originatingAction } : {}),
       ...(sourceCard ? { sourceCard } : {}),
       // The durable original event is the server authority for resolution
       // identity. Older committed records may omit the redundant nested copy;
@@ -505,8 +523,10 @@ type PublicJudgementDisplayAction = {
 export function publicInteractionNarrationWithJudgement(
   stageNarration: PublicInteractionNarration | null,
   judgementNarration: PublicInteractionNarration | null,
+  sameResolutionJudgementResult = false,
 ): PublicInteractionNarration | null {
   if (!judgementNarration) return stageNarration;
+  if (sameResolutionJudgementResult) return judgementNarration;
   if (!stageNarration) return judgementNarration;
   if (judgementNarration.publicSequence === undefined) return stageNarration;
   return judgementNarration.publicSequence >= (stageNarration.publicSequence ?? -1)
@@ -523,10 +543,16 @@ export function publicInteractionNarrationBelongsToAction(input: {
 }): boolean {
   if (input.judgementNarrationBelongsToAction) return true;
   const { narration, action } = input;
+  const frame = action?.publicCardEffectFrame;
+  const exactFrameCausalRoot = Boolean(frame && action
+    && action.rootEventId === frame.eventId
+    && frame.rootEventId === narration?.rootEventId
+    && action.interactionId === narration?.interactionId
+    && action.rootFrameId === narration?.rootFrameId);
   return Boolean(narration && action
     && !input.activeJudgementRevealRoute
     && input.currentInteractionEffectKind !== "judgement"
-    && action.rootEventId === narration.rootEventId
+    && (action.rootEventId === narration.rootEventId || exactFrameCausalRoot)
     && action.interactionId === narration.interactionId
     && action.rootFrameId === narration.rootFrameId);
 }
@@ -556,6 +582,21 @@ export function publicJudgementNarrationBelongsToAction(input: {
     frameEffectClass: frame.effectClass,
     frameActivationOwnerId: frame.activationOwnerId,
     frameMaterialCardIds: frame.materials.map((material) => material.card.id),
+  });
+}
+
+/** Keeps a proven replacement CardFace selected while its exact H4 event is the presentation cursor. */
+export function publicJudgementReplacementFrameOwnsCursor(input: {
+  cursorEventId?: string | null;
+  presentation: PublicJudgementPresentation | null;
+  action: PublicJudgementDisplayAction | null;
+}): boolean {
+  const { cursorEventId, presentation, action } = input;
+  if (!cursorEventId || presentation?.phase !== "REPLACEMENT" || cursorEventId !== presentation.eventId) return false;
+  return publicJudgementNarrationBelongsToAction({
+    presentation,
+    narration: publicJudgementNarrationForPresentation(presentation),
+    action,
   });
 }
 

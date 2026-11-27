@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPublicCardEffectFrameView } from "../app/public-card-display.tsx";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createPublicCardEffectFrameView, PublicCardEffectFrameMaterialCount, PublicCardEffectFrameTitle } from "../app/public-card-display.tsx";
 
 const card = (id) => ({ id, kind: "Attack", suit: "♠", rank: "7" });
 const effect = (overrides = {}) => ({
@@ -47,6 +49,55 @@ test("public effect frame factory preserves true activation and material owners 
   assert.match(frame.accessibleLabel, /FROST SWORD · AS DAMAGE PREVENTION effect frame/);
   assert.match(frame.accessibleLabel, /Target's Attack, 7 of Spades/);
   assert.equal((frame.accessibleLabel.match(/Target's Attack, 7 of Spades/g) ?? []).length, 2);
+});
+
+test("public effect frame factory preserves each distinct public material owner in source order", () => {
+  const frame = createPublicCardEffectFrameView(effect({
+    materials: [
+      { cardId: "target-card-1", ownerId: "target", fromZone: "HAND", toZone: "DISCARD" },
+      { cardId: "target-card-2", ownerId: "attacker", fromZone: "EQUIPMENT", toZone: "DISCARD" },
+    ],
+  }), copy);
+  assert.deepEqual(frame?.materials.map(({ ownerId, ownerName, card: materialCard }) => ({
+    ownerId, ownerName, cardId: materialCard.id,
+  })), [
+    { ownerId: "target", ownerName: "Target", cardId: "target-card-1" },
+    { ownerId: "attacker", ownerName: "Attacker", cardId: "target-card-2" },
+  ]);
+});
+
+test("Frost discard title renders as one compact line while ordinary split titles stay unchanged", () => {
+  const frostFrame = createPublicCardEffectFrameView(effect(), {
+    ...copy,
+    title: "FROST SWORD · DISCARD",
+    titlePresentation: "compact-single-line",
+    showMaterialCount: false,
+    preferredLaneTopOffset: 8,
+  });
+  assert.ok(frostFrame);
+  assert.equal(frostFrame.titlePresentation, "compact-single-line");
+  assert.equal(frostFrame.showMaterialCount, false);
+  assert.equal(frostFrame.preferredLaneTopOffset, 8);
+  assert.deepEqual(frostFrame.materials.map(({ card: materialCard }) => materialCard.id), ["target-card-1", "target-card-2"],
+    "the visible count-row setting does not remove either real material");
+  const frostMarkup = renderToStaticMarkup(React.createElement(PublicCardEffectFrameTitle, { frame: frostFrame }));
+  assert.match(frostMarkup, /class="public-card-effect-frame-title is-compact-single-line"><span class="public-card-effect-frame-title-line">FROST SWORD · DISCARD<\/span><\/strong>/);
+  assert.doesNotMatch(frostMarkup, /is-effect|title-separator/);
+  assert.equal(renderToStaticMarkup(React.createElement(PublicCardEffectFrameMaterialCount, { frame: frostFrame, materialCount: frostFrame.materials.length })), "",
+    "the redundant count row is not painted while both physical materials remain in the frame view");
+
+  const ordinaryFrame = createPublicCardEffectFrameView(effect(), {
+    ...copy,
+    title: "FROST SWORD · AS DAMAGE PREVENTION",
+    titleParts: { skillName: "FROST SWORD", effectLabel: "AS DAMAGE PREVENTION" },
+  });
+  assert.ok(ordinaryFrame);
+  assert.match(renderToStaticMarkup(React.createElement(PublicCardEffectFrameMaterialCount, { frame: ordinaryFrame, materialCount: ordinaryFrame.materials.length })), /2 MATERIAL CARDS/,
+    "ordinary effect frames keep their visible material-count row");
+  const ordinaryMarkup = renderToStaticMarkup(React.createElement(PublicCardEffectFrameTitle, { frame: ordinaryFrame }));
+  assert.doesNotMatch(ordinaryMarkup, /is-compact-single-line/);
+  assert.match(ordinaryMarkup, /FROST SWORD<span class="public-card-effect-frame-title-separator"> · <\/span>/);
+  assert.match(ordinaryMarkup, /class="public-card-effect-frame-title-line is-effect">AS DAMAGE PREVENTION/);
 });
 
 test("public effect frame factory fails closed on identity, ownership-name, and class errors", () => {

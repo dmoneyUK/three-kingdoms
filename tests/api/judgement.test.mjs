@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
+import { cardDefinition } from "../../game/cards.ts";
 import { derivePublicActivityStatus, derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
@@ -53,7 +55,7 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
   const pendingStauchness = stauchnessNarration(accepted.data.room);
   assert.equal(pendingStauchness.narration?.headline,
-    `${resolved.target.name} used Stauchness. Judgement: 7♠ — not a Heart.`);
+    `${resolved.target.name} used Stauchness. Judgement: [7♠] — not a Heart.`);
   const pendingPac = derivePublicActivityStatus({
     status: accepted.data.room.status,
     phase: accepted.data.room.phase,
@@ -123,6 +125,51 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
     { cardId: "peach-ganglie-cost-b", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
   ], "the damage source owns the two paid cards even though Xiahou Dun activated Stauchness");
   assert.equal(stauchnessCost.publicCardEffects?.[0]?.rootEventId, attackRoot?.id);
+  const publicDiscardSettlements = normalizePublicDiscardSettlements({
+    timeline: discarded.data.room.timeline,
+    publicCardEffects: discarded.data.room.presentationV2.publicCardEffects,
+    dismantleSettlements: discarded.data.room.presentationV2.dismantleSettlements,
+    publicEventFacts: [
+      ...(discarded.data.room.presentationSnapshot.publicEventFacts ?? []),
+      ...(discarded.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  });
+  const stauchnessDiscard = publicDiscardSettlements.filter((settlement) => settlement.eventId === stauchnessCost.id);
+  assert.equal(stauchnessDiscard.length, 1, "the committed two-card Stauchness cost has one canonical public settlement");
+  assert.equal(stauchnessDiscard[0].presentation, "eligible");
+  assert.deepEqual(stauchnessDiscard[0].materials.map(({ physicalCardId, ownerId, fromZone, toZone }) => ({ physicalCardId, ownerId, fromZone, toZone })), [
+    { physicalCardId: "dodge-ganglie-cost-a", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
+    { physicalCardId: "peach-ganglie-cost-b", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
+  ]);
+  const stauchnessDiscardCopy = publicDiscardSettlementCopyForFacts({
+    settlement: stauchnessDiscard[0], players: discarded.data.room.players,
+    publicEventFacts: [
+      ...(discarded.data.room.presentationSnapshot.publicEventFacts ?? []),
+      ...(discarded.data.room.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  });
+  const stauchnessCardList = stauchnessCost.cards.map(({ kind, rank, suit }) => `[${rank}${suit} ${cardDefinition(kind).name}]`).join(" · ");
+  assert.equal(stauchnessDiscardCopy?.headline,
+    `${resolved.target.name} used Stauchness, causing ${resolved.source.name} to discard 2 cards: ${stauchnessCardList}.`,
+    "the actual committed identities, true activator and material owner feed one detailed public H4 copy");
+  const observerDiscardedView = (await state(resolved.code, resolved.members[3].token)).data;
+  const observerStauchnessDiscard = normalizePublicDiscardSettlements({
+    timeline: observerDiscardedView.timeline,
+    publicCardEffects: observerDiscardedView.presentationV2.publicCardEffects,
+    dismantleSettlements: observerDiscardedView.presentationV2.dismantleSettlements,
+    publicEventFacts: [
+      ...(observerDiscardedView.presentationSnapshot.publicEventFacts ?? []),
+      ...(observerDiscardedView.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  }).find((settlement) => settlement.eventId === stauchnessCost.id);
+  assert.deepEqual(observerStauchnessDiscard, stauchnessDiscard[0], "the exact public settlement is identical in an observer projection");
+  assert.equal(publicDiscardSettlementCopyForFacts({
+    settlement: observerStauchnessDiscard, players: observerDiscardedView.players,
+    publicEventFacts: [
+      ...(observerDiscardedView.presentationSnapshot.publicEventFacts ?? []),
+      ...(observerDiscardedView.presentationSnapshot.retainedPublicEventFacts ?? []),
+    ],
+  })?.headline, stauchnessDiscardCopy?.headline, "observers receive the same detailed public H4 copy");
   assert.equal(discarded.data.room.players.find((player) => player.id === resolved.target.id).hp, 2);
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(resolved.source.id)}`)).length, 0);
   for (const id of ["dodge-ganglie-spade-judge", "dodge-ganglie-cost-a", "peach-ganglie-cost-b"]) assert.ok(discardIds(resolved.code).includes(id), `${id} is conserved in discard`);
@@ -146,6 +193,10 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   const openJudgementPresentation = revealed.data.presentationSnapshot?.publicJudgementPresentations ?? [];
   assert.equal(openJudgementPresentation.length, 1, "the public original reveal has one typed provisional presentation");
   assert.equal(openJudgementPresentation[0].judgementId, originalJudgement?.id);
+  assert.equal(openJudgementPresentation[0].originatingAction?.eventId, originalJudgement?.publicFact?.rootEventId,
+    "the public Judgement fact preserves the exact committed Attack root separately from the reveal event");
+  assert.ok(openJudgementPresentation[0].originatingAction?.resolutionId,
+    "the originating action keeps its own committed resolution identity");
   assert.equal(openJudgementPresentation[0].status, "PROVISIONAL");
   assert.equal(openJudgementPresentation[0].replacement, undefined);
   assert.doesNotMatch(openJudgementPresentation[0].copy.message, /\b(?:Not )?Match\.$/,
@@ -163,7 +214,7 @@ test("real Judgement replacement rejects stale and duplicate submissions without
     rootFrameId: originalFact.identity.rootFrameId,
     eventId: originalFact.eventId,
   });
-  assert.equal(originalNarration?.headline, `${game.target.name} used Stauchness. Judgement: 9♠.`);
+  assert.equal(originalNarration?.headline, `${game.target.name} used Stauchness. Judgement: [9♠].`);
   assert.deepEqual(originalNarration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId), [game.target.id]);
   const otherViewer = (await state(game.code, game.targetMember.token)).data;
   assert.deepEqual(otherViewer.presentationSnapshot.publicEventFacts, revealed.data.presentationSnapshot.publicEventFacts,
@@ -190,6 +241,9 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   const replacedJudgementPresentation = after.data.presentationSnapshot?.publicJudgementPresentations ?? [];
   assert.equal(replacedJudgementPresentation.length, 2, "the replacement appends one final stage to the exact original Judgement identity");
   assert.deepEqual(replacedJudgementPresentation.map((entry) => entry.phase), ["ORIGINAL", "REPLACEMENT"]);
+  assert.ok(replacedJudgementPresentation.every((entry) => entry.originatingAction?.eventId === openJudgementPresentation[0].originatingAction?.eventId
+    && entry.originatingAction?.resolutionId === openJudgementPresentation[0].originatingAction?.resolutionId),
+  "both public stages stay linked to the same real source action");
   assert.equal(replacedJudgementPresentation[0].judgementId, originalJudgement?.id);
   assert.equal(replacedJudgementPresentation[0].status, "PROVISIONAL");
   assert.equal(replacedJudgementPresentation[1].judgementId, originalJudgement?.id);
@@ -197,7 +251,7 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   assert.equal(replacedJudgementPresentation[1].status, "FINAL");
   assert.equal(replacedJudgementPresentation[1].replacement.physicalCardId, replacement.id);
   assert.equal(replacedJudgementPresentation[1].copy.message,
-    `${game.target.name} used Stauchness. Judgement: 9♠.\n${sima.name} used Necromancy to replace the Judgement card with 7♠. Match.`);
+    `${game.target.name} used Stauchness. Judgement: [9♠].\n${sima.name} used Necromancy to replace the Judgement card with [7♠]. Match.`);
   assert.equal(after.data.causalEnvelope.interactionId, root.interactionId);
   assert.equal(after.data.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(after.data.causalEnvelope.frames.length, root.frames.length);
@@ -243,7 +297,7 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(accepted.data.room.phase, "play-struck");
   assert.ok(accepted.data.room.log.some((entry) => entry.includes(`${game.target.name} used Stauchness. Judgement: 2♥ — no effect`)));
   assert.equal(stauchnessNarration(accepted.data.room).narration?.headline,
-    `${game.target.name} used Stauchness. Judgement: 2♥ — no effect.`);
+    `${game.target.name} used Stauchness. Judgement: [2♥] — no effect.`);
   assert.ok(discardIds(game.code).includes("dodge-ganglie-heart-judge"));
 
   const guicai = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-original"), suit: "♠", rank: "9" } });
@@ -280,7 +334,7 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(reverseReplaced.data.room.currentAction.actorId, guicaiToNonHeart.source.id);
   const replacedStauchness = stauchnessNarration(reverseReplaced.data.room);
   assert.equal(replacedStauchness.narration?.headline,
-    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: 7♠ — not a Heart.`,
+    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: [7♠] — not a Heart.`,
     "after Necromancy commits, H4 names the actual effective card and only then states its result");
   const reverseChoice = await requestAndSettle("trigger", { code: guicaiToNonHeart.code, token: guicaiToNonHeart.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
   assert.equal(reverseChoice.status, 200, JSON.stringify(reverseChoice.data));

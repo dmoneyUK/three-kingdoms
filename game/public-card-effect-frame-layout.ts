@@ -28,6 +28,10 @@ const FRAME_COUNT_GAP = 2;
 export type PublicCardEffectFrameTitleLayout = {
   title: string;
   titleParts?: { skillName: string; effectLabel?: string };
+  /** A narrowly scoped presentation for compact, single-line Frame titles. */
+  titlePresentation?: "compact-single-line";
+  /** False hides the painted count row while retaining physical material proof. */
+  showMaterialCount?: boolean;
 };
 
 function wrappedTitleRows(text: string, contentWidth: number, maxCharacterWidth: number): number {
@@ -47,12 +51,18 @@ export function publicCardEffectFrameHeaderHeight(
 ): number {
   if (!title) return FRAME_CARD_TOP;
   const contentWidth = Math.max(1, frameWidth - FRAME_PADDING * 2 - 2);
-  const titleHeight = title.titleParts
+  const titleHeight = title.titlePresentation === "compact-single-line"
+    ? 13
+    : title.titleParts
     ? wrappedTitleRows(`${title.titleParts.skillName}${title.titleParts.effectLabel ? " ·" : ""}`, contentWidth, 10) * 16
       + (title.titleParts.effectLabel ? wrappedTitleRows(title.titleParts.effectLabel, contentWidth, 7.5) * 12 : 0)
     : wrappedTitleRows(title.title, contentWidth, 10) * 16;
-  const countHeight = materialCount > 1 ? FRAME_COUNT_GAP + FRAME_COUNT_HEIGHT : 0;
-  return Math.max(FRAME_CARD_TOP,
+  const showMaterialCount = title.showMaterialCount !== false;
+  const countHeight = materialCount > 1 && showMaterialCount ? FRAME_COUNT_GAP + FRAME_COUNT_HEIGHT : 0;
+  const minimumHeaderHeight = title.titlePresentation === "compact-single-line" && !showMaterialCount
+    ? FRAME_TITLE_TOP + 13 + FRAME_TITLE_BOTTOM_GAP
+    : FRAME_CARD_TOP;
+  return Math.max(minimumHeaderHeight,
     Math.ceil(FRAME_TITLE_TOP + titleHeight + countHeight + FRAME_TITLE_BOTTOM_GAP));
 }
 

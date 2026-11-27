@@ -3525,7 +3525,7 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
         expect(announcement.accessibleText).toContain(target.name);
         expect([
           compactLustAttackMessage(actor, target),
-          `${actor.name.trim()} played Attack targeting ${target.name.trim()}`,
+          `${actor.name.trim()} played [Attack] targeting ${target.name.trim()}`,
         ]).toContain(announcement.text);
         expect(announcement.supportingText).toBe(`Waiting for ${target.name}`);
         expect(announcement.text).not.toContain("…");

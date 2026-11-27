@@ -497,8 +497,8 @@ test("Duel Attack narration requires the latest response and next actor on the s
 
   assert.deepEqual(duelExchangeAttackNarration(input), {
     eventId: "attack-1", actorId: "p2",
-    message: "Test Player 2 played Attack in the Duel.",
-    compactMessage: "Test Player 2 played Attack in the Duel.",
+    message: "Test Player 2 played [Attack] in the Duel.",
+    compactMessage: "Test Player 2 played [Attack] in the Duel.",
   });
   assert.equal(duelExchangeAttackNarration({
     ...input,
@@ -700,26 +700,26 @@ test("LUST compact copy preserves full player identities and follows the proven 
 
 test("public battle announcements keep proof-backed event meaning in concise copy", () => {
   assert.equal(publicCardAnnouncement(
-    action(), "Source played Attack targeting Target", "Source", "Source", "Target",
-  ), "Source played Attack on Target.");
+    action({ cardKind: "Attack" }), "Source played Attack targeting Target", "Source", "Source", "Target",
+  ), "Source played [Attack] on Target.");
 
   assert.equal(publicCardAnnouncement(
-    action({ cardLabel: "DUEL" }), "Source played Duel targeting Target", "Source", "Source", "Target",
-  ), "Source played Duel on Target.");
+    action({ cardKind: "Duel", cardLabel: "DUEL" }), "Source played Duel targeting Target", "Source", "Source", "Target",
+  ), "Source played [Duel] on Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ settlement: { eventId: "dodge-event", outcome: "ATTACK_BLOCKED_BY_DODGE", exiting: false } }),
     "Target played Dodge against Source's Attack", "Target", "Source", "Target",
-  ), "Target played Dodge against Source's Attack.");
+  ), "Target played [Dodge] against Source's [Attack].");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "NEGATION" }), "Counter played Negation to counter Duel", "Counter", "Source", "Target",
-  ), "Counter played Negation to counter Duel");
+  ), "A public effect resolved.");
 
   assert.equal(publicCardAnnouncement(
-    action({ cardLabel: "BURNING BRIDGE", settlement: { eventId: "settlement", outcome: "DISMANTLE_RESOLVED", exiting: false } }),
+    action({ cardKind: "Dismantle", cardLabel: "BURNING BRIDGE", settlement: { eventId: "settlement", outcome: "DISMANTLE_RESOLVED", exiting: false } }),
     "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
-  ), "Source resolved Burning Bridge on Target.");
+  ), "Source resolved [Burning Bridges] on Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -738,7 +738,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took Zhuge Crossbow from Target (Equipment).");
+  ), "Source took [A♦ Zhuge Crossbow] from Target (Equipment).");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -749,7 +749,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source took Lightning from Target (Judgement).");
+  ), "Source took [K♣ Lightning] from Target (Judgement).");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -760,7 +760,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source resolved Steal on Target.");
+  ), "Source resolved a card on Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: {
@@ -771,12 +771,12 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Steal targeting Target", "Source", "Source", "Target",
-  ), "Source resolved Steal on Target.");
+  ), "Source resolved a card on Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ cardLabel: "STEAL", settlement: { eventId: "cancelled-steal", outcome: "ROOT_CANCELLED", exiting: false } }),
     "Source played Steal targeting Target", "Counter", "Source", "Target",
-  ), "Counter's Negation cancelled Source's Steal on Target.");
+  ), "Counter's [Negation] cancelled Source's a card on Target.");
 
   assert.equal(publicCardAnnouncement(
     action({ cardKind: "Dismantle", cardLabel: "BURNING BRIDGE", settlement: {
@@ -787,7 +787,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
       },
     } }),
     "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
-  ), "Source discarded ♥3 Peach from Target (Hand).");
+  ), "Source discarded [3♥ Peach] from Target (Hand).");
 
   for (const [zone, cardFace, ownerId] of [
     ["equipment", { id: "discarded-equipment", kind: "NioShield", suit: "♠", rank: "2" }, "target"],
@@ -802,22 +802,26 @@ test("public battle announcements keep proof-backed event meaning in concise cop
         },
       } }),
       "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
-    ), `Source discarded ${zone === "equipment" ? "♠2 Nio Shield" : "♦A Lightning"} from Target (${zone === "judgement" ? "Judgement" : "Equipment"}).`);
+    ), `Source discarded ${zone === "equipment" ? "[2♠ Nio Shield]" : "[A♦ Lightning]"} from Target (${zone === "judgement" ? "Judgement" : "Equipment"}).`);
   }
 
   assert.equal(publicCardAnnouncement(
-    action({ cardLabel: "RAINING ARROWS", ariaLabel: "Source played Raining Arrows. 4 targets resolved.", settlement: { eventId: "settlement", outcome: "GROUP_RESOLVED", exiting: false } }),
+    action({ cardKind: "RainingArrows", cardLabel: "RAINING ARROWS", publicResolvedCount: { count: 4, noun: "targets" },
+      ariaLabel: "Source played [Raining Arrows]. 4 targets resolved.",
+      settlement: { eventId: "settlement", outcome: "GROUP_RESOLVED", exiting: false } }),
     "Source played Raining Arrows. 4 targets resolved.", "Source", "Source", null,
-  ), "Source played Raining Arrows; 4 targets resolved.");
+  ), "Source played [Raining Arrows]. 4 targets resolved.");
 
   assert.equal(publicCardAnnouncement(
-    action({ cardLabel: "SOWING DISTRUST", settlement: { eventId: "settlement", outcome: "SUITS_MATCHED", exiting: false } }),
+    action({ cardKind: undefined, cardLabel: "SOWING DISTRUST",
+      ariaLabel: "Source used Sowing Distrust on Target; suits matched.",
+      settlement: { eventId: "settlement", outcome: "SUITS_MATCHED", exiting: false } }),
     "Source used Sowing Distrust targeting Target. Resolved: suits matched", "Source", "Source", "Target",
   ), "Source used Sowing Distrust on Target; suits matched.");
 
   assert.equal(publicCardAnnouncement(
     action(), "Target used Deflection, discarding Dodge and redirecting Attack to Third.", "Target", "Source", "Third",
-  ), "Deflection: Target redirected Attack to Third; discarded Dodge.");
+  ), "A public effect resolved.");
 });
 
 test("Bumper Harvest announcement fails closed without a proven narration", () => {
@@ -832,16 +836,16 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
   });
   assert.equal(publicCardAnnouncement(
     harvestAction, harvestAction.ariaLabel, "JD", "JD", null,
-  ), "JD played Bumper Harvest.");
+  ), "JD played [Bumper Harvest].");
   assert.equal(publicCardAnnouncement(
     { ...harvestAction, harvestEffectRecipient: { participantId: "source", participantName: "JD" } },
     harvestAction.ariaLabel, "JD", "JD", null,
-  ), "JD played Bumper Harvest.");
+  ), "JD played [Bumper Harvest].");
 
   const unprovenHarvest = { ...harvestAction, harvestEffectRecipient: undefined };
   assert.equal(publicCardAnnouncement(
     unprovenHarvest, unprovenHarvest.ariaLabel, "JD", "JD", null,
-  ), "JD played Bumper Harvest.");
+  ), "JD played [Bumper Harvest].");
 
   const firstNegation = {
     ...harvestAction,
@@ -851,18 +855,18 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
     firstNegation,
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "JD played Bumper Harvest.");
+  ), "JD played [Bumper Harvest].");
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, harvestEffectRecipient: undefined },
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "JD played Bumper Harvest.");
+  ), "JD played [Bumper Harvest].");
 
   const counterNotice = "Test Player 2 played Negation to counter Negation 1";
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, responses: [firstNegation.responses[0], { eventId: "counter-event", ordinal: 2, actorId: "responder-2", actorName: "Test Player 2" }] },
     counterNotice, "Test Player 2", "JD", null,
-  ), "JD played Bumper Harvest.");
+  ), "JD played [Bumper Harvest].");
   const committedCounterCopy = "Test Player 2 counters Test Player 4's Negation. Test Player 3's pick is restored.";
   const committedNarration = {
     rootLabel: "Bumper Harvest", eventId: "counter-settlement", latestCommittedEventId: "counter-settlement",
@@ -876,19 +880,19 @@ test("Bumper Harvest announcement fails closed without a proven narration", () =
   assert.deepEqual(renderedCopy, {
     message: committedCounterCopy, compactMessage: committedCounterCopy, accessibleLabel: committedCounterCopy,
   });
-  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "JD played Bumper Harvest.");
+  assert.equal(publicCardAnnouncement({ ...firstNegation, settlement: { eventId: "settled", outcome: "ROOT_CANCELLED", exiting: false } }, "", "Test Player 4", "JD", null), "JD played [Bumper Harvest].");
 });
 
 test("Duel H4 copy contains committed facts only", () => {
-  const rootFact = "King played Duel on Test Player 4.";
+  const rootFact = "King played [Duel] on Test Player 4.";
   assert.deepEqual(publicCardCommittedFactCopy(
     action({ phaseNotice: "NEGATION MAY BE PLAYED" }),
-    { message: rootFact, compactMessage: "King: Duel on Test Player 4" },
-  ), { message: rootFact, compactMessage: "King: Duel on Test Player 4" });
+    { message: rootFact, compactMessage: "King: [Duel] on Test Player 4" },
+  ), { message: rootFact, compactMessage: "King: [Duel] on Test Player 4" });
 
   for (const headline of [
-    "Test Player 2's Negation cancelled King’s Duel effect on Test Player 4.",
-    "Test Player 3's Negation restored King’s Duel effect on Test Player 4.",
+    "Test Player 2's [Negation] cancelled King’s [Duel] effect on Test Player 4.",
+    "Test Player 3's [Negation] restored King’s [Duel] effect on Test Player 4.",
   ]) {
     const narration = {
       rootLabel: "Duel",
@@ -935,10 +939,10 @@ test("Dismantle H4 uses event-matched public discard facts; hidden Steal Hand id
   });
 
   const copy = publicCardAnnouncement(makeAction(), "Source played Burning Bridge targeting Target", "Source", "Source", "Target");
-  assert.equal(copy, "Source discarded ♥3 Peach from Target (Hand).");
+  assert.equal(copy, "Source discarded [3♥ Peach] from Target (Hand).");
 
   const mismatched = publicCardAnnouncement(makeAction({ publicNoticeEventId: "different-event" }), "Source played Burning Bridge targeting Target", "Source", "Source", "Target");
-  assert.equal(mismatched, "Source resolved Burning Bridge on Target.");
+  assert.equal(mismatched, "Source resolved [Burning Bridges] on Target.");
 
   const hiddenSteal = publicCardAnnouncement(makeAction({
     cardKind: "Steal",
@@ -958,7 +962,7 @@ test("Dismantle H4 uses event-matched public discard facts; hidden Steal Hand id
       },
     },
   }), "Source played Steal targeting Target", "Source", "Source", "Target");
-  assert.equal(hiddenSteal, "Source resolved Steal on Target.");
+  assert.equal(hiddenSteal, "Source resolved [Steal] on Target.");
   assert.doesNotMatch(hiddenSteal, /secret-hand-card|Peach|♥3/);
 });
 
@@ -971,6 +975,7 @@ test("public announcement typography is readable and never truncates its verifie
   const text = css.match(/^\.public-card-display-journey-copy>b\{([^}]+)\}/m)?.[1] ?? "";
   assert.match(announcement, /520px/);
   assert.match(announcement, /z-index:38/);
+  assert.match(announcement, /pointer-events:none/, "H4 stays informational and passes pointer input through");
   assert.match(text, /font:600 15px\/1\.2 Arial,sans-serif/);
   assert.match(text, /letter-spacing:\.01em/);
   assert.doesNotMatch(text, /line-clamp|overflow:hidden/);
@@ -979,6 +984,10 @@ test("public announcement typography is readable and never truncates its verifie
   assert.doesNotMatch(css, /data-public-card-announcement-long-names/);
   assert.match(overrides, /\.game-shell \.public-card-display-journey\.is-harvest-pool-active > \.public-card-display-journey-copy \{\s*z-index: 38;/);
   assert.match(overrides, /\.public-card-display-journey\[data-public-card-kind="Dismantle"\] > \.public-card-display-journey-copy[\s\S]*?z-index: 38;/);
+  assert.match(overrides, /\.game-shell \.play-table:has\(> \.public-card-display-journey > \.public-card-journey-card\.is-current\[data-public-card-journey-phase="reveal"\]\):not\(:has\(> \.battlefield-choice-stage\)\):not\(:has\(> \.card-pool-target-stage\)\):not\(:has\(> \.end-turn-confirmation-stage\)\) > \.public-activity-chip \{\s*z-index: 35;/,
+    "during a passive reveal, PAC sits above the journey stack unless an interactive stage is present");
+  const pac = overrides.match(/\.game-shell \.play-table > \.public-activity-chip \{([^}]+)\}/)?.[1] ?? "";
+  assert.match(pac, /pointer-events:\s*none/, "PAC remains informational and passes pointer input through");
   assert.match(overrides, /\.card-pool-target-stage\[data-choice-mode="actor-target-select"\]:not\(\[data-target-card-pool-ready="true"\]\)[\s\S]*?visibility: hidden !important;[\s\S]*?pointer-events: none !important;/);
   assert.match(page, /aria-hidden=\{!pendingTargetCardPoolPlacement\.ready\}/);
   assert.match(page, /data-target-card-pool-layout="central"/);
@@ -1040,10 +1049,10 @@ test("Dismantle authentic settlement keeps its card face and verified actor/targ
   const face = copy.dismantleCardFace;
   assert.ok(face, "the authentic public settlement still owns the inset card face");
   assert.equal(face.cardId, "actual-discarded-card");
-  assert.equal(face.message, "Same Name discarded ♥3 Peach from Same Name (Hand).");
+  assert.equal(face.message, "Same Name discarded [3♥ Peach] from Same Name (Hand).");
   assert.deepEqual(face.prefixSegments?.filter((part) => part.kind === "player").map((part) => part.playerId), ["source"]);
   assert.deepEqual(face.suffixSegments?.filter((part) => part.kind === "player").map((part) => part.playerId), ["target"]);
-  assert.equal(face.prefix + "♥3 Peach" + face.suffix, face.message);
+  assert.equal(face.prefix + "[3♥ Peach]" + face.suffix, face.message);
   const prefixHtml = renderToStaticMarkup(React.createElement(PublicH4Text, { message: face.prefix, segments: face.prefixSegments }));
   const suffixHtml = renderToStaticMarkup(React.createElement(PublicH4Text, { message: face.suffix, segments: face.suffixSegments }));
   assert.match(prefixHtml, /data-player-id="source" data-public-player-id="source"/);
@@ -1054,8 +1063,8 @@ test("Dismantle authentic settlement keeps its card face and verified actor/targ
     "the actual composed Dismantle H4 renders actor and target as verified spans");
   assert.match(completeH4, /data-settlement-event-id="dismantle-result" data-card-id="actual-discarded-card" aria-hidden="true"/);
   assert.ok(completeH4.includes(`aria-label="${face.message}"`));
-  assert.ok(completeH4.includes("♥3 Peach"));
-  assert.equal(face.prefix + "♥3 Peach" + face.suffix, face.message,
+  assert.ok(completeH4.includes("[3♥ Peach]"));
+  assert.equal(face.prefix + "[3♥ Peach]" + face.suffix, face.message,
     "styled fragments and the authentic mini-face preserve the exact accessible sentence");
 
   const wrongSettlementActor = publicCardAnnouncementCopy({
@@ -1088,7 +1097,7 @@ test("generic committed H4 forwards producer-verified player fragments to the sh
   assert.match(html, /data-player-id="actor-id" data-public-player-id="actor-id"/);
   assert.match(html, /data-player-id="target-id" data-public-player-id="target-id"/);
   assert.ok(html.includes(`aria-label="${headline}"`));
-  const blockedMessage = "Same Name's Attack on Same Name was blocked by Helper's Dodge.";
+  const blockedMessage = "Same Name's [Attack] on Same Name was blocked by Helper's [Dodge].";
   const blockedCopy = publicCardAnnouncementCopy({
     sourceId: "actor-id", targetId: "target-id", rootEventId: "root", cardLabel: "Attack",
     settlement: { outcome: "ATTACK_BLOCKED_BY_DODGE", eventId: "response", publicOutcomeMessage: blockedMessage },
@@ -1116,7 +1125,7 @@ test("verified Axe cost has compact factual H4 without premature damage and keep
     card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "7" }, player: "ACTOR", target: "TARGET" };
   const proof = verifiedRockCleavingAxeCostFrameForEvent([root, cost], [effect], [actor, target], "cost");
   assert.ok(proof);
-  assert.equal(proof.h4Copy.message, "ACTOR used Rock Cleaving Axe; TARGET's Dodge was bypassed.");
+  assert.equal(proof.h4Copy.message, "ACTOR used [Rock Cleaving Axe]; TARGET's [Dodge] was bypassed.");
   assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied/i);
   const action = { sourceId: "a", targetId: "b", rootEventId: "cost", cardLabel: "COST",
     publicNotice: proof.h4Copy.message, publicNoticeSegments: proof.h4Copy.segments,
