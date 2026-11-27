@@ -50,7 +50,7 @@ import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitD
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace, CardRankSuit } from "./card-face";
-import { fixedUpperHistoryAnnouncementAnchor, publicH4ReservedHeight } from "./public-upper-anchor";
+import { publicH4ReservedHeight } from "./public-upper-anchor";
 import { CardPoolDecisionFooter, CardPoolMiniFace, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
