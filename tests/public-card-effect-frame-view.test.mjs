@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPublicCardEffectFrameView } from "../app/public-card-display.tsx";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createPublicCardEffectFrameView, PublicCardEffectFrameTitle } from "../app/public-card-display.tsx";
 
 const card = (id) => ({ id, kind: "Attack", suit: "♠", rank: "7" });
 const effect = (overrides = {}) => ({
@@ -62,6 +64,30 @@ test("public effect frame factory preserves each distinct public material owner 
     { ownerId: "target", ownerName: "Target", cardId: "target-card-1" },
     { ownerId: "attacker", ownerName: "Attacker", cardId: "target-card-2" },
   ]);
+});
+
+test("Frost discard title renders as one compact line while ordinary split titles stay unchanged", () => {
+  const frostFrame = createPublicCardEffectFrameView(effect(), {
+    ...copy,
+    title: "FROST SWORD · DISCARD",
+    titlePresentation: "compact-single-line",
+  });
+  assert.ok(frostFrame);
+  assert.equal(frostFrame.titlePresentation, "compact-single-line");
+  const frostMarkup = renderToStaticMarkup(React.createElement(PublicCardEffectFrameTitle, { frame: frostFrame }));
+  assert.match(frostMarkup, /class="public-card-effect-frame-title is-compact-single-line"><span class="public-card-effect-frame-title-line">FROST SWORD · DISCARD<\/span><\/strong>/);
+  assert.doesNotMatch(frostMarkup, /is-effect|title-separator/);
+
+  const ordinaryFrame = createPublicCardEffectFrameView(effect(), {
+    ...copy,
+    title: "FROST SWORD · AS DAMAGE PREVENTION",
+    titleParts: { skillName: "FROST SWORD", effectLabel: "AS DAMAGE PREVENTION" },
+  });
+  assert.ok(ordinaryFrame);
+  const ordinaryMarkup = renderToStaticMarkup(React.createElement(PublicCardEffectFrameTitle, { frame: ordinaryFrame }));
+  assert.doesNotMatch(ordinaryMarkup, /is-compact-single-line/);
+  assert.match(ordinaryMarkup, /FROST SWORD<span class="public-card-effect-frame-title-separator"> · <\/span>/);
+  assert.match(ordinaryMarkup, /class="public-card-effect-frame-title-line is-effect">AS DAMAGE PREVENTION/);
 });
 
 test("public effect frame factory fails closed on identity, ownership-name, and class errors", () => {

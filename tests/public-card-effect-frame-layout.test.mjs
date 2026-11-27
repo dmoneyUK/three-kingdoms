@@ -28,6 +28,24 @@ test("two and many-card frames stay within short and tall phone viewports", () =
   }
 });
 
+test("Frost discard's compact single-line title reduces only its header, not the genuine two-card faces", () => {
+  const frost = publicCardEffectFrameLayout(2, 390, 844, {
+    title: "FROST SWORD · DISCARD",
+    titlePresentation: "compact-single-line",
+  });
+  const ordinarySplitTitle = publicCardEffectFrameLayout(2, 390, 844, {
+    title: "FROST SWORD · DISCARD",
+    titleParts: { skillName: "FROST SWORD", effectLabel: "DISCARD" },
+  });
+  assert.equal(frost.headerHeight, 43);
+  assert.ok(frost.headerHeight < ordinarySplitTitle.headerHeight);
+  assert.deepEqual(
+    [frost.frameWidth, frost.cardWidth, frost.cardHeight, frost.cardOffsetTop],
+    [ordinarySplitTitle.frameWidth, 90, 135, 43],
+  );
+  assert.equal(frost.frameHeight, frost.headerHeight + frost.gridHeight + 12);
+});
+
 test("the two-card Serpent Spear frame hugs two full-size CardFaces at the approved phone width", () => {
   const layout = publicCardEffectFrameLayout(2, 390, 844, {
     title: "SERPENT SPEAR · AS ATTACK",

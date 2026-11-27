@@ -28,6 +28,8 @@ const FRAME_COUNT_GAP = 2;
 export type PublicCardEffectFrameTitleLayout = {
   title: string;
   titleParts?: { skillName: string; effectLabel?: string };
+  /** A narrowly scoped presentation for compact, single-line Frame titles. */
+  titlePresentation?: "compact-single-line";
 };
 
 function wrappedTitleRows(text: string, contentWidth: number, maxCharacterWidth: number): number {
@@ -47,7 +49,9 @@ export function publicCardEffectFrameHeaderHeight(
 ): number {
   if (!title) return FRAME_CARD_TOP;
   const contentWidth = Math.max(1, frameWidth - FRAME_PADDING * 2 - 2);
-  const titleHeight = title.titleParts
+  const titleHeight = title.titlePresentation === "compact-single-line"
+    ? 13
+    : title.titleParts
     ? wrappedTitleRows(`${title.titleParts.skillName}${title.titleParts.effectLabel ? " ·" : ""}`, contentWidth, 10) * 16
       + (title.titleParts.effectLabel ? wrappedTitleRows(title.titleParts.effectLabel, contentWidth, 7.5) * 12 : 0)
     : wrappedTitleRows(title.title, contentWidth, 10) * 16;

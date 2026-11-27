@@ -8561,6 +8561,54 @@
     min-height: 44px;
     max-height: 44px;
   }
+
+  /* §10.78 Frost-only compact painted controls. The button/tab hit boxes keep
+     their 44px touch height; the inset surfaces reduce visual bulk without
+     changing the shared Kirin pool or the selectable card area. */
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-control-surfaces .card-pool-panel__tab--stable-multi-select {
+    position: relative;
+    isolation: isolate;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-control-surfaces .card-pool-panel__tab--stable-multi-select::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 8px 2px;
+    border: 1px solid #675532;
+    border-radius: 2px;
+    background: #11140e;
+    pointer-events: none;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--compact-control-surfaces .card-pool-panel__tab--stable-multi-select[aria-selected="true"]::before {
+    border-color: #e3c36e;
+    background: #382d17;
+    box-shadow: inset 0 0 0 1px #e3c36e55;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .card-pool-decision-footer__button {
+    position: relative;
+    isolation: isolate;
+    border-color: transparent;
+    background: transparent;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .card-pool-decision-footer__button::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 8px 6px;
+    border: 1px solid #d5b96e;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .wtk-card-pool-action--confirm::before {
+    background: #be9b53;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-decision-footer--compact-control-surfaces .wtk-card-pool-action--skip::before {
+    border-color: #c3a46b;
+    background: #8b302a;
+  }
 }
 
 /* §10.75: keep the mandatory Stauchness consequence picker compact inside

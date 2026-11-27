@@ -12,7 +12,7 @@ import type { PresentationTargetCardSettlementMovement } from "../game/presentat
 import type { PublicInteractionNarration } from "../game/public-activity";
 import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
-import { publicCardEffectFrameLayout } from "../game/public-card-effect-frame-layout";
+import { publicCardEffectFrameLayout, type PublicCardEffectFrameTitleLayout } from "../game/public-card-effect-frame-layout";
 import {
   publicEffectFrameLanePreferredTop,
   positionLabeledCardAboveBand,
@@ -253,6 +253,7 @@ export type PublicCardEffectFrameView = {
   activationOwnerName: string;
   title: string;
   titleParts?: { skillName: string; effectLabel?: string };
+  titlePresentation?: PublicCardEffectFrameTitleLayout["titlePresentation"];
   materials: readonly { card: Card; ownerId: string | null; ownerName?: string }[];
   accessibleLabel: string;
 };
@@ -263,6 +264,7 @@ export function createPublicCardEffectFrameView(
   copy: {
     title: string;
     titleParts?: { skillName: string; effectLabel?: string };
+    titlePresentation?: PublicCardEffectFrameTitleLayout["titlePresentation"];
     accessibleLabel: string;
     activationOwnerName: string;
     ownerNamesById: Readonly<Record<string, string>>;
@@ -281,6 +283,7 @@ export function createPublicCardEffectFrameView(
     || `${normalizedTitleParts.skillName}${normalizedTitleParts.effectLabel ? ` · ${normalizedTitleParts.effectLabel}` : ""}` === copy.title.trim();
   if (effect.semantics !== "PROVEN" || !effect.eventId || !effect.activationOwnerId || !classIsSupported || !hasRootIdentity
     || !copy.title.trim() || copy.title.length > 40 || !copy.accessibleLabel.trim() || copy.accessibleLabel.length > 240
+    || copy.titlePresentation !== undefined && copy.titlePresentation !== "compact-single-line"
     || normalizedTitleParts && !normalizedTitleParts.skillName || !titlePartsMatch
     || !copy.activationOwnerName.trim() || !cards.length || cards.length !== materials.length
     || new Set(cards.map((card) => card.id)).size !== cards.length
@@ -307,6 +310,7 @@ export function createPublicCardEffectFrameView(
     activationOwnerName: copy.activationOwnerName,
     title: copy.title.trim(),
     ...(normalizedTitleParts ? { titleParts: normalizedTitleParts } : {}),
+    ...(copy.titlePresentation ? { titlePresentation: copy.titlePresentation } : {}),
     materials: cards.map((card, index) => ({
       card,
       ownerId: materials[index].ownerId,
@@ -314,6 +318,25 @@ export function createPublicCardEffectFrameView(
     })),
     accessibleLabel: `${copy.title.trim()} ${effect.effectClass.toLowerCase()} frame. Material cards: ${materialsAccessibleLabel}. ${copy.accessibleLabel.trim()}`,
   };
+}
+
+/** Renders the public title using the layout already validated for this Frame. */
+export function PublicCardEffectFrameTitle({ frame, lustCostFrame = false }: {
+  frame: PublicCardEffectFrameView;
+  lustCostFrame?: boolean;
+}) {
+  return <strong className={`public-card-effect-frame-title${lustCostFrame ? " public-card-lust-cost-frame-title" : ""}${frame.titlePresentation === "compact-single-line" ? " is-compact-single-line" : ""}`}>
+    {frame.titlePresentation === "compact-single-line"
+      ? <span className="public-card-effect-frame-title-line">{frame.title}</span>
+      : frame.titleParts ? <>
+      <span className="public-card-effect-frame-title-line">
+        {frame.titleParts.skillName}{frame.titleParts.effectLabel ? <span className="public-card-effect-frame-title-separator">{" · "}</span> : null}
+      </span>
+      {frame.titleParts.effectLabel
+        ? <span className="public-card-effect-frame-title-line is-effect">{frame.titleParts.effectLabel}</span>
+        : null}
+    </> : <span className="public-card-effect-frame-title-line">{frame.title}</span>}
+  </strong>;
 }
 
 /** A public, proof-backed event with no physical card face or card anchor. */
@@ -582,16 +605,7 @@ function PublicJourneyCard({
         opacity: card.phase === "move" ? 0 : 1,
       }}
     >
-      <strong className={`public-card-effect-frame-title${lustCostFrame ? " public-card-lust-cost-frame-title" : ""}`}>
-        {publicCardEffectFrame.titleParts ? <>
-          <span className="public-card-effect-frame-title-line">
-            {publicCardEffectFrame.titleParts.skillName}{publicCardEffectFrame.titleParts.effectLabel ? <span className="public-card-effect-frame-title-separator">{" · "}</span> : null}
-          </span>
-          {publicCardEffectFrame.titleParts.effectLabel
-            ? <span className="public-card-effect-frame-title-line is-effect">{publicCardEffectFrame.titleParts.effectLabel}</span>
-            : null}
-        </> : <span className="public-card-effect-frame-title-line">{publicCardEffectFrame.title}</span>}
-      </strong>
+      <PublicCardEffectFrameTitle frame={publicCardEffectFrame} lustCostFrame={Boolean(lustCostFrame)} />
       {frameMaterials.length > 1 && <small className="public-card-effect-frame-count">{frameMaterials.length} MATERIAL CARDS</small>}
       <span
         className="public-card-effect-frame-materials"

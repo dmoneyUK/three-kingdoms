@@ -1202,6 +1202,9 @@ test("normalized malformed and unknown response states render safely", () => {
   const pickerHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
   assert.match(pickerHtml, /card-pool-panel--compact-density/, "Frost opts into the existing shared compact pool density");
+  assert.match(pickerHtml, /card-pool-panel--compact-control-surfaces/, "only the Frost pool opts into the reduced painted tab and action surfaces");
+  assert.match(pickerHtml, /card-pool-decision-footer--compact-control-surfaces/);
+  assert.match(globalStyleSource, /public-card-effect-frame-title\.is-compact-single-line\{[^}]*font-size:clamp\(10px,3vw,12px\)[^}]*white-space:nowrap[^}]*overflow-wrap:normal/);
   assert.match(pickerHtml, /class="card-pool-panel__title">FROST SWORD<\/b>/);
   assert.match(pickerHtml, /class="card-pool-panel__instruction">Choose 2 cards to discard<\/span>/);
   assert.deepEqual([...pickerHtml.matchAll(/role="tab"[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]), ["Hand (4), 0 selected", "Equipment (1), 0 selected"], "only server-authorized populated zones become tabs and stable multi-select tabs expose their counts");
@@ -1224,6 +1227,7 @@ test("normalized malformed and unknown response states render safely", () => {
       { id: "equipment", title: "EQUIPMENT", accessibleName: "Equipment", choices: [{ type: "public-card", eligibleKey: "compact-armor", publicCardFace: card("compact-armor", "NioShield"), cardName: "Nio Shield", accessibleLabel: "Equipment: Nio Shield", state: "selected" }] },
     ],
     compactDensity: true,
+    compactControlSurfaces: true,
     compactSelectionCount: "2/2",
     stableMultiSelectTabs: true,
     selectionCount: "2 / 2 selected",
@@ -1236,15 +1240,22 @@ test("normalized malformed and unknown response states render safely", () => {
     onInfo: () => {},
   }));
   assert.match(selectedCompactFrostHtml, /card-pool-panel--compact-density/, "selected Hand and Equipment remain in the shared compact pool");
+  assert.match(selectedCompactFrostHtml, /card-pool-panel--compact-control-surfaces/);
   assert.match(selectedCompactFrostHtml, /aria-label="2 \/ 2 selected"[^>]*>2\/2<\/span>/, "the visual count is explicit while its accessible label stays complete");
   assert.match(selectedCompactFrostHtml, /aria-label="Hand \(1\), 1 selected"/);
   assert.match(selectedCompactFrostHtml, /aria-label="Equipment \(1\), 1 selected"/);
   assert.match(selectedCompactFrostHtml, /data-pool-action="skip"[^>]*>Skip<\/button>/);
   assert.match(selectedCompactFrostHtml, /data-pool-action="confirm"[^>]*>Confirm<\/button>/);
   assert.match(selectedCompactFrostHtml, /card-pool-decision-footer--compact-density/);
+  assert.match(selectedCompactFrostHtml, /card-pool-decision-footer--compact-control-surfaces/);
   assert.match(sequenceStyleSource, /card-pool-panel--compact-density \.card-pool-panel__tabs--stable-multi-select \{\s*width: max-content;[^}]*max-width: 100%;/);
   assert.match(sequenceStyleSource, /card-pool-panel--compact-density \.card-pool-panel__tab--stable-multi-select \{[^}]*min-width: 44px;[^}]*min-height: 44px;/s);
   assert.match(sequenceStyleSource, /card-pool-decision-footer--compact-density \.card-pool-decision-footer__pair\[data-action-count="2"\] \{\s*grid-template-columns: repeat\(2, 72px\)/);
+  assert.match(sequenceStyleSource, /card-pool-panel--compact-control-surfaces \.card-pool-panel__tab--stable-multi-select \{\s*position: relative;\s*isolation: isolate;/);
+  assert.match(sequenceStyleSource, /card-pool-panel--compact-control-surfaces \.card-pool-panel__tab--stable-multi-select::before \{[^}]*inset: 8px 2px;[^}]*pointer-events: none;/s);
+  assert.match(sequenceStyleSource, /card-pool-decision-footer--compact-control-surfaces \.card-pool-decision-footer__button::before \{[^}]*inset: 8px 6px;[^}]*pointer-events: none;/s);
+  assert.match(sequenceStyleSource, /card-pool-panel--compact-density \.card-pool-panel__tab--stable-multi-select \{[^}]*min-height: 44px;/s,
+    "smaller painted tabs preserve the existing full touch target");
 
   const invalidFrostRoom = {
     ...pickerRoom,
@@ -1272,6 +1283,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(kirinHtml, /class="card-pool-panel__instruction">Choose 1 Mount to discard<\/span>/);
   assert.match(kirinHtml, /data-public-card-id="mount-a"/);
   assert.match(kirinHtml, /data-public-card-id="mount-b"/);
+  assert.doesNotMatch(kirinHtml, /compact-control-surfaces/, "Kirin Bow keeps its previously accepted control appearance");
   assert.doesNotMatch(kirinHtml, /data-public-card-id="(?:unrelated-armor|unrelated-judgement)"/);
   assert.deepEqual([...kirinHtml.matchAll(/data-target-card-public-zone="([^"]+)"/g)].map((match) => match[1]), ["equipment"], "the scoped picker has one populated equipment area and no Hand/Judgement zone");
   assert.doesNotMatch(kirinHtml, /target-card-picker-overlay|target-card-picker-panel--zones|card-pool-decision-footer__cancel/);

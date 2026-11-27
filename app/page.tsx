@@ -9714,6 +9714,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(frostSwordEffectFrameCandidate.effect, {
       title: "FROST SWORD · DISCARD",
+      titlePresentation: "compact-single-line",
       accessibleLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
       activationOwnerName: frostSwordEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -13872,10 +13873,10 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   </section></div>;
 }
 
-function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCount, scope, title, instruction, accessibilityLabel, confirmAccessibleLabel, skipAccessibleLabel, disabled, canDecline, error, isRetaliation = false, protectSharedPublicStage = false, compactDensity = false, scrollHint, onToggle, onConfirm, onDecline, onInfo }: {
+function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCount, scope, title, instruction, accessibilityLabel, confirmAccessibleLabel, skipAccessibleLabel, disabled, canDecline, error, isRetaliation = false, protectSharedPublicStage = false, compactDensity = false, compactControlSurfaces = false, scrollHint, onToggle, onConfirm, onDecline, onInfo }: {
   selection: PublicTargetCardSelection; publicTarget: PublicTargetPoolView; selectedKeys: string[]; playerCount: number; scope: string;
   title: string; instruction: string; accessibilityLabel: string; confirmAccessibleLabel: string; skipAccessibleLabel: string;
-  disabled: boolean; canDecline: boolean; error: string; isRetaliation?: boolean; protectSharedPublicStage?: boolean; compactDensity?: boolean; scrollHint?: string;
+  disabled: boolean; canDecline: boolean; error: string; isRetaliation?: boolean; protectSharedPublicStage?: boolean; compactDensity?: boolean; compactControlSurfaces?: boolean; scrollHint?: string;
   onToggle: (key: string) => void; onConfirm: () => void; onDecline: () => void; onInfo: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const zones = publicTargetCardPoolZones(selection, publicTarget, selectedKeys);
@@ -13887,7 +13888,7 @@ function TriggerTargetCardPool({ selection, publicTarget, selectedKeys, playerCo
     data-target-card-pool-ready={ready ? "true" : "false"} aria-hidden={!ready}
     style={{ top: top === null ? undefined : `${top}px`, left: insets ? `${insets.left}px` : undefined, right: insets?.width ? "auto" : insets ? `${insets.right}px` : undefined, width: insets?.width ? `${insets.width}px` : undefined, "--trigger-target-pool-max-height": maxHeight === null ? undefined : `${maxHeight}px` } as CSSProperties}>
     <CardPoolPanel mode="actor-target-select" title={title} instruction={instruction} accessibilityLabel={accessibilityLabel}
-      publicTarget={publicTarget} zones={zones} scrollHint={scrollHint} compactDensity={compactDensity}
+      publicTarget={publicTarget} zones={zones} scrollHint={scrollHint} compactDensity={compactDensity} compactControlSurfaces={compactControlSurfaces}
       compactSelectionCount={compactDensity ? `${selectedKeys.length}/${selection.max}` : undefined}
       stableMultiSelectTabs={selection.min > 1 && selection.max > 1}
       selectionCount={`${selectedKeys.length} / ${selection.max} selected`} confirmAccessibleLabel={confirmAccessibleLabel} disabled={disabled}
@@ -13944,7 +13945,7 @@ function TargetCardPicker({ option, presentationCopy, compact = false, forceShar
       playerCount={poolPlayerCount} scope={poolScope} title="FROST SWORD" instruction={`Choose ${amount} card${selection.max === 1 ? "" : "s"} to discard`}
       accessibilityLabel="Frost Sword target card selection" confirmAccessibleLabel="Confirm Frost Sword selection" skipAccessibleLabel="Skip Frost Sword"
       disabled={disabled} canDecline={canDecline} error={error} scrollHint={target.handCount > 4 ? "Swipe to see all" : undefined} protectSharedPublicStage
-      compactDensity
+      compactDensity compactControlSurfaces
       onToggle={onToggle} onConfirm={() => onUse(validSelectedKeys)} onDecline={onDecline} onInfo={(card, trigger) => onInfoCard?.(card, trigger)} />;
   }
   if (forceSharedPool) {
