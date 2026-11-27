@@ -57,20 +57,20 @@ test("committed damage source labels survive projection only when bound to the p
   const current = identity(2);
   const frame = { frameId: current.rootFrameId, parentFrameId: null,
     origin: { originSourceId: "player-2", originalTargetIds: ["player-1"] } };
-  const makeEvent = (sourceLabel) => ({
+  const makeEvent = (sourceLabel, cardKind, publicLabel = "Raining Arrows", sourceKind = "damage") => ({
     id: "damage-event", type: "message", presentation: true, publicSequence: 15, actorId: "player-2",
     publicFact: {
       semantics: "PROVEN", visibility: "PUBLIC", interactionId: current.interactionId,
       frameId: current.rootFrameId, rootEventId: "group-root", committedIdentity: current,
       category: "DAMAGE_APPLIED", actorId: "player-2", affectedPlayerIds: ["player-1"],
-      label: "Raining Arrows", amount: 1, effect: { kind: "damage_applied" },
-      committedOutcome: { source: { kind: "damage", label: sourceLabel }, changes: [
+      label: publicLabel, amount: 1, effect: { kind: "damage_applied" },
+      committedOutcome: { source: { kind: sourceKind, label: sourceLabel, ...(cardKind ? { cardKind } : {}) }, changes: [
         { kind: "DAMAGE_APPLIED", playerId: "player-1", amount: 1 },
       ] },
     },
   });
-  const project = (sourceLabel) => collectPublicPresentationEventFacts({
-    timeline: [makeEvent(sourceLabel)], identity: current, frames: [frame], rootEventId: "group-root",
+  const project = (sourceLabel, cardKind, publicLabel) => collectPublicPresentationEventFacts({
+    timeline: [makeEvent(sourceLabel, cardKind, publicLabel)], identity: current, frames: [frame], rootEventId: "group-root",
   });
 
   const valid = project("Raining Arrows");
@@ -84,6 +84,20 @@ test("committed damage source labels survive projection only when bound to the p
   assert.equal(mismatched.length, 1, "the truthful public damage fact remains available");
   assert.equal(mismatched[0]?.committedOutcome, undefined,
     "a source label without matching committed public proof is omitted");
+
+  const typedAttack = project("Attack", "Attack", "Attack");
+  assert.equal(typedAttack[0]?.committedOutcome?.source.cardKind, "Attack",
+    "the shared proof collector preserves a validated logical card kind for a committed damage source");
+  const nonDamageCardKind = collectPublicPresentationEventFacts({
+    timeline: [makeEvent("Attack", "Attack", "Attack", "skill")], identity: current, frames: [frame], rootEventId: "group-root",
+  });
+  assert.equal(nonDamageCardKind[0]?.committedOutcome, undefined,
+    "card kinds are accepted only as typed damage-source provenance");
+  const invalidCardKind = collectPublicPresentationEventFacts({
+    timeline: [{ ...makeEvent("Attack", "UnknownCard", "Attack") }], identity: current, frames: [frame], rootEventId: "group-root",
+  });
+  assert.equal(invalidCardKind[0]?.committedOutcome, undefined,
+    "unknown card kinds cannot enter the public H4 source projection");
 });
 
 test("idle retention keeps a bounded public fact queue across causal roots in sequence order", () => {

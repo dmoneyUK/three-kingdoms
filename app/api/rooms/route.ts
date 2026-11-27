@@ -831,6 +831,13 @@ function stauchnessJudgementPublicFact(input: {
     effect: { kind: "judgement", label: "Stauchness" },
   }, input.envelope, publicIdentityFromCommittedRoot(input.log, input.rootEventId, input.causal));
 }
+function stauchnessJudgementLogLabel(actor: PlayerRow, card: Card, outcome: "revealed" | "not-heart" | "heart" | "source-unavailable") {
+  const resultCopy = outcome === "revealed" ? ""
+    : outcome === "not-heart" ? " — not a Heart"
+      : outcome === "heart" ? " — no effect"
+        : " — not a Heart; no consequence was applied";
+  return `${actor.name} used Stauchness. Judgement: ${card.rank}${card.suit}${resultCopy}`;
+}
 function addCommittedPublicSkillOutcome(
   log: string[],
   actor: PlayerRow,
@@ -3056,7 +3063,9 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
             affectedPlayerIds: [source.id],
           })
           : undefined;
-        const presentation = addLogWithId(log, stauchnessPendingFact?.outcomeLabel ?? `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness.`, undefined, {
+        const presentation = addLogWithId(log, stauchnessPendingFact
+          ? stauchnessJudgementLogLabel(target, finalCard, "not-heart")
+          : `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness.`, undefined, {
           resolutionId: judgement.resolutionId, importance: "essential", finalResult: true,
           actorId: target.id, ...(stauchnessPendingFact ? { publicFact: stauchnessPendingFact } : {}),
         });
@@ -3096,7 +3105,9 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
           affectedPlayerIds: damageResume.sourceId ? [damageResume.sourceId] : [],
         })
         : undefined;
-      log = addFinalResult(log, unavailableFact?.outcomeLabel ?? `${target.name} judges ${finalCard.rank}${finalCard.suit}, but the damage source is no longer available.`, undefined, judgement.resolutionId,
+      log = addFinalResult(log, unavailableFact
+        ? stauchnessJudgementLogLabel(target, finalCard, "source-unavailable")
+        : `${target.name} judges ${finalCard.rank}${finalCard.suit}, but the damage source is no longer available.`, undefined, judgement.resolutionId,
         unavailableFact ? { actorId: target.id, publicFact: unavailableFact } : undefined);
     } else {
       const resultText = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
@@ -3114,7 +3125,9 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
           affectedPlayerIds: damageResume.sourceId ? [damageResume.sourceId] : [],
         })
         : undefined;
-      log = addFinalResult(log, stauchnessNoEffectFact?.outcomeLabel ?? `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId, {
+      log = addFinalResult(log, stauchnessNoEffectFact
+        ? stauchnessJudgementLogLabel(target, finalCard, "heart")
+        : `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId, {
         ...(stauchnessNoEffectFact ? { actorId: target.id, publicFact: stauchnessNoEffectFact } : {}),
       });
     }
@@ -6289,6 +6302,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     ? `Damage to ${target.name} was prevented`
     : typeof damageDescription === "function" ? damageDescription(actualHpLost) : damageDescription ?? `${target.name} takes ${actualHpLost} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
   const damageEventId = crypto.randomUUID();
+  const damageSourceCardKind = cause === "attack" ? "Attack" : cause === "duel" ? "Duel" : undefined;
   const damageFact = amount > 0 ? publicFactFor(inheritedCausal, actualHpLost > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED", {
     rootEventId: rootEventId ?? damageEventId,
     ...(source && (actualHpLost > 0 || label === "Stauchness") ? { actorId: source.id } : {}),
@@ -6296,7 +6310,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     outcomeLabel: actualHpLost > 0 ? `lost ${actualHpLost} HP to damage` : "damage was prevented",
     effect: { kind: actualHpLost > 0 ? "damage_applied" : "damage_prevented" },
     ...(actualHpLost > 0 ? { committedOutcome: {
-      source: { kind: "damage", label },
+      source: { kind: "damage", label, ...(damageSourceCardKind ? { cardKind: damageSourceCardKind } : {}) },
       changes: [{ kind: "DAMAGE_APPLIED", playerId: target.id, amount: actualHpLost }],
     } } : {}),
   }, parseCausalEnvelope(room.causal_envelope_json),

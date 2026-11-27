@@ -1156,7 +1156,13 @@ test("committed H4 names proven actions and reports only actual public outcomes"
     { kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 },
   ], { actorId: "p2", affectedPlayerIds: ["p1"], category: "DAMAGE_APPLIED" });
   assert.equal(duel?.headline, "Test Player 2 dealt 1 damage to Test Player 1.",
-    "a Duel name is omitted when the linked root fact does not prove Duel as the source card");
+    "a Duel name is omitted when neither a typed source kind nor a matching root proves it");
+
+  const typedDuel = narrationFor("typed-duel-damage", { kind: "damage", label: "Duel damage", cardKind: "Duel" }, [
+    { kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 },
+  ], { actorId: "p2", affectedPlayerIds: ["p1"], category: "DAMAGE_APPLIED" });
+  assert.equal(typedDuel?.headline, "Test Player 2 dealt 1 damage to Test Player 1 with [Duel].",
+    "a server-proven logical Duel damage source is named without requiring a physical Duel card");
 
   const lightning = narrationFor("lightning-damage", { kind: "damage", label: "Lightning" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 3 },

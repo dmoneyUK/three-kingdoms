@@ -1,5 +1,5 @@
 import { CARD_DEFINITIONS } from "./cards";
-import type { CardKind, CardRank, CardSuit, EquipmentZone } from "./model";
+import { CARD_KINDS, type CardKind, type CardRank, type CardSuit, type EquipmentZone } from "./model";
 import { matchingVerifiedPlayerCopySegments, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 
 /** Stable public identity shared by the public event and the current decision. */
@@ -45,7 +45,7 @@ export type CommittedPublicOutcomeChange =
 
 /** Optional metadata for a single already-committed public room event. */
 export type CommittedPublicOutcomeDraft = {
-  source: { kind: PublicOutcomeSourceKind; label?: string };
+  source: { kind: PublicOutcomeSourceKind; label?: string; cardKind?: CardKind };
   changes: readonly CommittedPublicOutcomeChange[];
 };
 
@@ -424,16 +424,20 @@ export function validateCommittedPublicOutcomeDraft(
 ): CommittedPublicOutcomeDraft | null {
   const item = record(value);
   const source = record(item?.source);
+  const sourceCardKind = typeof source?.cardKind === "string" && CARD_KINDS.includes(source.cardKind as CardKind)
+    ? source.cardKind as CardKind : undefined;
   if (!item || !exactKeys(item, ["source", "changes"]) || !source
-    || !exactKeys(source, ["kind"], ["label"])
+    || !exactKeys(source, ["kind"], ["label", "cardKind"])
     || typeof source.kind !== "string" || !PUBLIC_OUTCOME_SOURCE_KINDS.has(source.kind as PublicOutcomeSourceKind)
     || source.label !== undefined && !nonEmptyString(source.label)
+    || source.cardKind !== undefined && (source.kind !== "damage" || !sourceCardKind)
     || !Array.isArray(item.changes) || item.changes.length === 0) return null;
   const changes = item.changes.map(publicOutcomeChange);
   if (changes.some((change) => change === null)) return null;
   const normalizedSource = {
     kind: source.kind as PublicOutcomeSourceKind,
     ...(typeof source.label === "string" ? { label: source.label } : {}),
+    ...(sourceCardKind ? { cardKind: sourceCardKind } : {}),
   };
   if (publicFact) {
     const participants = new Set([...(publicFact.actorId ? [publicFact.actorId] : []), ...(publicFact.affectedPlayerIds ?? [])]);

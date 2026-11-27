@@ -462,8 +462,11 @@ function formatCommittedPublicOutcomeCopy(
     && (damageRootCard.label === source || source === `${damageRootCard.label} damage`)
     ? publicCardReferenceForFact(damageRootCard) : null;
   const damageSource = outcome.source.kind === "damage" && (!outcome.actorId || actor)
-    && source && !/^(?:damage|generic damage)$/i.test(source)
-    ? damageCardReference
+    ? outcome.source.cardKind
+      ? publicH4CardKindReference(outcome.source.cardKind)
+      : source && !/^(?:damage|generic damage)$/i.test(source)
+        ? damageCardReference
+        : null
     : null;
 
   // Damage is an outcome, not an action label. Describe the actual recipient
