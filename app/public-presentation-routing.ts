@@ -282,6 +282,33 @@ export function coalescePresentationQueue<T extends PresentationQueueEntry>(
     || queuedPublicH4EventIds.has(event.id));
 }
 
+/** Removes a redundant committed activation notice only when its exact original reveal is queued. */
+export function coalesceLinkedJudgementActivationQueue<T extends PresentationQueueEntry>(
+  activeEvent: T | null,
+  queuedEvents: readonly T[],
+  incomingEvents: readonly T[],
+  links: readonly { activationEventId: string; originalEventId: string }[],
+): { activeEvent: T | null; queue: T[]; incoming: T[]; retiredActivationEventIds: string[] } {
+  const combined: T[] = [];
+  for (const event of [...queuedEvents, ...incomingEvents]) {
+    if (event.id !== activeEvent?.id && !combined.some((existing) => existing.id === event.id)) combined.push(event);
+  }
+  const present = new Set([...(activeEvent ? [activeEvent.id] : []), ...combined.map((event) => event.id)]);
+  const retiredActivationEventIds = [...new Set(links.flatMap((link) =>
+    link.activationEventId && link.originalEventId && present.has(link.activationEventId) && present.has(link.originalEventId)
+      ? [link.activationEventId] : []))];
+  const retired = new Set(retiredActivationEventIds);
+  const queue = combined.filter((event) => !retired.has(event.id));
+  const incoming = incomingEvents.filter((event) => !retired.has(event.id));
+  const activeWasRetired = Boolean(activeEvent && retired.has(activeEvent.id));
+  return {
+    activeEvent: activeWasRetired ? queue.shift() ?? null : activeEvent,
+    queue,
+    incoming,
+    retiredActivationEventIds,
+  };
+}
+
 /** A queued H4-only message is readable presentation, not a gameplay lock. */
 export function presentationEventBlocksActions(
   event: { id: string; type: string } | null | undefined,

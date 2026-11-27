@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PUBLIC_PRESENTATION_EVENT_COVERAGE,
+  coalesceLinkedJudgementActivationQueue,
   coalescePresentationQueue,
   presentationEventBlocksActions,
   publicH4FactAtPresentationCursor,
@@ -223,6 +224,35 @@ test("presentation queue keeps validated H4 facts in public order across resolut
     "existing card journeys retain their action lock");
   assert.equal(presentationEventBlocksActions({ id: "other-message", type: "message" }, queuedH4Ids), true,
     "unvalidated informational messages do not gain the H4 exception");
+});
+
+test("a proven Judgement activation is coalesced only when its exact original reveal is queued", () => {
+  const activation = { id: "stauchness-activation", type: "message" };
+  const original = { id: "stauchness-original", type: "card" };
+  const linked = [{ activationEventId: activation.id, originalEventId: original.id }];
+
+  const sameSnapshot = coalesceLinkedJudgementActivationQueue(null, [], [activation, original], linked);
+  assert.deepEqual(sameSnapshot.queue.map(({ id }) => id), [original.id]);
+  assert.deepEqual(sameSnapshot.incoming.map(({ id }) => id), [original.id]);
+  assert.deepEqual(sameSnapshot.retiredActivationEventIds, [activation.id]);
+
+  const splitSnapshot = coalesceLinkedJudgementActivationQueue(activation, [], [original], linked);
+  assert.equal(splitSnapshot.activeEvent.id, original.id, "an active redundant activation hands off to the exact original reveal");
+  assert.deepEqual(splitSnapshot.queue, []);
+
+  const alreadyQueuedOriginal = coalesceLinkedJudgementActivationQueue(activation, [original], [], linked);
+  assert.equal(alreadyQueuedOriginal.activeEvent.id, original.id, "a newly validated link also hands off when the reveal is already queued");
+  assert.deepEqual(alreadyQueuedOriginal.queue, []);
+  assert.deepEqual(alreadyQueuedOriginal.incoming, []);
+
+  const withIndependentEvent = coalesceLinkedJudgementActivationQueue(activation,
+    [{ id: "independent", type: "card" }], [original], linked);
+  assert.equal(withIndependentEvent.activeEvent.id, "independent", "intervening committed events keep their order");
+  assert.deepEqual(withIndependentEvent.queue.map(({ id }) => id), [original.id]);
+
+  const missingProof = coalesceLinkedJudgementActivationQueue(activation, [], [original], []);
+  assert.equal(missingProof.activeEvent.id, activation.id, "without an exact projected link the ordinary activation stays visible");
+  assert.equal(missingProof.queue[0].id, original.id);
 });
 
 test("H4 cursor selection never jumps ahead of the event currently being presented", () => {

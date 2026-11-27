@@ -28,14 +28,15 @@ function continuationFor(purpose) {
     : purpose === "cavalry" ? "attack_targeted" : purpose === "eight_trigrams" ? "response" : "delayed";
 }
 
-function judgementEvent({ id = "judgement-1", target = judge, purpose = "ganglie", continuationKind = continuationFor(purpose), card = makeCard("original-1", "Attack", "2", "♠"), sourceCard = undefined, originatingAction = undefined, stage = "OPEN", originalStatus = undefined, finalStatus = undefined, replacementEventId = undefined, replacementActorId = undefined, resolutionId = "resolution-1", publicSequence = 10 } = {}) {
+function judgementEvent({ id = "judgement-1", target = judge, purpose = "ganglie", continuationKind = continuationFor(purpose), card = makeCard("original-1", "Attack", "2", "♠"), sourceCard = undefined, originatingAction = undefined, activationEventId = undefined, causal = undefined, publicFact = undefined, stage = "OPEN", originalStatus = undefined, finalStatus = undefined, replacementEventId = undefined, replacementActorId = undefined, resolutionId = "resolution-1", publicSequence = 10 } = {}) {
   const status = originalStatus ?? (judgementSucceeds(purpose, card) ? "satisfied" : "unsatisfied");
   return {
     type: "card", id, publicSequence, resolutionId, player: target.name, target: target.name,
-    card, action: "reveal", judgement: true, presentation: true,
+    card, action: "reveal", judgement: true, presentation: true, ...(publicFact ? { publicFact } : {}),
     publicJudgementPresentation: {
       semantics: "PROVEN", visibility: "PUBLIC", judgementId: id, targetId: target.id,
       judgingPlayerId: target.id, purpose, continuationKind, stage, originalStatus: status,
+      ...(activationEventId ? { activationEventId } : {}), ...(causal ? { causal } : {}),
       ...(sourceCard ? { sourceCard } : {}),
       ...(originatingAction ? { originatingAction } : {}),
       ...(finalStatus ? { finalStatus } : {}),
@@ -43,6 +44,36 @@ function judgementEvent({ id = "judgement-1", target = judge, purpose = "ganglie
     },
   };
 }
+
+test("Stauchness activation coalescing requires exact public skill, actor, order and causal proof", () => {
+  const activation = {
+    type: "message", id: "stauchness-start", publicSequence: 9, resolutionId: "resolution-1",
+    effectNotice: true, presentation: true,
+    publicFact: {
+      semantics: "PROVEN", visibility: "PUBLIC", category: "SKILL_USED", actorId: judge.id,
+      rootEventId: "damage-root", interactionId: "interaction-1", frameId: "frame-1",
+      effect: { kind: "damage_player", effectId: "xiahou_dun_ganglie" },
+    },
+  };
+  const original = judgementEvent({ id: "stauchness-reveal", publicSequence: 10,
+    activationEventId: activation.id, causal: { interactionId: "interaction-1", frameId: "frame-1" },
+    publicFact: { rootEventId: "damage-root" } });
+  const [projected] = projectPublicJudgementPresentations([activation, original], [], [judge, sima]);
+  assert.equal(projected.activationEventId, activation.id);
+
+  const mismatchedActivation = { ...activation, publicFact: { ...activation.publicFact, actorId: sima.id } };
+  const [withoutActorProof] = projectPublicJudgementPresentations([mismatchedActivation, original], [], [judge, sima]);
+  assert.equal(withoutActorProof.activationEventId, undefined, "a different skill actor cannot be linked");
+
+  const mismatchedSkill = { ...activation, publicFact: { ...activation.publicFact,
+    effect: { kind: "damage_player", effectId: "another_skill" } } };
+  const [withoutSkillProof] = projectPublicJudgementPresentations([mismatchedSkill, original], [], [judge, sima]);
+  assert.equal(withoutSkillProof.activationEventId, undefined, "generic prose or a different skill fact cannot suppress the notice");
+
+  const afterReveal = { ...activation, publicSequence: 11 };
+  const [withoutOrderProof] = projectPublicJudgementPresentations([original, afterReveal], [], [judge, sima]);
+  assert.equal(withoutOrderProof.activationEventId, undefined, "an activation after the reveal is not coalesced");
+});
 
 function replacementEvent(original, card, actor = sima, target = judge) {
   const eventId = "replacement-1";

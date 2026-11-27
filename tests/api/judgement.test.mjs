@@ -43,6 +43,16 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   });
   const accepted = await requestAndSettle("trigger", { code: resolved.code, token: resolved.targetMember.token, providerId: "xiahou_dun_ganglie" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const stauchnessActivation = accepted.data.room.timeline.find((event) => event.type === "message"
+    && event.effectNotice === true && event.publicFact?.category === "SKILL_USED"
+    && event.publicFact?.actorId === resolved.target.id
+    && event.publicFact?.effect?.effectId === "xiahou_dun_ganglie");
+  const stauchnessOriginal = accepted.data.room.timeline.find((event) => event.type === "card"
+    && event.action === "reveal" && event.judgement === true
+    && event.publicJudgementPresentation?.purpose === "ganglie");
+  assert.ok(stauchnessActivation && stauchnessOriginal, "the committed activation and original Judgement are both public facts");
+  assert.equal(stauchnessOriginal.publicJudgementPresentation.activationEventId, stauchnessActivation.id,
+    "the exact server-created Stauchness activation is linked to its original Judgement");
   const damageResumeEnvelope = accepted.data.room.causalEnvelope;
   assert.ok(damageResumeEnvelope, "Stauchness Judgement resumes into the live Damage interaction");
   assert.equal(damageResumeEnvelope.frames[0].stage, "DAMAGE");

@@ -336,13 +336,16 @@ export function publicStageRevealCanRetire(input: {
   viewerId: string;
   parkingTargetViewerId?: string | null;
   parkingTarget: Pick<PublicStageSize, "width" | "height"> | null | undefined;
+  /** Some verified reveals finish in the centre and have no seat-parking stage. */
+  requireParkingTarget?: boolean;
 }): boolean {
   return input.phase === "REVEAL"
     && !input.layoutPending
     && input.safePainted
     && Boolean(input.viewerId.trim())
-    && input.parkingTargetViewerId === input.viewerId
-    && finiteSize(input.parkingTarget ?? { width: 0, height: 0 });
+    && (input.requireParkingTarget === false
+      || input.parkingTargetViewerId === input.viewerId
+        && finiteSize(input.parkingTarget ?? { width: 0, height: 0 }));
 }
 
 /**

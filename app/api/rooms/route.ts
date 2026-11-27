@@ -922,7 +922,7 @@ function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], eff
     ...(affectedPlayerIds.length ? { affectedPlayerIds } : {}),
     ...(option?.label ? { label: option.label } : {}),
     ...(summary.outcomeLabel ? { outcomeLabel: summary.outcomeLabel } : {}),
-    effect: { kind: outcome.kind },
+    effect: { kind: outcome.kind, effectId },
   }, envelope);
 }
 
@@ -1545,6 +1545,7 @@ function publicJudgementPresentationRecord(
     semantics: "PROVEN" as const,
     visibility: "PUBLIC" as const,
     judgementId: judgement.revealedEventId ?? "",
+    ...(judgement.activationEventId ? { activationEventId: judgement.activationEventId } : {}),
     targetId: judgement.targetId,
     judgingPlayerId: judgement.targetId,
     purpose: judgement.purpose,
@@ -10852,7 +10853,8 @@ export async function POST(request: Request) {
           await continueAfterDying(room.id, continuation.resumePlayerId ?? continuation.sourceId);
           return json({ room: await roomState(code, token) });
         }
-        log = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness", triggerPublicFact).log;
+        const activationNotice = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness", triggerPublicFact);
+        log = activationNotice.log;
         const stauchnessRevealFact = triggerExecution?.effectId === "xiahou_dun_ganglie"
           ? stauchnessJudgementPublicFact({
             log,
@@ -10875,6 +10877,8 @@ export async function POST(request: Request) {
           purpose: "ganglie",
           revealedCard: draw.card,
           revealedEventId: presentation.eventId,
+          ...(triggerExecution?.effectId === "xiahou_dun_ganglie" && triggerPublicFact
+            ? { activationEventId: activationNotice.eventId } : {}),
           ...(stauchnessRevealFact?.rootEventId ? { actionRootEventId: stauchnessRevealFact.rootEventId } : {}),
           resolutionId: continuation.resolutionId,
           ...(continuation.causal ? { causal: continuation.causal } : {}),

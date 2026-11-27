@@ -65,15 +65,15 @@ import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-li
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
-import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
+import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementReplacementOwnsActiveTimer, publicJudgementReplacementRevealCompletion, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials } from "./public-discard-settlement";
 import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
-import { coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
+import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 import { shouldAcceptPublicPresentationTurn, type PublicPresentationTurnScope, type PublicPresentationTurnViewer } from "../game/public-presentation-turn";
-import { publicActionAnnouncementOverride, publicEffectFrameOwnsInteractionRoot, publicInteractionNarrationBelongsToAction, publicInteractionNarrationWithJudgement, publicJudgementH4OwnerInput, publicJudgementNarrationBelongsToAction, publicJudgementNarrationForPresentation, publicJudgementPresentationAtCursor, publicJudgementReplacementFrameMatches, publicJudgementReplacementFrameOwnsCursor, type PublicJudgementPresentation } from "../game/public-judgement-presentation";
+import { publicActionAnnouncementOverride, publicEffectFrameOwnsInteractionRoot, publicInteractionNarrationBelongsToAction, publicInteractionNarrationWithJudgement, publicJudgementH4OwnerInput, publicJudgementNarrationBelongsToAction, publicJudgementNarrationForPresentation, publicJudgementPresentationAtCursor, publicJudgementReplacementFrameMatches, publicJudgementReplacementFrameOwnsCursor, selectJudgementAwarePublicCardAction, type PublicJudgementPresentation } from "../game/public-judgement-presentation";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = PrecommitSelectionDraft;
@@ -1159,12 +1159,11 @@ function publicNecromancyJudgementFrameForRoom(input: {
   effects: readonly PresentationSnapshotPublicCardEffect[];
   judgements: readonly PublicJudgementPresentation[];
   players: readonly Player[];
-  activeEventId?: string;
-  presentedEventIds: ReadonlySet<string>;
+  cursorEventId?: string;
   seenCardJourneyEventIds: ReadonlySet<string>;
 }): { candidate: PublicNecromancyJudgementFrameCandidate | null; action: PublicCardDisplayAction | null } {
   const proved = input.effects.filter((effect) => effect.effectId === "sima_yi_guicai"
-    && effect.effectClass === "JUDGEMENT")
+    && effect.effectClass === "JUDGEMENT" && effect.eventId === input.cursorEventId)
     .flatMap((effect) => {
       const frame = verifiedNecromancyJudgementFrameForEvent(input.timeline, input.effects, input.players, effect.eventId);
       const matching = input.judgements.filter((presentation) => presentation.eventId === effect.eventId
@@ -1189,10 +1188,9 @@ function publicNecromancyJudgementFrameForRoom(input: {
       return frame && frame.effect.eventId === effect.eventId && presentation && frameMatches
         ? [{ ...frame, judgementPresentation: presentation }] : [];
     });
-  const candidate = proved.sort((left, right) => right.judgementPresentation.order - left.judgementPresentation.order)[0] ?? null;
-  const reached = candidate && (input.activeEventId === candidate.replacementEvent.id
-    || input.presentedEventIds.has(candidate.replacementEvent.id));
-  if (!candidate || !reached) return { candidate, action: null };
+  const candidate = proved.length === 1 ? proved[0] : null;
+  if (!candidate || candidate.replacementEvent.id !== input.cursorEventId
+    || candidate.judgementPresentation.eventId !== input.cursorEventId) return { candidate, action: null };
   const originalJudgementFace = publicH4RankSuitReference(candidate.originalEvent.card.rank, candidate.originalEvent.card.suit, "a Judgement card");
   const replacementJudgementFace = publicH4RankSuitReference(candidate.replacementCard.rank, candidate.replacementCard.suit, "a Judgement card");
 
@@ -1210,6 +1208,7 @@ function publicNecromancyJudgementFrameForRoom(input: {
       ariaLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${originalJudgementFace} → ${replacementJudgementFace}.`,
       publicNotice: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${originalJudgementFace} → ${replacementJudgementFace}.`,
       publicNoticeCompact: `Necromancy replaced ${candidate.target.name}'s Judgement.`,
+      revealCompletionPolicy: "visible-hold",
       motion: {
         type: "single-target",
         scopeKey: [input.roomCode, "sima_yi_guicai", candidate.originalEvent.id, candidate.replacementEvent.id].join(":"),
@@ -1974,8 +1973,7 @@ function AutomaticNormalDrawController(props: Parameters<typeof useAutomaticNorm
 
 function publicNecromancyJudgementFrameForGameRoom(input: {
   room: Room;
-  activeEvent?: GameEvent | null;
-  presentedEventIds: ReadonlySet<string>;
+  cursorEvent?: GameEvent | null;
   seenCardJourneyEventIds: ReadonlySet<string>;
 }) {
   return publicNecromancyJudgementFrameForRoom({
@@ -1984,8 +1982,7 @@ function publicNecromancyJudgementFrameForGameRoom(input: {
     effects: input.room.presentationSnapshot?.publicCardEffects ?? [],
     judgements: input.room.presentationSnapshot?.publicJudgementPresentations ?? [],
     players: input.room.players,
-    activeEventId: input.activeEvent?.id,
-    presentedEventIds: input.presentedEventIds,
+    cursorEventId: input.cursorEvent?.id,
     seenCardJourneyEventIds: input.seenCardJourneyEventIds,
   });
 }
@@ -1995,15 +1992,6 @@ function publicJudgementPresentationForGameRoom(room: Room, cursor: { id: string
     room.presentationSnapshot?.publicJudgementPresentations ?? [],
     publicJudgementCursorForH4(room.timeline, cursor?.id),
   );
-}
-
-function publicNecromancyJudgementJourneyOwner(candidate: PublicNecromancyJudgementFrameCandidate | null) {
-  if (!candidate) return [];
-  return [{
-    eventId: candidate.replacementEvent.id,
-    physicalCardId: candidate.replacementCard.id,
-    owner: "PublicCardDisplay" as const,
-  }];
 }
 
 type ActiveCardAcquisitionSettlementState = {
@@ -2273,7 +2261,9 @@ function targetCardSettlementPresentation<TD, TS>(
 
 function sharedContributionDisplayAction(room: Room, domainPublicCardDisplayAction: PublicCardDisplayAction | null,
   currentFact: { eventId: string; order: number } | null, seenEventIds: ReadonlySet<string>,
-  publicInteractionNarration: PublicInteractionNarration | null): PublicCardDisplayAction | null {
+  publicInteractionNarration: PublicInteractionNarration | null,
+  preserveDueJudgementReplacement = false): PublicCardDisplayAction | null {
+    if (preserveDueJudgementReplacement) return null;
     const proofs = sharedResponseContributions(room.timeline).filter((proof) =>
       room.presentationSnapshot?.sharedResponseContributions?.some((server) => server.eventId === proof.eventId
         && server.actorId === proof.actorId && server.windowId === proof.windowId));
@@ -5768,6 +5758,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeJudgementTransitionKey = activeJudgementZoneTransition?.claimId ?? "";
   const activePublicDiscardTransitionKey = activePublicDiscardTransition?.claimId ?? "";
   const activePublicHandRevealTransitionKey = activePublicHandRevealTransition?.claimId ?? "";
+  const publicJudgementReplacementCursorEvent = activeEvent ?? eventQueue[0] ?? null;
+  const necromancyJudgementFrame = publicNecromancyJudgementFrameForGameRoom({
+    room,
+    cursorEvent: publicJudgementReplacementCursorEvent,
+    seenCardJourneyEventIds: publicCardJourneySeenEventIds,
+  });
+  const necromancyJudgementFrameCandidate = necromancyJudgementFrame.candidate;
+  const necromancyJudgementFrameAction = necromancyJudgementFrame.action;
+  const activeJudgementReplacementKey = publicJudgementReplacementOwnsActiveTimer({
+    activeEventId: activeEventTimerEventId,
+    replacementEventId: necromancyJudgementFrameCandidate?.replacementEvent.id,
+    selectedActionEventId: necromancyJudgementFrameAction?.rootEventId,
+    hasVerifiedCandidate: Boolean(necromancyJudgementFrameCandidate && necromancyJudgementFrameAction),
+  })
+    ? `${activeEventTimerEventId}|${necromancyJudgementFrameCandidate?.replacementCard.id ?? ""}|${room.code}|${room.meId}`
+    : "";
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
@@ -7185,7 +7191,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       return true;
     });
-    const newlyQueuedFacts = visible.flatMap((event) => {
+    const linkedJudgementActivations = (room.presentationSnapshot?.publicJudgementPresentations ?? []).flatMap((presentation) =>
+      presentation.activationEventId ? [{ activationEventId: presentation.activationEventId, originalEventId: presentation.judgementId }] : []);
+    const resolutionQueue = coalescePresentationQueue(eventQueue, visible, new Set([
+      ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
+    ]));
+    const coalescedJudgementQueue = coalesceLinkedJudgementActivationQueue(
+      activeEvent, resolutionQueue, visible, linkedJudgementActivations,
+    );
+    const visibleForQueue = coalescedJudgementQueue.incoming;
+    const newlyQueuedFacts = visibleForQueue.flatMap((event) => {
       const fact = projectedPublicH4FactsById.get(event.id);
       return fact ? [[event.id, fact] as const] : [];
     });
@@ -7194,29 +7209,39 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       newlyQueuedFacts.forEach(([eventId, fact]) => next.set(eventId, fact));
       return next;
     });
-    if (immediatelyPresented.size) setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented]));
-    if (visible.length) {
-      setSelfTargetWindowClosing(false);
-      const cardsArrived = visible.some((event) => eventCards(event).length > 0);
-      if (cardsArrived) selfTargetWindowRevision.current += 1;
+    if (immediatelyPresented.size || coalescedJudgementQueue.retiredActivationEventIds.length) {
+      setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented, ...coalescedJudgementQueue.retiredActivationEventIds]));
+    }
+    if (coalescedJudgementQueue.retiredActivationEventIds.length) {
+      const retiredActivationIds = new Set(coalescedJudgementQueue.retiredActivationEventIds);
+      setQueuedPublicH4Facts((current) => {
+        if (![...retiredActivationIds].some((eventId) => current.has(eventId))) return current;
+        const next = new Map(current);
+        retiredActivationIds.forEach((eventId) => next.delete(eventId));
+        return next;
+      });
+    }
+    if (visible.length || coalescedJudgementQueue.retiredActivationEventIds.length) {
+      if (visible.length) {
+        setSelfTargetWindowClosing(false);
+        const cardsArrived = visible.some((event) => eventCards(event).length > 0);
+        if (cardsArrived) selfTargetWindowRevision.current += 1;
+      }
       const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
-      if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId
-        && eventImportance(activeEvent) === "informational" && !queuedPublicH4Facts.has(activeEvent.id)) setActiveEvent(null);
-      if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
-        const first = visible[0];
-        if (first) {
-          setActiveEvent(first);
-          if (retainsAtPlayer(first)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [first]));
-        }
-        setEventQueue(coalescePresentationQueue([], visible.slice(1), new Set([
-          ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
-        ])));
-      } else setEventQueue((queue) => coalescePresentationQueue(queue, visible, new Set([
-        ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
-      ])));
+      const clearStaleActiveEvent = Boolean(visible.length && latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId
+        && eventImportance(activeEvent) === "informational" && !queuedPublicH4Facts.has(activeEvent.id));
+      if (clearStaleActiveEvent) setActiveEvent(null);
+      const nextQueue = [...coalescedJudgementQueue.queue];
+      let nextActiveEvent = clearStaleActiveEvent ? null : coalescedJudgementQueue.activeEvent;
+      if (!optimisticPlay && !nextActiveEvent && nextQueue.length) nextActiveEvent = nextQueue.shift() ?? null;
+      if (clearStaleActiveEvent || nextActiveEvent?.id !== activeEvent?.id) setActiveEvent(nextActiveEvent);
+      if (nextActiveEvent && nextActiveEvent.id !== activeEvent?.id && retainsAtPlayer(nextActiveEvent)) {
+        setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [nextActiveEvent!]));
+      }
+      setEventQueue(nextQueue);
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.actionRevision, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, cardAcquisitionSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.rootAction?.rootEventId, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds, latestDismantleSettlementPublicSequence]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.actionRevision, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, room.presentationSnapshot?.publicJudgementPresentations, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue, skillEffectSettlements, dismantleSettlements, stealSettlements, cardAcquisitionSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.rootAction?.rootEventId, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds, latestDismantleSettlementPublicSequence]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
@@ -7260,18 +7285,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     if (!activeEventTimerEventId) return;
     const timerContext = presentationTimerDiagnosticContextRef.current;
-    const traceTimer = (status: "scheduled" | "cancelled" | "fired" | "equipment-arrival-exempt" | "zone-transition-exempt") => recordAttackDodgeUxTrace("public-event-presentation-timer", {
+    const traceTimer = (status: "scheduled" | "cancelled" | "fired" | "equipment-arrival-exempt" | "zone-transition-exempt" | "judgement-replacement-exempt") => recordAttackDodgeUxTrace("public-event-presentation-timer", {
       status,
       eventId: activeEventTimerEventId,
       eventKind: activeEventTimerKind,
       stableIdentity: activeEventTimerIdentity,
       durationMs: activeEventDisplayDuration,
-      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementTransitionKey || activePublicDiscardTransitionKey || activePublicHandRevealTransitionKey ? "zone-transition" : "timed-reveal",
+      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementReplacementKey ? "judgement-replacement" : activeJudgementTransitionKey || activePublicDiscardTransitionKey || activePublicHandRevealTransitionKey ? "zone-transition" : "timed-reveal",
       equipmentArrivalIdentity: activeEquipmentArrivalKey || undefined,
+      judgementReplacementIdentity: activeJudgementReplacementKey || undefined,
       ...timerContext,
     });
     if (activeEquipmentArrivalKey) {
       traceTimer("equipment-arrival-exempt");
+      return;
+    }
+    if (activeJudgementReplacementKey) {
+      traceTimer("judgement-replacement-exempt");
       return;
     }
     if (activeJudgementTransitionKey) {
@@ -7304,7 +7334,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       clearTimeout(timer);
       if (!fired) traceTimer("cancelled");
     };
-  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
+  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementReplacementKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
   useEffect(() => {
     const pendingIds = new Set([activeEvent, ...eventQueue].flatMap((event) => event ? [event.id] : []));
     setQueuedPublicH4Facts((current) => {
@@ -9909,14 +9939,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
-  const necromancyJudgementFrame = publicNecromancyJudgementFrameForGameRoom({
-    room,
-    activeEvent,
-    presentedEventIds,
-    seenCardJourneyEventIds: publicCardJourneySeenEventIds,
-  });
-  const necromancyJudgementFrameCandidate = necromancyJudgementFrame.candidate;
-  const necromancyJudgementFrameAction = necromancyJudgementFrame.action;
   const stauchnessCostFrameCandidate = (() => {
     const effects = room.presentationSnapshot?.publicCardEffects ?? [];
     const proved = effects.filter((effect) => effect.effectId === "xiahou_dun_ganglie"
@@ -10717,15 +10739,42 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
   const currentPublicJudgementPresentation = publicJudgementPresentationForGameRoom(room, publicH4PresentationCursor);
+  const completedDueJudgementReplacementReveal = necromancyJudgementFrameCandidate
+    && necromancyJudgementFrameAction
+    && publicH4PresentationCursor?.id === necromancyJudgementFrameCandidate.replacementEvent.id
+    ? publicJudgementReplacementRevealCompletion({
+      completions: completedPublicCardReveals,
+      roomCode: room.code,
+      viewerId: room.meId,
+      eventId: necromancyJudgementFrameCandidate.replacementEvent.id,
+      physicalCardId: necromancyJudgementFrameCandidate.replacementCard.id,
+    })
+    : null;
+  useEffect(() => {
+    if (!completedDueJudgementReplacementReveal) return;
+    const eventId = completedDueJudgementReplacementReveal.sourceEventId;
+    setQueuedPublicH4Facts((current) => {
+      if (!current.has(eventId)) return current;
+      const next = new Map(current);
+      next.delete(eventId);
+      return next;
+    });
+    setPresentedEventIds((current) => current.has(eventId) ? current : new Set([...current, eventId]));
+    setActiveEvent((current) => current?.id === eventId ? null : current);
+    setEventQueue((current) => current.some((event) => event.id === eventId)
+      ? current.filter((event) => event.id !== eventId) : current);
+  }, [completedDueJudgementReplacementReveal]);
   const cursorOwnedJudgementReplacementAction = publicJudgementReplacementFrameOwnsCursor({
     cursorEventId: publicH4PresentationCursor?.id,
     presentation: currentPublicJudgementPresentation,
     action: necromancyJudgementFrameAction,
   }) ? necromancyJudgementFrameAction : null;
-  const selectedPublicCardActionBase: PublicCardDisplayAction | null = heldPublicNegationReadAction
-    ?? heldAttackDodgeReadAction
-    ?? cursorOwnedJudgementReplacementAction
-    ?? livePublicCardAction;
+  const selectedPublicCardActionBase: PublicCardDisplayAction | null = selectJudgementAwarePublicCardAction({
+    dueReplacement: cursorOwnedJudgementReplacementAction,
+    retainedNegation: heldPublicNegationReadAction,
+    retainedAttackDodge: heldAttackDodgeReadAction,
+    latestCommitted: livePublicCardAction,
+  });
   const selectedPublicDiscardSettlement = selectedPublicCardActionBase ? (() => {
     const frame = selectedPublicCardActionBase.publicCardEffectFrame;
     const dismantleMovement = selectedPublicCardActionBase.settlement?.outcome === "DISMANTLE_RESOLVED"
@@ -10776,17 +10825,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       timeline: room.timeline,
       roomCode: room.code,
       viewerId: room.meId,
-      retiredEventIds: [...presentedEventIds],
       existingOwners: [
         ...selectedActionCardIds.map((physicalCardId) => ({
           eventId: selectedPublicCardAction?.rootEventId ?? "",
           physicalCardId,
           owner: "PublicCardDisplay",
         })),
-        ...publicNecromancyJudgementJourneyOwner(necromancyJudgementFrameCandidate),
       ],
+      completedReveals: completedPublicCardReveals,
     });
-  }, [activeEvent, room.timeline, room.code, room.meId, presentedEventIds, selectedPublicCardAction, necromancyJudgementFrameCandidate]);
+  }, [activeEvent, room.timeline, room.code, room.meId, selectedPublicCardAction, completedPublicCardReveals]);
   const selectedCardHasDedicatedZoneOwner = Boolean(selectedPublicCardAction?.cardFace && (
     activeEquipmentZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
     || activeJudgementZoneTransition?.physicalCardId === selectedPublicCardAction.cardFace.id
@@ -11197,8 +11245,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
+  const dueJudgementReplacementOwnsCursor = Boolean(cursorOwnedJudgementReplacementAction
+    && publicH4PresentationCursor?.id === cursorOwnedJudgementReplacementAction.rootEventId
+    && currentPublicJudgementPresentation?.eventId === cursorOwnedJudgementReplacementAction.rootEventId);
   const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact,
-    publicCardJourneySeenEventIds, publicInteractionNarration);
+    publicCardJourneySeenEventIds, publicInteractionNarration, dueJudgementReplacementOwnsCursor);
   const publicCardDisplayAction = sharedContributionAction ?? domainPublicCardDisplayAction;
   const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
     ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)

@@ -280,6 +280,8 @@ export type JudgementContinuation = CausalFields & {
   purpose: JudgementPurpose;
   revealedCard: Card;
   revealedEventId?: string;
+  /** Exact committed skill notice paired with this Judgement reveal, when proven. */
+  activationEventId?: string;
   /** Exact public action event which caused this Judgement, when known. */
   actionRootEventId?: string;
   resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | { kind: "attack_targeted"; declaration: AttackDeclaration; group?: GroupResponsePending } | JudgementResponseResume | DamageSufferedJudgementResume;

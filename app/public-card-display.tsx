@@ -168,6 +168,8 @@ export type PublicCardDisplayAction = {
   /** Public participant proven to be affected by the active Bumper Harvest Negation. */
   harvestEffectRecipient?: { participantId: string; participantName: string };
   motion?: PublicCardDisplayMotion;
+  /** Retire after this renderer's safe, visible reveal hold; no seat-parking stage is required. */
+  revealCompletionPolicy?: "visible-hold";
   settlement?: {
     eventId: string;
     /** Authenticated root proof used to match an actor-private Steal result. */
@@ -5817,6 +5819,9 @@ function SingleTargetCardJourney({
           if (current.scopeKey !== scopeKey || current.viewerId !== viewerIdRef.current || current.viewerId !== viewerId
             || !completedCard || completedCard.phase !== "reveal") return;
           const latestAction = actionRef.current;
+          const completesAtVisibleHold = latestAction.revealCompletionPolicy === "visible-hold"
+            && latestAction.rootEventId === completedCard.eventId
+            && latestAction.cardFace?.id === completedCard.cardFace.id;
           const expectedFrame = latestAction.publicCardEffectFrame?.eventId === completedCard.eventId
             ? latestAction.publicCardEffectFrame : undefined;
           const safePainted = expectedFrame
@@ -5834,7 +5839,12 @@ function SingleTargetCardJourney({
             viewerId: current.viewerId,
             parkingTargetViewerId: completedCard.parkingTargetViewerId,
             parkingTarget: completedCard.target,
+            requireParkingTarget: !completesAtVisibleHold,
           });
+          if (completesAtVisibleHold && canRetireReveal) {
+            notifyRevealCompletedOnce(completedCard.eventId, completedCard.cardFace.id);
+            return;
+          }
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
             if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
@@ -5846,6 +5856,7 @@ function SingleTargetCardJourney({
               viewerId: current.viewerId,
               parkingTargetViewerId: currentCard.parkingTargetViewerId,
               parkingTarget: currentCard.target,
+              requireParkingTarget: !completesAtVisibleHold,
             });
             if (!currentCanRetireReveal) {
               const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
@@ -5854,10 +5865,12 @@ function SingleTargetCardJourney({
                   revealStartedAtMs: null,
                   revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
                   revealRemainingMs: 0,
-                  awaitingParkingTarget: true,
-                  layoutPending: candidate.layoutPending || !safePainted || candidate.parkingTargetViewerId !== current.viewerId,
+                  awaitingParkingTarget: !completesAtVisibleHold,
+                  layoutPending: candidate.layoutPending || !safePainted
+                    || !completesAtVisibleHold && candidate.parkingTargetViewerId !== current.viewerId,
                   layoutChangeReason: !safePainted ? "reveal-complete-awaiting-safe-effect-frame-paint"
-                    : "reveal-complete-awaiting-safe-author-slot",
+                    : completesAtVisibleHold ? "reveal-complete-awaiting-safe-visible-paint"
+                      : "reveal-complete-awaiting-safe-author-slot",
                 }
                 : candidate);
               const next = { ...current, cards };

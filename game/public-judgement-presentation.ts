@@ -16,6 +16,8 @@ export type PublicJudgementPresentationRecord = {
   semantics: "PROVEN";
   visibility: "PUBLIC";
   judgementId: string;
+  /** Exact committed public activation notice linked to this original reveal. */
+  activationEventId?: string;
   targetId: string;
   judgingPlayerId: string;
   purpose: JudgementPurpose;
@@ -42,6 +44,7 @@ export type PublicJudgementPresentation = {
   semantics: "PROVEN";
   visibility: "PUBLIC";
   judgementId: string;
+  activationEventId?: string;
   eventId: string;
   order: number;
   phase: "ORIGINAL" | "REPLACEMENT";
@@ -83,6 +86,8 @@ type PublicTimelineEvent = {
   resolutionId?: unknown;
   publicJudgementPresentation?: unknown;
   publicCardEffects?: unknown;
+  effectNotice?: unknown;
+  publicFact?: unknown;
 };
 
 type PublicJudgementPlayer = { id: string; name: string; hero?: string | null };
@@ -333,10 +338,38 @@ export function projectPublicJudgementPresentations(
         ...(nonEmptyString(rawCausal.parentFrameId) ? { parentFrameId: rawCausal.parentFrameId } : {}) }
       : raw.causal === undefined ? undefined : null;
     if (causal === null) continue;
+    let activationEventId: string | undefined;
+    if (nonEmptyString(raw.activationEventId)) {
+      const activationEvent = byEventId.get(raw.activationEventId);
+      const activationFact = record(activationEvent?.publicFact);
+      const activationEffect = record(activationFact?.effect);
+      const originalFact = record(originalEvent.publicFact);
+      const activationOrder = activationEvent?.publicSequence;
+      const activationCausalMatches = !causal || activationFact?.interactionId === causal.interactionId
+        && activationFact.frameId === causal.frameId;
+      const activationRootMatches = !nonEmptyString(activationFact?.rootEventId)
+        || !nonEmptyString(originalFact?.rootEventId)
+        || activationFact.rootEventId === originalFact.rootEventId;
+      const activationResolutionMatches = !nonEmptyString(activationEvent?.resolutionId)
+        || !nonEmptyString(originalEvent.resolutionId)
+        || activationEvent.resolutionId === originalEvent.resolutionId;
+      if (activationEvent && eventIdCounts.get(raw.activationEventId) === 1
+        && Number.isSafeInteger(activationOrder) && orderCounts.get(activationOrder as number) === 1
+        && (activationOrder as number) < (row.publicSequence as number)
+        && activationEvent.type === "message" && activationEvent.effectNotice === true
+        && activationEvent.presentation !== false && typeof activationEvent.privateToPlayerId !== "string"
+        && activationFact?.semantics === "PROVEN" && activationFact.visibility === "PUBLIC"
+        && activationFact.category === "SKILL_USED" && activationFact.actorId === raw.targetId
+        && activationEffect?.effectId === "xiahou_dun_ganglie"
+        && activationCausalMatches && activationRootMatches && activationResolutionMatches) {
+        activationEventId = raw.activationEventId;
+      }
+    }
     const base = {
       semantics: "PROVEN" as const,
       visibility: "PUBLIC" as const,
       judgementId,
+      ...(activationEventId ? { activationEventId } : {}),
       targetId: raw.targetId,
       judgingPlayerId: raw.judgingPlayerId,
       purpose: raw.purpose as JudgementPurpose,
@@ -598,6 +631,16 @@ export function publicJudgementReplacementFrameOwnsCursor(input: {
     narration: publicJudgementNarrationForPresentation(presentation),
     action,
   });
+}
+
+/** The due verified replacement keeps the shared renderer ahead of retained passive card reads. */
+export function selectJudgementAwarePublicCardAction<T>(input: {
+  dueReplacement: T | null;
+  retainedNegation: T | null;
+  retainedAttackDodge: T | null;
+  latestCommitted: T | null;
+}): T | null {
+  return input.dueReplacement ?? input.retainedNegation ?? input.retainedAttackDodge ?? input.latestCommitted;
 }
 
 /** Checks whether the selected public Effect Frame owns this narration root. */

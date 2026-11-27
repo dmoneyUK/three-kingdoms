@@ -9,6 +9,7 @@ import {
   publicJudgementPresentationAtCursor,
   publicJudgementReplacementFrameMatches,
   publicJudgementReplacementFrameOwnsCursor,
+  selectJudgementAwarePublicCardAction,
 } from "../game/public-judgement-presentation.ts";
 
 const original = {
@@ -162,4 +163,15 @@ test("replacement narration follows the newest public stage and only its exact E
     action, judgementNarrationBelongsToAction: true,
     interactionNarrationBelongsToAction: true, narration, effectFrameOwnsInteractionRoot: true,
   }), { publicInteractionNarration: narration, suppressAnnouncement: false });
+});
+
+test("the due replacement owns the shared display before retained passive card reads", () => {
+  const due = { rootEventId: "replacement-event" };
+  const passiveNegation = { rootEventId: "held-negation" };
+  const passiveAttackDodge = { rootEventId: "held-attack-dodge" };
+  const latest = { rootEventId: "latest-action" };
+  assert.equal(selectJudgementAwarePublicCardAction({ dueReplacement: due, retainedNegation: passiveNegation,
+    retainedAttackDodge: passiveAttackDodge, latestCommitted: latest }), due);
+  assert.equal(selectJudgementAwarePublicCardAction({ dueReplacement: null, retainedNegation: passiveNegation,
+    retainedAttackDodge: passiveAttackDodge, latestCommitted: latest }), passiveNegation);
 });

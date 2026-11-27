@@ -38,6 +38,32 @@ export type PublicCardRevealCompletion = {
   physicalCardId: string;
 };
 
+/** A Judgement replacement event stays active only while its verified owner is the exact cursor event. */
+export function publicJudgementReplacementOwnsActiveTimer(input: {
+  activeEventId?: string | null;
+  replacementEventId?: string | null;
+  selectedActionEventId?: string | null;
+  hasVerifiedCandidate: boolean;
+}): boolean {
+  return input.hasVerifiedCandidate && Boolean(input.activeEventId)
+    && input.activeEventId === input.replacementEventId
+    && input.activeEventId === input.selectedActionEventId;
+}
+
+/** Exact viewer-scoped real-render completion for one replacement CardFace. */
+export function publicJudgementReplacementRevealCompletion(input: {
+  completions: readonly PublicCardRevealCompletion[];
+  roomCode: string;
+  viewerId: string;
+  eventId: string;
+  physicalCardId: string;
+}): PublicCardRevealCompletion | null {
+  const matches = input.completions.filter((completion) => completion.owner === "PublicCardDisplay"
+    && completion.roomCode === input.roomCode && completion.viewerId === input.viewerId
+    && completion.sourceEventId === input.eventId && completion.physicalCardId === input.physicalCardId);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 /** Build completion proof only from the exact committed public source event. */
 export function publicCardRevealCompletionFromCommittedEvent(input: {
   roomCode: string;
@@ -69,15 +95,14 @@ export function routePublicJudgementReveal(input: {
   timeline: readonly PublicJudgementTimelineEvent[];
   roomCode: string;
   viewerId: string;
-  retiredEventIds?: readonly string[];
   existingOwners?: readonly { eventId: string; physicalCardId: string; owner: string }[];
+  completedReveals?: readonly PublicCardRevealCompletion[];
 }): PublicJudgementRevealRoute | null {
   const { event, timeline } = input;
   if (!input.roomCode || !input.viewerId || event.type !== "card" || event.action !== "reveal"
     || event.judgement !== true || event.presentation === false || typeof event.privateToPlayerId === "string"
     || !event.id || !event.card?.id || !event.card.kind || !event.card.rank || !event.card.suit
-    || !Number.isSafeInteger(event.publicSequence) || (event.publicSequence as number) < 0
-    || input.retiredEventIds?.includes(event.id)) return null;
+    || !Number.isSafeInteger(event.publicSequence) || (event.publicSequence as number) < 0) return null;
 
   const matchingEvents = timeline.filter((candidate) => candidate.id === event.id);
   const matchingSequence = timeline.filter((candidate) => candidate.publicSequence === event.publicSequence);
@@ -87,10 +112,16 @@ export function routePublicJudgementReveal(input: {
     || typeof committed.privateToPlayerId === "string" || committed.publicSequence !== event.publicSequence
     || committed.card?.id !== event.card.id || committed.card.kind !== event.card.kind
     || committed.card.rank !== event.card.rank || committed.card.suit !== event.card.suit) return null;
-  // A causal root ID is not a CardFace owner ID: one interaction can contain
-  // multiple events and physical cards. Suppress only an owner of this exact
-  // physical card, so a shared root cannot hide a distinct original reveal.
-  if (input.existingOwners?.some((owner) => owner.physicalCardId === event.card?.id)) return null;
+  // A causal root ID or reused physical card is not sufficient ownership.
+  // Suppress only this exact event/card when the selected display owns it or
+  // this viewer has a completion record from the real rendered reveal.
+  const hasSelectedOwner = input.existingOwners?.some((owner) => owner.owner === "PublicCardDisplay"
+    && owner.eventId === event.id && owner.physicalCardId === event.card?.id);
+  const hasExactCompletedReveal = input.completedReveals?.some((completion) => publicJudgementReplacementRevealCompletion({
+    completions: [completion], roomCode: input.roomCode, viewerId: input.viewerId,
+    eventId: event.id, physicalCardId: event.card?.id ?? "",
+  }));
+  if (hasSelectedOwner || hasExactCompletedReveal) return null;
 
   return {
     kind: "judgement-reveal", claimedBy: "PublicJudgementCardReveal",

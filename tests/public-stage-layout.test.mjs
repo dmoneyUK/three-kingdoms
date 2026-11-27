@@ -176,6 +176,22 @@ test("a public reveal cannot retire before safe paint and a measured target for 
   ]) assert.equal(publicStageRevealCanRetire({ ...ready, ...change }), false);
 });
 
+test("a centre-only reveal can complete after safe visible hold without a parking target", () => {
+  const reveal = {
+    phase: "REVEAL",
+    layoutPending: false,
+    safePainted: true,
+    viewerId: "viewer-1",
+    parkingTargetViewerId: undefined,
+    parkingTarget: null,
+    requireParkingTarget: false,
+  };
+  assert.equal(publicStageRevealCanRetire(reveal), true);
+  assert.equal(publicStageRevealCanRetire({ ...reveal, safePainted: false }), false);
+  assert.equal(publicStageRevealCanRetire({ ...reveal, layoutPending: true }), false);
+  assert.equal(publicStageRevealCanRetire({ ...reveal, requireParkingTarget: true }), false);
+});
+
 test("only the matching pending REVEAL schedules a remeasure after owned placement styles land", () => {
   const pendingCurrentReveal = { phase: "REVEAL", revealReady: false, identityMatches: true };
   assert.equal(publicStageRevealNeedsOwnedRemeasure(pendingCurrentReveal), true);

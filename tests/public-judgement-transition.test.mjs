@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
+import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementReplacementOwnsActiveTimer, publicJudgementReplacementRevealCompletion, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition } from "../app/public-judgement-transition.ts";
 
 const card = { id: "physical-delayed-card", kind: "Overindulgence", rank: "4", suit: "♥" };
 const ownerId = "player-1";
@@ -68,12 +68,37 @@ test("private, uncommitted, mismatched, replayed, or already-owned Judgement rev
   const base = { event, timeline: [event], roomCode: "ROOM", viewerId: "viewer-1" };
   assert.equal(routePublicJudgementReveal({ ...base, event: originalReveal({ privateToPlayerId: "viewer-1" }), timeline: [originalReveal({ privateToPlayerId: "viewer-1" })] }), null);
   assert.equal(routePublicJudgementReveal({ ...base, event: originalReveal({ presentation: false }), timeline: [originalReveal({ presentation: false })] }), null);
-  assert.equal(routePublicJudgementReveal({ ...base, retiredEventIds: [event.id] }), null);
-  assert.equal(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: "other-event", physicalCardId: event.card.id, owner: "PublicCardDisplay" }] }), null);
-  assert.ok(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: event.id, physicalCardId: "other-card", owner: "PublicPhysicalCardTransition" }] }),
-    "a shared causal root cannot suppress a distinct physical reveal card");
+  assert.ok(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: "other-event", physicalCardId: event.card.id, owner: "PublicCardDisplay" }] }),
+    "a reused physical card under a different event does not claim this reveal");
+  assert.equal(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: event.id, physicalCardId: event.card.id, owner: "PublicCardDisplay" }] }), null,
+    "the exact selected renderer owner suppresses the duplicate standalone route");
+  assert.ok(routePublicJudgementReveal({ ...base, existingOwners: [{ eventId: event.id, physicalCardId: event.card.id, owner: "PublicPhysicalCardTransition" }] }),
+    "a different renderer does not claim the original reveal");
+  const completion = { owner: "PublicCardDisplay", roomCode: "ROOM", viewerId: "viewer-1", sourceEventId: event.id, physicalCardId: event.card.id };
+  assert.equal(routePublicJudgementReveal({ ...base, completedReveals: [completion] }), null,
+    "the exact real-render completion suppresses a duplicate reveal");
+  assert.ok(routePublicJudgementReveal({ ...base, completedReveals: [{ ...completion, viewerId: "viewer-2" }] }),
+    "another viewer's completion cannot suppress this viewer's reveal");
   assert.equal(routePublicJudgementReveal({ ...base, timeline: [{ ...event, card: { ...event.card, id: "different-physical-card" } }] }), null);
   assert.equal(routePublicJudgementReveal({ ...base, timeline: [event, { ...event, id: "duplicate-event" }] }), null);
+});
+
+test("verified replacement holds its exact active cursor until its own visible reveal completes", () => {
+  const identity = { hasVerifiedCandidate: true, activeEventId: "replacement-event",
+    replacementEventId: "replacement-event", selectedActionEventId: "replacement-event" };
+  assert.equal(publicJudgementReplacementOwnsActiveTimer(identity), true);
+  assert.equal(publicJudgementReplacementOwnsActiveTimer({ ...identity, activeEventId: "other-event" }), false);
+  assert.equal(publicJudgementReplacementOwnsActiveTimer({ ...identity, hasVerifiedCandidate: false }), false);
+  assert.equal(publicJudgementReplacementOwnsActiveTimer({ ...identity, selectedActionEventId: "other-event" }), false);
+
+  const completion = { owner: "PublicCardDisplay", roomCode: "ROOM", viewerId: "viewer-1",
+    sourceEventId: "replacement-event", physicalCardId: "replacement-card" };
+  assert.deepEqual(publicJudgementReplacementRevealCompletion({ completions: [completion], roomCode: "ROOM",
+    viewerId: "viewer-1", eventId: "replacement-event", physicalCardId: "replacement-card" }), completion);
+  assert.equal(publicJudgementReplacementRevealCompletion({ completions: [completion], roomCode: "ROOM",
+    viewerId: "viewer-2", eventId: "replacement-event", physicalCardId: "replacement-card" }), null);
+  assert.equal(publicJudgementReplacementRevealCompletion({ completions: [completion], roomCode: "ROOM",
+    viewerId: "viewer-1", eventId: "other-event", physicalCardId: "replacement-card" }), null);
 });
 
 test("committed delayed-card attachment routes the exact real card into the recipient Judgement slot", () => {
