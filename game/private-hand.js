@@ -12,7 +12,16 @@ function transferFor(event, playerId) {
     || !["deck", "hand", "equipment", "judgement", "harvest_pool", "damage_cards", "distribution"].includes(proof.sourceZone)
     || !Number.isFinite(proof.committedAt) || !Number.isFinite(proof.revealUntil)
     || proof.revealUntil <= proof.committedAt) return null;
-  return { eventId: event.id, cardId, transferId: proof.transferId, initialDeal: event.initialDeal === true, committedAt: proof.committedAt, revealUntil: proof.revealUntil };
+  return {
+    eventId: event.id,
+    cardId,
+    transferId: proof.transferId,
+    initialDeal: event.initialDeal === true,
+    sourceZone: proof.sourceZone,
+    committedAt: proof.committedAt,
+    revealUntil: proof.revealUntil,
+    ...(typeof proof.rootEventId === "string" && proof.rootEventId ? { rootEventId: proof.rootEventId } : {}),
+  };
 }
 
 function activeTransfers(events, playerId, now, seenTransferIds, initialDealOnly = false) {
@@ -80,6 +89,9 @@ export function updatePrivateHand(previous, playerId, hand, events, { now = Date
       return card && transferredCardIds.has(card.id) ? [card] : [];
     }),
     presentedTransferIds: freshTransfers.map((transfer) => transfer.transferId),
+    presentedTransfers: freshTransfers.map(({ transferId, cardId, rootEventId, sourceZone, initialDeal, committedAt, revealUntil }) => ({
+      transferId, cardId, ...(rootEventId ? { rootEventId } : {}), sourceZone, recipientId: playerId, initialDeal, committedAt, revealUntil,
+    })),
     ignoredTransferIds,
   };
 }

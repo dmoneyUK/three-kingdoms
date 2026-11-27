@@ -34,6 +34,14 @@ test("normal Draw Phase publishes only the actual public draw count to every vie
   const committedEvent = result.data.room.timeline.find((event) => event.id === fact.eventId);
   assert.ok(committedEvent, "the public result binds to its committed timeline event");
   assert.equal(fact.committedOutcome.order, committedEvent.publicSequence);
+  const privateDrawEvents = result.data.room.timeline.filter((event) => event.type === "card"
+    && event.action === "draw" && event.privateToPlayerId === player.id
+    && drawn.some((item) => item.id === event.card.id));
+  assert.equal(privateDrawEvents.length, 2, "the authenticated drawer receives both private physical arrivals");
+  for (const event of privateDrawEvents) {
+    assert.equal(event.privateHandTransfer?.rootEventId, fact.eventId,
+      "each private face is linked to the exact committed normal Draw Phase H4 event");
+  }
   const narration = derivePublicInteractionNarration({
     snapshot: result.data.room.presentationSnapshot,
     players: result.data.room.players,
@@ -63,5 +71,9 @@ test("normal Draw Phase publishes only the actual public draw count to every vie
       ...(viewer.presentationSnapshot?.retainedPublicEventFacts ?? []),
     ]);
     for (const drawnCard of drawn) assert.equal(publicFacts.includes(drawnCard.id), false, "the public result contains no private card identity");
+    if (member.token !== game.members[0].token) {
+      assert.equal(viewer.timeline.some((event) => event.type === "card" && event.privateToPlayerId === player.id), false,
+        "other viewers receive no private draw association or physical card face");
+    }
   }
 });

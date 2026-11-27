@@ -1596,8 +1596,11 @@ function attachPublicJudgementPresentation(log: string[], judgement: JudgementCo
   });
   return matches === 1 ? next : log;
 }
-function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) {
-  return addPrivateHandArrivalEvent(log, player, card, { sourceZone: "deck" }, { action: "draw", initialDeal });
+function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false, rootEventId?: string) {
+  return addPrivateHandArrivalEvent(log, player, card, {
+    sourceZone: "deck",
+    ...(rootEventId ? { rootEventId } : {}),
+  }, { action: "draw", initialDeal });
 }
 type PrivateHandTransferSource = {
   sourceZone: "deck" | "hand" | "equipment" | "judgement" | "harvest_pool" | "damage_cards" | "distribution";
@@ -2434,6 +2437,7 @@ function drawPhaseTriggerContext(player: PlayerRow, players: PlayerRow[] = []) {
 async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePhase: string, additionalCards: number, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], publicDrawSkill?: { label: string; amount: number; baseline: number }) {
   const flags = drawPhaseFlags(resumePhase);
   let drawnCards: Card[] = [];
+  let normalDrawEventId: string | undefined;
   if (flags.skipDraw) {
     log = addLog(log, `${target.name} skips the Draw Phase because of Rations Depleted.`);
   } else {
@@ -2469,6 +2473,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
           changes: [{ kind: "CARD_DRAWN", playerId: target.id, amount: draw.drawn.length, fromZone: "DECK", toZone: "HAND" }],
         },
       }, drawRoot.envelope);
+      if (drawFact?.committedOutcome) normalDrawEventId = drawEventId;
       log = drawFact?.committedOutcome
         ? addLogWithId(log, `${target.name} draws ${draw.drawn.length} cards.`, target.id,
           { actorId: target.id, importance: "essential", publicFact: drawFact }, drawEventId).log
@@ -2476,7 +2481,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
     } else {
       log = addHistory(log, `${target.name} draws 0 cards.`, target.id);
     }
-    for (const drawn of drawnCards) log = addPrivateDrawEvent(log, target, drawn);
+    for (const drawn of drawnCards) log = addPrivateDrawEvent(log, target, drawn, false, normalDrawEventId);
     const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
     writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
   }

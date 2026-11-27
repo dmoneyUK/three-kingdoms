@@ -21,6 +21,7 @@ import { MAX_AVAILABLE_CLASSIC_PLAYERS, roomAvailabilityLimit } from "../game/ro
 import { PUBLIC_DISCARD_CARD_DISPLAY_MS, PUBLIC_DISCARD_HANDOFF_MS } from "../game/public-discard-handoff";
 import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetCompatibilityError, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
 import { baselineHand, pendingPrivateHandCardIds, PRIVATE_HAND_REVEAL_DURATION_MS, updatePrivateHand } from "../game/private-hand.js";
+import { beginAutomaticDrawAttempt, createAutomaticDrawAttempt, normalDrawDecisionIdentity, normalDrawPresentationBatch, prepareAutomaticDrawAttempt, reconcileAutomaticDrawAttempt } from "../game/normal-draw-decision.js";
 import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
 import { getResponseOptions } from "../game/responses";
 import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
@@ -136,6 +137,22 @@ type CardEvent = PresentationEventMeta & { id: string; player: string; actorId?:
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
+type NormalDrawPresentationState = {
+  roomCode: string;
+  viewerId: string;
+  eventId: string;
+  cards: Card[];
+  transferIds: string[];
+  expiresAtWallMs: number;
+  visibleSinceMs: number | null;
+};
+type AutomaticDrawAttempt = {
+  identity: string;
+  phase: "idle" | "scheduled" | "sending" | "awaiting" | "retry-ready" | "done" | "exhausted";
+  requests: number;
+  lastAttemptServerNow: number;
+  revalidatedServerNow: number;
+};
 type EffectNoticeState = EffectNoticeQueueEntry;
 
 function publicSequenceForEvent(timeline: readonly GameEvent[], eventId: string) {
@@ -1779,6 +1796,152 @@ type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Her
 type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; timelineHistory?: GameEvent[]; publicPresentationTurn?: PublicPresentationTurnScope; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
+function normalDrawDecisionForRoom(room: Room) {
+  return normalDrawDecisionIdentity({
+    roomCode: room.code,
+    viewerId: room.meId,
+    actionRevision: room.actionRevision ?? "",
+    turnSeat: room.turnSeat,
+    phase: room.phase,
+    status: room.status,
+    isMyTurn: room.isMyTurn,
+    isMyAction: room.isMyAction,
+    actorId: room.currentAction?.actorId,
+    canDraw: canUseAction(room.currentAction, "draw"),
+  });
+}
+
+function useAutomaticNormalDraw({
+  room,
+  busy,
+  onAction,
+  onRefreshRoom,
+  presentationDiagnostics,
+}: {
+  room: Room;
+  busy: boolean;
+  onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>;
+  onRefreshRoom: () => Promise<Room | false>;
+  presentationDiagnostics: { activeType: string | null; queuedCount: number; unseenCount: number };
+}) {
+  const attemptRef = useRef<AutomaticDrawAttempt | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const [attemptVersion, setAttemptVersion] = useState(0);
+  const latestRoomRef = useRef(room);
+  const latestBusyRef = useRef(busy);
+  const onActionRef = useRef(onAction);
+  const onRefreshRoomRef = useRef(onRefreshRoom);
+  const diagnosticsRef = useRef(presentationDiagnostics);
+  const decisionObservedRef = useRef<{ identity: string; at: number } | null>(null);
+  const identity = normalDrawDecisionForRoom(room);
+
+  useEffect(() => {
+    latestRoomRef.current = room;
+    latestBusyRef.current = busy;
+    onActionRef.current = onAction;
+    onRefreshRoomRef.current = onRefreshRoom;
+    diagnosticsRef.current = presentationDiagnostics;
+    if (!identity) decisionObservedRef.current = null;
+    else if (decisionObservedRef.current?.identity !== identity) {
+      decisionObservedRef.current = { identity, at: performance.now() };
+    }
+  }, [room, busy, onAction, onRefreshRoom, presentationDiagnostics, identity]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      attemptRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    if (!identity) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      attemptRef.current = null;
+      return;
+    }
+    if (attemptRef.current?.identity !== identity) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      attemptRef.current = createAutomaticDrawAttempt(identity) as AutomaticDrawAttempt;
+    }
+    const attempt = attemptRef.current;
+    const plan = prepareAutomaticDrawAttempt(attempt, {
+      identity,
+      busy,
+      serverNow: room.serverNow ?? 0,
+      initialDelayMs: UI_TIMING.turnDrawStart,
+      retryDelayMs: 250,
+    });
+    if (!plan) return;
+    let fired = false;
+    const timer = setTimeout(() => {
+      fired = true;
+      if (timerRef.current === timer) timerRef.current = null;
+      if (attemptRef.current !== attempt || !mountedRef.current) return;
+      const latestRoom = latestRoomRef.current;
+      const latestServerNow = latestRoom.serverNow ?? Date.now();
+      if (!beginAutomaticDrawAttempt(attempt, {
+        identity: normalDrawDecisionForRoom(latestRoom),
+        busy: latestBusyRef.current,
+        serverNow: latestServerNow,
+      })) {
+        setAttemptVersion((version) => version + 1);
+        return;
+      }
+      const startedAt = performance.now();
+      const diagnostics = diagnosticsRef.current;
+      const decisionObservedAt = decisionObservedRef.current?.identity === attempt.identity
+        ? decisionObservedRef.current.at : startedAt;
+      recordAttackDodgeUxTrace("normal-draw-attempt", {
+        status: "started",
+        turnSeat: latestRoom.turnSeat,
+        phase: latestRoom.phase,
+        actionRevisionPresent: Boolean(latestRoom.actionRevision),
+        authorizationToRequestMs: Math.max(0, startedAt - decisionObservedAt),
+        activePresentationType: diagnostics.activeType,
+        queuedPresentationCount: diagnostics.queuedCount,
+        unseenPresentationCount: diagnostics.unseenCount,
+        requestNumber: attempt.requests,
+      });
+      void (async () => {
+        const accepted = await onActionRef.current("draw");
+        const requestCompletedAt = performance.now();
+        const refreshed = await onRefreshRoomRef.current();
+        const refreshedIdentity = refreshed ? normalDrawDecisionForRoom(refreshed) : null;
+        reconcileAutomaticDrawAttempt(attempt, {
+          identity: refreshedIdentity,
+          freshSnapshot: Boolean(refreshed),
+          serverNow: refreshed?.serverNow ?? Date.now(),
+        });
+        if (refreshed) latestRoomRef.current = refreshed;
+        recordAttackDodgeUxTrace("normal-draw-attempt", {
+          status: accepted ? "request-returned-accepted" : "request-returned-false",
+          requestNumber: attempt.requests,
+          postRoundTripMs: Math.max(0, requestCompletedAt - startedAt),
+          revalidationMs: Math.max(0, performance.now() - requestCompletedAt),
+          freshSnapshotReceived: Boolean(refreshed),
+          sameDrawAuthorization: refreshedIdentity === attempt.identity,
+          resultingAttemptState: attempt.phase,
+        });
+        if (mountedRef.current && attemptRef.current === attempt) setAttemptVersion((version) => version + 1);
+      })();
+    }, plan.delayMs);
+    timerRef.current = timer;
+    return () => {
+      if (timerRef.current === timer) timerRef.current = null;
+      clearTimeout(timer);
+      if (!fired && attemptRef.current === attempt && attempt.phase === "scheduled") {
+        attempt.phase = attempt.requests === 0 ? "idle"
+          : attempt.revalidatedServerNow >= attempt.lastAttemptServerNow ? "retry-ready" : "awaiting";
+      }
+    };
+  }, [identity, busy, room.serverNow, attemptVersion]);
+}
+
 function publicNecromancyJudgementFrameForGameRoom(input: {
   room: Room;
   activeEvent?: GameEvent | null;
@@ -2808,7 +2971,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") {
     const presentationTurnKey = [room.code, room.meId, room.publicPresentationTurn?.epoch ?? 0, room.publicPresentationTurn?.retireAll ? "finished" : "active"].join(":");
-    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onRefreshRoom={() => fetchRoom(room.code, token, true, testViewerIdRef.current ?? room.meId)} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
   }
   if (room?.status === "heroes") return <>{connectionStatus}<HeroSelection room={room} busy={busy || connectionInterrupted} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} /></>;
   if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;
@@ -4699,7 +4862,7 @@ function publicDiscardMaterialsHaveKnownOwners(
     || players.some((player) => player.id === material.ownerId));
 }
 
-export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
+export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onRefreshRoom, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onRefreshRoom: () => Promise<Room | false>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const endTurnConfirmationScope = [
     room.code,
     room.meId,
@@ -4856,7 +5019,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const targetCardPickerSubmissionRef = useRef("");
   const triggerChoiceSubmissionRef = useRef("");
   const [triggerChoice, setTriggerChoice] = useState("");
-  const [discardSelected, setDiscardSelected] = useState<string[]>([]); const automaticDraw = useRef("");
+  const [discardSelected, setDiscardSelected] = useState<string[]>([]);
   // Equipment cost selections use the selected-cost visual state.
   // Equipment cost selection remains presentation-compatible with the compact
   // visible dock while preserving the existing card IDs and callbacks.
@@ -4999,6 +5162,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const automaticRescueSkip = useRef("");
   const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction);
   const [privateDrawPresentation, setPrivateDrawPresentation] = useState<{ playerId: string; cards: Card[]; transferIds: string[] }>({ playerId: room.meId, cards: [], transferIds: [] });
+  const [normalDrawPresentation, setNormalDrawPresentation] = useState<NormalDrawPresentationState | null>(null);
+  const normalDrawStageRef = useRef<HTMLDivElement | null>(null);
   const [privateStealViewerSwitchPending, setPrivateStealViewerSwitchPending] = useState(false);
   const activePrivateStealParticipantResult = room.privateStealParticipantResult?.viewerId === room.meId
     ? room.privateStealParticipantResult
@@ -5573,10 +5738,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeJudgementTransitionKey = activeJudgementZoneTransition?.claimId ?? "";
   const activePublicDiscardTransitionKey = activePublicDiscardTransition?.claimId ?? "";
   const activePublicHandRevealTransitionKey = activePublicHandRevealTransition?.claimId ?? "";
+  const activeNormalDrawH4 = Boolean(activeEvent?.type === "message" && normalDrawPresentation
+    && activeEvent.id === normalDrawPresentation.eventId);
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
-    : activeEvent?.type === "message" && queuedPublicH4Facts.has(activeEvent.id) ? UI_TIMING.effectNotice
+    : activeEvent?.type === "message" && queuedPublicH4Facts.has(activeEvent.id) ? activeNormalDrawH4 ? UI_TIMING.privateDraw : UI_TIMING.effectNotice
     : 0;
   const queuedPublicH4EventIds = new Set(queuedPublicH4Facts.keys());
   const activeEventBlocksActions = presentationEventBlocksActions(activeEvent, queuedPublicH4EventIds);
@@ -5589,7 +5756,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     eventQueue: queuedEventsBlockActions,
     selfTargetWindowClosing,
     turnNotice: Boolean(turnNotice),
-    privateDrawCards: privateDrawCards.length > 0,
+    privateDrawCards: privateDrawVisible,
     hasUnseenPresentations,
   };
   const presentationBusy = Object.values(presentationBusyCauses).some(Boolean);
@@ -6540,7 +6707,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const accepted = await onAction("choose_harvest", { cardId: submission.cardId });
     if (!accepted) setHarvestSubmitting(null);
   };
-  const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
   const livePendingSelfTargetEvents = pendingSelfTargetActionWindow(room);
   const livePendingSelfTargetStartId = livePendingSelfTargetEvents[0]?.id ?? "";
   const effectiveSelfTargetStartId = livePendingSelfTargetStartId || selfTargetWindowStartId;
@@ -6650,7 +6816,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(activeJudgementZoneTransition?.destination === "JUDGEMENT" && !completedPriorJudgementPlayReveal
       ? [activeJudgementZoneTransition.physicalCardId] : []),
   ]);
-  const privateDrawVisible = privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0;
+  const normalDrawCursorEventId = (activeEvent ?? eventQueue[0])?.id ?? "";
+  const normalDrawCursorMatches = Boolean(normalDrawPresentation
+    && normalDrawPresentation.roomCode === room.code && normalDrawPresentation.viewerId === room.meId
+    && normalDrawPresentation.eventId === normalDrawCursorEventId);
+  const normalDrawProofStillFresh = Boolean(normalDrawPresentation
+    && (normalDrawPresentation.visibleSinceMs !== null || Date.now() < normalDrawPresentation.expiresAtWallMs));
+  const normalDrawVisible = Boolean(normalDrawPresentation && normalDrawProofStillFresh
+    && (normalDrawPresentation.visibleSinceMs !== null || normalDrawCursorMatches));
+  const visiblePrivateDrawCards = normalDrawVisible ? normalDrawPresentation?.cards ?? [] : privateDrawCards;
+  const privateDrawVisible = normalDrawVisible || privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0;
   const publicResponseWindow = room.phase === "response" && responseDeadline > 0 && (room.currentAction?.kind === "response" || responseDecisionReady && Boolean(room.actionPlayerId));
   const seatCountdown = publicResponseWindow ? { kind: "response" as const, key: `response-${responseDeadline}`, durationMs: 0, deadline: responseDeadline, label: "Response Time" }
     : room.pendingHarvest?.countdownUntil ? { kind: "harvest" as const, playerId: room.pendingHarvest.actorId, key: `harvest-${room.pendingHarvest.actorId}-${room.pendingHarvest.countdownUntil}`, durationMs: 0, deadline: room.pendingHarvest.countdownUntil, label: room.pendingHarvest.complete ? "Closing" : "Choosing" }
@@ -6658,13 +6833,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   // Keep the private presentation clock mounted while a real response or
   // Harvest deadline owns the one visible countdown; never restart its clock.
-  const privateDrawTimer = <PrivateDrawCountdown cards={privateDrawCards} visible={privateDrawVisible} seat={seatCountdown} />;
+  const privateDrawTimer = <PrivateDrawCountdown cards={visiblePrivateDrawCards} visible={privateDrawVisible} seat={seatCountdown} />;
   const harvestEventTimer = seatCountdown?.kind === "harvest"
     ? <Countdown key={seatCountdown.key} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} compactEvent />
     : null;
   // Legacy seat positioning remains available through the "--countdown-x" and "--countdown-y" table tokens.
   useEffect(() => { onActionRef.current = onAction; }, [onAction]);
   useEffect(() => {
+    const previousNormalDraw = normalDrawPresentation;
+    if (previousNormalDraw && (previousNormalDraw.roomCode !== room.code || previousNormalDraw.viewerId !== room.meId)) {
+      rememberPrivateHandTransfers(previousNormalDraw.roomCode, previousNormalDraw.viewerId, previousNormalDraw.transferIds);
+      setNormalDrawPresentation(null);
+    }
     const seenTransferIds = readSeenPrivateHandTransfers(room.code, room.meId);
     const result = updatePrivateHand(knownHandCards.current ?? baselineHand(room.meId, [], []), room.meId, room.myHand, privateHandEvents, {
       now: room.serverNow ?? Date.now(),
@@ -6678,18 +6858,57 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setInfoCard(null); setInfoCardSourceIdentity(null); setTriggerSelectedKeys([]);
       return;
     }
-    if (result.drawn.length) {
+    const normalDrawBatch = normalDrawPresentationBatch({
+      viewerId: room.meId,
+      transfers: result.presentedTransfers,
+      cards: result.drawn,
+      events: room.timeline,
+      publicFacts: [
+        ...(room.presentationSnapshot?.publicEventFacts ?? []),
+        ...(room.presentationSnapshot?.retainedPublicEventFacts ?? []),
+      ],
+    });
+    const rootLinkedNormalTransferIds = new Set(result.presentedTransfers.filter((transfer) =>
+      transfer.sourceZone === "deck" && !transfer.initialDeal && typeof transfer.rootEventId === "string" && transfer.rootEventId)
+      .map((transfer) => transfer.transferId));
+    const pairedNormalTransferIds = new Set(normalDrawBatch?.transferIds ?? []);
+    const unpairedNormalTransferIds = [...rootLinkedNormalTransferIds].filter((transferId) => !pairedNormalTransferIds.has(transferId));
+    if (unpairedNormalTransferIds.length) rememberPrivateHandTransfers(room.code, room.meId, unpairedNormalTransferIds);
+    if (normalDrawBatch) {
+      if (normalDrawPresentation && normalDrawPresentation.eventId !== normalDrawBatch.eventId) {
+        rememberPrivateHandTransfers(normalDrawPresentation.roomCode, normalDrawPresentation.viewerId, normalDrawPresentation.transferIds);
+      }
+      const expiresAtWallMs = Date.now() + Math.max(0, normalDrawBatch.expiresAt - (room.serverNow ?? Date.now()));
+      setNormalDrawPresentation((current) => current?.roomCode === room.code && current.viewerId === room.meId
+        && current.eventId === normalDrawBatch.eventId
+        && JSON.stringify(current.transferIds) === JSON.stringify(normalDrawBatch.transferIds)
+        ? current
+        : {
+          roomCode: room.code,
+          viewerId: room.meId,
+          eventId: normalDrawBatch.eventId,
+          cards: normalDrawBatch.cards,
+          transferIds: normalDrawBatch.transferIds,
+          expiresAtWallMs,
+          visibleSinceMs: null,
+        });
+    }
+    const nonNormalTransferIds = new Set([...pairedNormalTransferIds, ...rootLinkedNormalTransferIds]);
+    const genericDrawn = result.drawn.filter((card) => !result.presentedTransfers.some((transfer) =>
+      nonNormalTransferIds.has(transfer.transferId) && transfer.cardId === card.id));
+    const genericTransferIds = result.presentedTransferIds.filter((transferId) => !nonNormalTransferIds.has(transferId));
+    if (genericDrawn.length) {
       setPrivateDrawPresentation((current) => {
         const existing = current.playerId === room.meId ? current.cards : [];
-        const byId = new Map([...existing, ...result.drawn].map((card) => [card.id, card]));
+        const byId = new Map([...existing, ...genericDrawn].map((card) => [card.id, card]));
         return {
           playerId: room.meId,
           cards: [...byId.values()],
-          transferIds: [...new Set([...(current.playerId === room.meId ? current.transferIds : []), ...result.presentedTransferIds])],
+          transferIds: [...new Set([...(current.playerId === room.meId ? current.transferIds : []), ...genericTransferIds])],
         };
       });
     }
-  }, [room.code, room.meId, room.myHand, room.serverNow, privateHandEvents]);
+  }, [room.code, room.meId, room.myHand, room.serverNow, room.timeline, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, privateHandEvents, normalDrawPresentation]);
   useEffect(() => {
     if (queuedPublicH4RoomCode.current !== room.code) {
       queuedPublicH4RoomCode.current = room.code;
@@ -6998,7 +7217,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const timer = setTimeout(() => setHarvestSubmitting((current) => current === harvestSubmitting ? null : current), 0);
     return () => clearTimeout(timer);
   }, [harvestSubmitting, room.actionRevision, room.code, room.meId, room.pendingHarvest]);
-  useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEventBlocksActions || queuedEventsBlockActions || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEventBlocksActions, queuedEventsBlockActions, privateDrawCards.length]);
+  useEffect(() => {
+    if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw")) return;
+    const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0);
+    const clearTimer = setTimeout(() => setTurnNotice(""), UI_TIMING.turnDrawStart);
+    return () => { clearTimeout(noticeTimer); clearTimeout(clearTimer); };
+  }, [room.status, room.phase, room.turnSeat, room.currentAction, current?.name]);
+  useAutomaticNormalDraw({
+    room,
+    busy,
+    onAction,
+    onRefreshRoom,
+    presentationDiagnostics: {
+      activeType: activeEvent?.type ?? null,
+      queuedCount: eventQueue.length,
+      unseenCount: hasUnseenPresentations ? 1 : 0,
+    },
+  });
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => {
     if (!activeEventTimerEventId) return;
@@ -7061,6 +7296,68 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || selfTargetWindowClosing || !selfTargetWindowEvents.length) return; const timer = setTimeout(() => setSelfTargetWindowClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, selfTargetWindowClosing, selfTargetWindowEvents.length]);
   useEffect(() => { if (!selfTargetWindowClosing) return; const closingRevision = selfTargetWindowRevision.current; const timer = setTimeout(() => { if (selfTargetWindowRevision.current !== closingRevision) { setSelfTargetWindowClosing(false); return; } setSelfTargetWindowEvents([]); setSelfTargetWindowStartId(""); setSelfTargetWindowClosing(false); }, UI_TIMING.selfTargetWindowClose); return () => clearTimeout(timer); }, [selfTargetWindowClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [], transferIds: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
+  useEffect(() => {
+    if (!normalDrawPresentation || normalDrawPresentation.visibleSinceMs !== null) return;
+    const remaining = normalDrawPresentation.expiresAtWallMs - Date.now();
+    if (remaining <= 0) {
+      rememberPrivateHandTransfers(normalDrawPresentation.roomCode, normalDrawPresentation.viewerId, normalDrawPresentation.transferIds);
+      setNormalDrawPresentation((currentState) => currentState === normalDrawPresentation ? null : currentState);
+      return;
+    }
+    const timer = setTimeout(() => {
+      rememberPrivateHandTransfers(normalDrawPresentation.roomCode, normalDrawPresentation.viewerId, normalDrawPresentation.transferIds);
+      setNormalDrawPresentation((currentState) => currentState === normalDrawPresentation ? null : currentState);
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [normalDrawPresentation, room.serverNow]);
+  useEffect(() => {
+    if (!normalDrawVisible || !normalDrawPresentation || normalDrawPresentation.visibleSinceMs !== null) return;
+    const eventId = normalDrawPresentation.eventId;
+    let cancelled = false;
+    let frames = 0;
+    let frame = 0;
+    const observeVisibleCardFace = () => {
+      if (cancelled) return;
+      frames += 1;
+      const stage = normalDrawStageRef.current;
+      const stageStyle = stage ? window.getComputedStyle(stage) : null;
+      const faces = stage ? [...stage.querySelectorAll<HTMLElement>(".played-card")] : [];
+      const allFacesVisible = faces.length === normalDrawPresentation.cards.length && faces.length > 0
+        && faces.every((face) => {
+          const style = window.getComputedStyle(face);
+          return face.getClientRects().length > 0 && style.visibility !== "hidden" && Number(style.opacity) > 0.01;
+        });
+      if (stage && stage.isConnected && stage.getClientRects().length > 0
+        && stageStyle?.display !== "none" && stageStyle?.visibility !== "hidden" && allFacesVisible) {
+        setNormalDrawPresentation((currentState) => currentState?.eventId === eventId
+          && currentState.visibleSinceMs === null
+          ? { ...currentState, visibleSinceMs: Date.now() }
+          : currentState);
+        return;
+      }
+      if (frames < 30) frame = window.requestAnimationFrame(observeVisibleCardFace);
+    };
+    frame = window.requestAnimationFrame(observeVisibleCardFace);
+    return () => { cancelled = true; window.cancelAnimationFrame(frame); };
+  }, [normalDrawVisible, normalDrawPresentation]);
+  useEffect(() => {
+    if (!normalDrawPresentation || normalDrawPresentation.visibleSinceMs === null) return;
+    rememberPrivateHandTransfers(normalDrawPresentation.roomCode, normalDrawPresentation.viewerId, normalDrawPresentation.transferIds);
+  }, [normalDrawPresentation]);
+  useEffect(() => {
+    if (!normalDrawPresentation || normalDrawPresentation.visibleSinceMs === null) return;
+    const remaining = UI_TIMING.privateDraw - (Date.now() - normalDrawPresentation.visibleSinceMs);
+    if (remaining <= 0) {
+      rememberPrivateHandTransfers(normalDrawPresentation.roomCode, normalDrawPresentation.viewerId, normalDrawPresentation.transferIds);
+      setNormalDrawPresentation((currentState) => currentState === normalDrawPresentation ? null : currentState);
+      return;
+    }
+    const timer = setTimeout(() => {
+      rememberPrivateHandTransfers(normalDrawPresentation.roomCode, normalDrawPresentation.viewerId, normalDrawPresentation.transferIds);
+      setNormalDrawPresentation((currentState) => currentState === normalDrawPresentation ? null : currentState);
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [normalDrawPresentation]);
   useEffect(() => {
     if (!privateDrawVisible || !privateDrawPresentation.transferIds.length) return;
     rememberPrivateHandTransfers(room.code, room.meId, privateDrawPresentation.transferIds);
@@ -12832,7 +13129,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && !borrowedSwordContinuationConsole && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
-      {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
+      {privateDrawVisible && <div ref={normalDrawVisible ? normalDrawStageRef : undefined} className="played-card-stage private-draw-stage" role="status" data-normal-draw-event-id={normalDrawVisible ? normalDrawPresentation?.eventId : undefined}><div className="private-draw-content"><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={visiblePrivateDrawCards.length > 3 ? 0 : undefined}>{visiblePrivateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onCardDetails={(card, trigger) => openCardDetails(card, "private-deck-reorder", trigger)} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
       {activeJudgementRevealRoute && activeEvent?.type === "card" && <PublicJudgementOriginalReveal event={activeEvent} route={activeJudgementRevealRoute} />}
@@ -13269,7 +13566,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               seenTransferIds: readSeenPrivateHandTransfers(room.code, room.meId),
               initialDealOnly: knownHandCards.current?.playerId !== room.meId,
             });
-            const activePrivateCardIds = new Set([...pendingPrivateCards, ...privateDrawCards.map((drawn) => drawn.id)]);
+            const activePrivateCardIds = new Set([
+              ...pendingPrivateCards,
+              ...privateDrawCards.map((drawn) => drawn.id),
+              ...(normalDrawPresentation?.roomCode === room.code && normalDrawPresentation.viewerId === room.meId
+                ? normalDrawPresentation.cards.map((drawn) => drawn.id) : []),
+            ]);
             const handCardsInDock = room.myHand.filter((item) => !activePrivateCardIds.has(item.id));
             // The native scroll region needs keyboard focus; it has no custom selection role.
             // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex

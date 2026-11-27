@@ -8,6 +8,7 @@ const fastTests = [
   "tests/standard-deck.test.mjs",
   "tests/test-hand-presets.test.mjs",
   "tests/private-hand.test.mjs",
+  "tests/normal-draw-decision.test.mjs",
   "tests/game-messages.test.mjs",
   "tests/response-capabilities.test.mjs",
   "tests/distance-capabilities.test.mjs",
