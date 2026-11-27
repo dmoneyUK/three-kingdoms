@@ -32,6 +32,7 @@ import { getResponseOptions } from "../game/responses";
 import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
+import { isOrdinaryTurnActionAuthorized, type OrdinaryTurnAction } from "../game/ordinary-turn-action";
 import { derivePrivateResponseGuidance } from "../game/private-response-guidance.ts";
 import { latestPublicMessages } from "../game/messages.js";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
@@ -5610,14 +5611,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...mobileSeatRingLayoutStyle,
   } as CSSProperties : undefined;
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
-  const ordinaryTurnPlayAuthorized = Boolean(
-    canPlay
-    && room.isMyTurn
-    && room.isMyAction
-    && room.currentAction?.kind === "turn"
-    && room.currentAction.actorId === room.meId
-    && canUseAction(room.currentAction, "play_card"),
-  );
+  const ordinaryTurnActionAuthorized = (action: OrdinaryTurnAction) => isOrdinaryTurnActionAuthorized({
+    status: room.status,
+    phase: room.phase,
+    isMyTurn: room.isMyTurn,
+    isMyAction: room.isMyAction,
+    viewerId: room.meId,
+    currentAction: room.currentAction,
+  }, action);
+  const ordinaryTurnPlayAuthorized = ordinaryTurnActionAuthorized("play_card");
   const harvestActionRevision = room.actionRevision ?? "";
   const hasAvailableHarvestChoice = Boolean(room.pendingHarvest?.availableIds.some((availableId) =>
     room.pendingHarvest?.revealed.some((choice) => choice.id === availableId)));
@@ -6212,7 +6214,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const hasSerpentSpear = getResponseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, { kind: "attack" }).some((option) => option.providerId === "serpent_spear_attack");
   const playPhaseAttackCardIds = new Set(room.currentAction?.actorId === room.meId ? (room.currentAction.playPhaseActions ?? []).filter((action) => action.canPlayAs === "attack").map((action) => action.cardId) : []);
   const wushengResponseOption = room.currentAction?.options?.find((option) => option.providerId === "guan_yu_red_card_attack") ?? null;
-  const canUseWushengInPlay = Boolean(room.currentAction?.actorId === room.meId && room.currentAction.canDeclareAttack === true && (room.currentAction.playPhaseActions ?? []).some((action) => action.canPlayAs === "attack"));
+  const canUseWushengInPlay = Boolean(ordinaryTurnActionAuthorized("play_card") && room.currentAction?.canDeclareAttack === true && (room.currentAction.playPhaseActions ?? []).some((action) => action.canPlayAs === "attack"));
   const canUseWushengInResponse = Boolean(wushengResponseOption);
   const wushengEligibleCardIds = wushengMode === "response"
     ? new Set(wushengResponseOption?.selection?.type === "cards" ? wushengResponseOption.selection.eligibleCardIds : [])
@@ -6220,7 +6222,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const longdanResponseOptions = room.currentAction?.options?.filter((option) => option.providerId === "zhao_yun_dodge_as_attack" || option.providerId === "zhao_yun_attack_as_dodge") ?? [];
   const longdanResponseOption = longdanResponseOptions.find((option) => option.providerId === responseProviderId) ?? longdanResponseOptions[0] ?? null;
   const longdanPlayCardIds = new Set((room.currentAction?.playPhaseActions ?? []).filter((action) => action.canPlayAs === "attack" && room.myHand.some((item) => item.id === action.cardId && item.kind === "Dodge")).map((action) => action.cardId));
-  const canUseLongdanInPlay = Boolean(me?.hero === "zhao-yun" && room.currentAction?.actorId === room.meId && room.currentAction.canDeclareAttack === true && longdanPlayCardIds.size > 0);
+  const canUseLongdanInPlay = Boolean(me?.hero === "zhao-yun" && ordinaryTurnActionAuthorized("play_card") && room.currentAction?.canDeclareAttack === true && longdanPlayCardIds.size > 0);
   const longdanEligibleCardIds = longdanMode === "response"
     ? new Set(longdanResponseOption?.selection?.type === "cards" ? longdanResponseOption.selection.eligibleCardIds : [])
     : longdanPlayCardIds;
@@ -6826,12 +6828,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return {
       name: skill.name,
       description: skill.description,
-      enabled: Boolean(option && canUseAction(room.currentAction, "trigger")),
+      enabled: Boolean(option && ordinaryTurnActionAuthorized("trigger")),
       active,
       retapToExit: Boolean(option?.selection
         && ["cards", "target", "target_cards"].includes(option.selection.type)),
       onClick: option ? () => {
-        if (!canUseAction(room.currentAction, "trigger") || room.currentAction?.actorId !== room.meId || !room.isMyAction) return;
+        if (!ordinaryTurnActionAuthorized("trigger")) return;
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
           if (!activating && option.effectId === "diao_chan_lust") resetLocalTargetFlow("active-skill");
@@ -7733,7 +7735,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setSelfTargetWindowEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
   };
   const playSerpentAttack = async () => {
-    if (!me || !canPlay || !canDeclareAttack || serpentSelected.length !== 2) return;
+    if (!me || !ordinaryTurnActionAuthorized("serpent_spear_attack") || !canDeclareAttack || serpentSelected.length !== 2) return;
     const materials = serpentSelected.map((id) => room.myHand.find((item) => item.id === id)).filter((item): item is Card => Boolean(item));
     if (materials.length !== 2) return;
     const responseTarget = room.pendingDuel ? room.players.find((player) => player.id === room.pendingDuel?.opponentId)?.name ?? me.name : me.name;
@@ -7762,7 +7764,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     await submitWithLocalTargetPreview(() => onAction("choose_borrowed_sword_target", { targetId }));
   };
   const play = async () => {
-    if (!card || !me || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
+    if (!ordinaryTurnActionAuthorized("play_card") || !card || !me || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
     const playedCard = card;
     const definition = cardDefinition(card.kind);
     const needsTarget = selectedCanPlayAsAttack || ["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind);
@@ -12958,7 +12960,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : consoleKind !== "turn" ? "console-not-in-turn-mode"
           : room.currentAction?.kind !== "turn" ? "current-action-not-turn"
             : room.currentAction.actorId !== room.meId ? "current-action-actor-mismatch"
-              : !canUseAction(room.currentAction, "end_turn") ? "end-turn-not-in-current-action-legal-actions"
+              : !ordinaryTurnActionAuthorized("end_turn") ? "end-turn-not-in-authorized-turn"
                 : null;
   const endTurnConfirmationAuthorized = endTurnConfirmationAuthorizationReason === null;
   const endTurnConfirmationIsCurrent = Boolean(
@@ -13008,7 +13010,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const blockedReason = endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight"
       : !endTurnConfirmationIsCurrent ? endTurnConfirmationAuthorizationReason ?? "confirmation-scope-stale"
         : busy ? "gameplay-request-busy"
-          : !canUseAction(room.currentAction, "end_turn") ? "end-turn-no-longer-authorized"
+          : !ordinaryTurnActionAuthorized("end_turn") ? "end-turn-no-longer-authorized"
             : null;
     if (blockedReason) {
       if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "blocked", reason: blockedReason });
@@ -13522,7 +13524,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-cancel", { result: "cancelled", requestSent: false });
               closeEndTurnConfirmation(true);
             }}>Cancel</button>
-            <button type="button" className="primary end-turn-confirmation__confirm" disabled={busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting} onPointerDown={() => {
+            <button type="button" className="primary end-turn-confirmation__confirm" disabled={busy || !ordinaryTurnActionAuthorized("end_turn") || endTurnConfirmationSubmitting} onPointerDown={() => {
               if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-hit", {
                 control: "confirm-end", position: "fixed-foreground", busy,
               });
@@ -13733,6 +13735,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1 || stauchnessChoiceActive);
             const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2;
             const toggleHandCard = (item: Card) => {
+              const discardSelectionAuthorized = room.phase === "discard" && currentActionOwnedByViewer && canUseAction(room.currentAction, "discard_cards");
+              const ordinarySelectionAuthorized = serpentMode
+                ? ordinaryTurnActionAuthorized("serpent_spear_attack")
+                : ordinaryTurnPlayAuthorized;
+              const activeSkillSelectionAuthorized = Boolean(activeSkillSelection && ordinaryTurnActionAuthorized("trigger"));
+              if (!(discardSelectionAuthorized || ordinarySelectionAuthorized || activeSkillSelectionAuthorized || responseCardSelectionReady || rescueDecisionReady)) return;
               setLocalPlayTargetNotice(null);
               setInspectOnlyHandCardId("");
               if (infoCard && infoCardContext === "private-hand") closeCardDetails(false);
@@ -13761,7 +13769,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               const singleSelected = !multiSelectMode && isSelected;
               const multiSelected = multiSelectMode && isSelected;
               const multiSelectionOrder = multiSelected ? selectedCardIds.indexOf(item.id) : -1;
-              const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseCardSelectionReady || rescueDecisionReady;
+              const ordinarySelectionAuthorized = serpentMode
+                ? ordinaryTurnActionAuthorized("serpent_spear_attack")
+                : ordinaryTurnPlayAuthorized;
+              const activeSkillSelectionAuthorized = Boolean(activeSkillSelection && ordinaryTurnActionAuthorized("trigger"));
+              const discardSelectionAuthorized = room.phase === "discard" && currentActionOwnedByViewer && canUseAction(room.currentAction, "discard_cards");
+              const maySelect = discardSelectionAuthorized || ordinarySelectionAuthorized || activeSkillSelectionAuthorized || responseCardSelectionReady || rescueDecisionReady;
               const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id));
               const cardActionDisabled = !maySelect || skillModeCardDisabled || responseCardDisabled(item) || stauchnessCardDisabled;
               const inspectionAvailable = (room.status === "playing" || room.status === "finished") && cardActionDisabled && !isSelected;
@@ -13821,7 +13834,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             }
             return <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>;
           })}
-          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" data-precommit-owner="serpent_spear_attack" aria-label={SERPENT_SPEAR_LABEL} title={serpentMode ? "Tap again to cancel this selection." : `Use ${SERPENT_SPEAR_LABEL}`} aria-pressed={serpentMode} disabled={busy} onClick={() => { clearLocalPrecommitDrafts(); if (!serpentMode) setSerpentMode(true); }}>{SERPENT_SPEAR_LABEL}</button>}
+          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" data-precommit-owner="serpent_spear_attack" aria-label={SERPENT_SPEAR_LABEL} title={serpentMode ? "Tap again to cancel this selection." : `Use ${SERPENT_SPEAR_LABEL}`} aria-pressed={serpentMode} disabled={busy || !ordinaryTurnActionAuthorized("serpent_spear_attack")} onClick={() => { if (!ordinaryTurnActionAuthorized("serpent_spear_attack")) return; clearLocalPrecommitDrafts(); if (!serpentMode) setSerpentMode(true); }}>{SERPENT_SPEAR_LABEL}</button>}
         </div>
         <div data-action-slots="true">
           <div data-action-slot="cancel">
@@ -13839,10 +13852,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {targetCardPickerInLocalDock && consolePrimaryId === "target-card-picker" && <button className="primary" disabled={responseControlsDisabled || !targetCardPickerSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => void submitTargetCardPicker(targetCardPickerSelectedKeys)}>{busy ? "Confirming…" : "Confirm"}</button>}
             {triggerResponse && selectedTriggerOption?.selection?.type === "cards" && consolePrimaryId === "trigger-cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) }))}>Confirm</button>}
             {triggerResponse && selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && consolePrimaryId === "trigger-target" && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds }))}>Confirm</button>}
-            {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
+            {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !ordinaryTurnActionAuthorized("trigger") || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => { if (ordinaryTurnActionAuthorized("trigger") && activeSkillSubmission) void submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission)); }}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play")}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || !ordinaryTurnActionAuthorized("serpent_spear_attack") || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || !ordinaryTurnPlayAuthorized || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play")}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
@@ -13852,9 +13865,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               data-end-turn-block-reason={busy ? "gameplay-request-busy"
                 : !canUseAction(room.currentAction, "end_turn") ? "end-turn-not-in-current-action-legal-actions"
                   : endTurnConfirmationAuthorizationReason ?? "ready"}
-              disabled={busy || !canUseAction(room.currentAction, "end_turn") || endTurnConfirmationSubmitting}
+              disabled={busy || !ordinaryTurnActionAuthorized("end_turn") || endTurnConfirmationSubmitting}
               onClick={() => {
                 const reason = endTurnConfirmationAuthorizationReason
+                  ?? (!ordinaryTurnActionAuthorized("end_turn") ? "end-turn-not-in-authorized-turn" : null)
                   ?? (endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight" : null);
                 if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-button-click", {
                   result: reason ? "blocked" : "confirmation-open-requested",
