@@ -1,9 +1,7 @@
 # HANDOVER
 
-## Current task — §10.87 Rock Cleaving Axe damage provenance
+## Current task — §10.85 Draw Phase presentation decoupling
 
-Design reviewed: `docs/UX2-refine.md` at `cbad72b18b4dd335a59c8ef892c801def617edae`. Owner now directed continuing beyond the delivered §10.78 boundary; §10.87 is the next P1 in the current queue.
+Design reviewed: `docs/UX2-refine.md` at `cbad72b18b4dd335a59c8ef892c801def617edae`; Owner's latest direct instruction authorizes continuing beyond §10.78. §10.87 was delivered in `b6d0311b086d5273394152c123b92decb96c8840`: exact original Attack materials now survive Dodge, Axe forced-damage and equipment-loss continuations into Cao Cao's existing Treachery/Skip flow. Focused API regressions and exact-SHA Actions `45953782177` passed; D1 migrations, Worker deployment and production smoke passed. Worker version `171e9ae8-c333-4755-a5b2-28fc08d4ca6d`. §10.87 remains pending Owner review, not accepted.
 
-Implementation carries the exact original physical Attack materials through successful Dodge (ordinary/delegated and judgement paths), Axe forced damage, equipment-loss resume, and Dying/Peach continuation. Cao Cao's existing Treachery/Skip eligibility and transfer logic are unchanged. Focused API proofs cover Axe costs including the Axe itself, judgement Dodge, Skip, post-rescue gain of exact Attack identity, observer privacy, and two-card Serpent Spear provenance.
-
-Validation on the identical implementation patch (`f7a71d351ee46a70f33717380ddca4be6fc3e610`): focused equipment API regressions 3/3, fast tests 509/509, build and `git diff --check` passed. No local UI/browser tests. The same source/test patch is reapplied on the current `cbad72b` base; exact-SHA CI, Worker deployment and production smoke for this delivery are pending. Do not claim Owner acceptance; real-iPhone scenario remains for Owner review.
+Next implement §10.85 only: decouple an authorized automatic normal Draw from passive prior-turn presentation backlog; reconcile suppressed/ambiguous attempts safely; synchronize the committed public draw-count H4 with fresh recipient-private faces while preserving the existing 3-second reveal and all authoritative draw/Judgement/trigger rules. Use focused tests; no local UI/browser tests per Owner instruction. Required exact-SHA CI, deployment and production smoke remain mandatory. Do not claim phone acceptance.
