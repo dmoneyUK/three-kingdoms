@@ -6,7 +6,7 @@ import type {
   PresentationPublicCardEffectSource,
   PresentationV2Event,
 } from "../game/presentation-v2";
-import { publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
+import { publicH4CardSourceReference, publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
 import { cardDefinition } from "../game/cards";
 import { formatCommittedPublicOutcomeWithSegments } from "../game/public-activity";
 import { publicDiscardCardFaces, publicDiscardCardList, type PublicDiscardCardFace } from "./public-discard-transition";
@@ -527,6 +527,13 @@ export function publicDiscardSettlementCopy(input: {
   const count = settlement.materials.length;
   const noun = count === 1 ? "card" : "cards";
   const cardList = cards ? publicDiscardCardList(cards) : null;
+  const sourceCardReference = settlement.source.kind === "card" || settlement.source.kind === "equipment"
+    ? publicH4CardSourceReference(settlement.source) : null;
+  const sourceLabel = settlement.source.kind === "card"
+    ? sourceCardReference ?? "a card"
+    : settlement.source.kind === "equipment"
+      ? sourceCardReference ?? "an equipment effect"
+      : settlement.source.label;
   const detail = cardList ? `: ${cardList}` : "";
   const namedSingle = count === 1 && cardList ? `’s ${cardList}` : null;
   const parts: Array<string | { id: string; name: string }> = [];
@@ -535,14 +542,14 @@ export function publicDiscardSettlementCopy(input: {
     && !actor && owner) {
     parts.push(`Publicly discarded ${count} ${noun} from `, owner, `${detail}.`);
   } else if (settlement.mode === "direct" && actor && owner) {
-    parts.push(actor, ` used ${settlement.source.label ?? "Dismantle"} to discard `, owner,
+    parts.push(actor, ` used ${sourceLabel ?? "Dismantle"} to discard `, owner,
       namedSingle ? `${namedSingle}.` : `’s ${count} ${noun}${detail}.`);
   } else if (settlement.mode === "forced" && actor && owner) {
-    parts.push(actor, ` used ${settlement.source.label ?? "an effect"}, causing `, owner, ` to discard ${count} ${noun}${detail}.`);
+    parts.push(actor, ` used ${sourceLabel ?? "an effect"}, causing `, owner, ` to discard ${count} ${noun}${detail}.`);
   } else if ((settlement.mode === "cost" || settlement.mode === "effect") && actor && owner) {
-    if (actor.id === owner.id) parts.push(actor, ` used ${settlement.source.label ?? "an effect"} and discarded ${count} ${noun}${detail}.`);
-    else if (namedSingle) parts.push(actor, ` used ${settlement.source.label ?? "an effect"} to discard `, owner, namedSingle, ".");
-    else parts.push(actor, ` used ${settlement.source.label ?? "an effect"} to discard ${count} ${noun} from `, owner, `${detail}.`);
+    if (actor.id === owner.id) parts.push(actor, ` used ${sourceLabel ?? "an effect"} and discarded ${count} ${noun}${detail}.`);
+    else if (namedSingle) parts.push(actor, ` used ${sourceLabel ?? "an effect"} to discard `, owner, namedSingle, ".");
+    else parts.push(actor, ` used ${sourceLabel ?? "an effect"} to discard ${count} ${noun} from `, owner, `${detail}.`);
   } else if (settlement.mode === "equipment-replacement" && owner) {
     parts.push(owner, ` lost ${count} Equipment ${noun} during replacement${detail}.`);
   } else if (settlement.mode === "defeat" && owner) {

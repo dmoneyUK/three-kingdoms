@@ -60,7 +60,7 @@ test("ordinary committed equipment replacement retains exact slot, source, order
   assert.equal(settlement.rootEventId, "equip-root");
   assert.equal(settlement.materials[0].fromSlot, "offensiveHorse");
   assert.equal(publicDiscardSettlementCopy({ settlement, players }).headline,
-    "Player One lost 1 Equipment card during replacement: K♠ Fergana Steed.");
+    "Player One lost 1 Equipment card during replacement: [K♠ Fergana Steed].");
 });
 
 test("Dismantle proof normalizes the exact committed face while previously-read Judgement stays excluded", () => {
@@ -77,7 +77,7 @@ test("Dismantle proof normalizes the exact committed face while previously-read 
   assert.equal(settlement.presentation, "eligible");
   assert.equal(settlement.mode, "direct");
   assert.equal(settlement.materials[0].ownerId, ownerId);
-  assert.match(publicDiscardSettlementCopy({ settlement, players }).headline, /Player One used Burning Bridges to discard Player Two’s 2♣ Attack\./);
+  assert.match(publicDiscardSettlementCopy({ settlement, players }).headline, /Player One used \[Burning Bridges\] to discard Player Two’s \[2♣ Attack\]\./);
 
   const judgement = face("judgement-card", "Lightning", "A", "♠");
   const judgementProof = { ...proof, sourceZone: "judgement", affectedCardOwnerId: null, affectedCardFace: judgement };
@@ -97,7 +97,7 @@ test("COST recorded as play is a discard; already-presented follow-up Attack is 
   assert.equal(axe.presentation, "eligible");
   assert.equal(axe.mode, "cost");
   assert.equal(axe.source.label, "Rock Cleaving Axe");
-  assert.match(publicDiscardSettlementCopy({ settlement: axe, players }).headline, /used Rock Cleaving Axe and discarded 1 card: 8♠ Dodge\./);
+  assert.match(publicDiscardSettlementCopy({ settlement: axe, players }).headline, /used \[Rock Cleaving Axe\] and discarded 1 card: \[8♠ Dodge\]\./);
 
   const attack = face("follow-up-attack", "Attack", "Q", "♥");
   const effect = effectEvent({ id: "green-dragon-attack", action: "play", effectId: "green_dragon_blade_attack_dodged", effectClass: "EFFECT",
@@ -129,7 +129,7 @@ test("Stauchness keeps its true activator separate from two exact discarded Hand
   assert.equal(settlement.frameId, fact.identity.rootFrameId);
   assert.deepEqual(settlement.materials.map(({ card }) => card.id), cards.map(({ id }) => id));
   assert.match(publicDiscardSettlementCopy({ settlement, players }).headline,
-    /Player One used Stauchness, causing Player Two to discard 2 cards: 8♠ Attack · Q♥ Peach\./);
+    /Player One used Stauchness, causing Player Two to discard 2 cards: \[8♠ Attack\] · \[Q♥ Peach\]\./);
 });
 
 test("renderer match requires the exact event and complete ordered physical material set", () => {
@@ -168,7 +168,7 @@ test("canonical discard copy appends other committed changes without repeating t
       { kind: "HP_RECOVERED", playerId: actorId, amount: 1 },
     ],
   } });
-  assert.equal(copy.headline, "Player One used Stauchness, causing Player Two to discard 2 cards: 7♥ Peach · 7♣ Dodge. Player One recovered 1 HP.");
+  assert.equal(copy.headline, "Player One used Stauchness, causing Player Two to discard 2 cards: [7♥ Peach] · [7♣ Dodge]. Player One recovered 1 HP.");
   assert.equal(copy.segments.map((segment) => segment.text).join(""), copy.headline);
 });
 
@@ -192,7 +192,7 @@ test("Kirin Bow retains the actual Mount identity, owner, slot and discard outco
   assert.equal(settlement.materials[0].ownerId, ownerId);
   assert.equal(settlement.materials[0].fromSlot, "offensiveHorse");
   assert.match(publicDiscardSettlementCopy({ settlement, players }).headline,
-    /Player One used Kirin Bow to discard Player Two’s K♠ Fergana Steed\./);
+    /Player One used \[Kirin Bow\] to discard Player Two’s \[K♠ Fergana Steed\]\./);
   assert.deepEqual(settlement.materials[0].card, mount);
 });
 
@@ -205,7 +205,7 @@ test("Dauntless COST and target Equipment EFFECT normalize as separate truthful 
   assert.equal(costSettlement.presentation, "eligible");
   assert.equal(costSettlement.mode, "cost");
   assert.match(publicDiscardSettlementCopy({ settlement: costSettlement, players }).headline,
-    /Player One used Dauntless and discarded 1 card: 4♦ Dodge\./);
+    /Player One used Dauntless and discarded 1 card: \[4♦ Dodge\]\./);
 
   const equipmentCard = face("dauntless-target-equipment", "FerganaSteed", "K", "♠");
   const targetDiscard = effectEvent({ id: "dauntless-effect-event", action: "discard", effectId: "yue_jin_dauntless", effectClass: "EFFECT",
@@ -216,7 +216,7 @@ test("Dauntless COST and target Equipment EFFECT normalize as separate truthful 
   assert.equal(effectSettlement.presentation, "eligible");
   assert.equal(effectSettlement.mode, "effect");
   assert.match(publicDiscardSettlementCopy({ settlement: effectSettlement, players }).headline,
-    /Player One used Dauntless to discard Player Two’s K♠ Fergana Steed\./);
+    /Player One used Dauntless to discard Player Two’s \[K♠ Fergana Steed\]\./);
 });
 
 test("conversion and Judgement effects never create a second discard reveal", () => {
@@ -289,9 +289,9 @@ test("a mismatched specialised proof falls back to the independently proven publ
   assert.deepEqual(settlements.map((settlement) => settlement.presentation), ["eligible", "eligible"]);
   assert.deepEqual(settlements.map((settlement) => settlement.materials[0].physicalCardId), [equipmentCard.id, dismantledCard.id]);
   assert.equal(publicDiscardSettlementCopy({ settlement: settlements[0], players }).headline,
-    "Player Two discarded 1 card: K♠ Fergana Steed.");
+    "Player Two discarded 1 card: [K♠ Fergana Steed].");
   assert.equal(publicDiscardSettlementCopy({ settlement: settlements[1], players }).headline,
-    "Player Two discarded 1 card: Q♥ Peach.");
+    "Player Two discarded 1 card: [Q♥ Peach].");
 });
 
 test("malformed optional discard context degrades to truthful anonymous copy and retains each material owner", () => {
@@ -307,7 +307,7 @@ test("malformed optional discard context degrades to truthful anonymous copy and
   assert.deepEqual(settlement.materials.map((material) => material.ownerId), [actorId, ownerId]);
   assert.deepEqual(settlement.materials.map((material) => material.physicalCardId), cards.map((card) => card.id));
   assert.equal(publicDiscardSettlementCopy({ settlement, players }).headline,
-    "Publicly discarded 2 cards: 7♠ Attack · 7♠ Attack.");
+    "Publicly discarded 2 cards: [7♠ Attack] · [7♠ Attack].");
 });
 
 test("source identity and actual committed discard counts must agree before formatting", () => {
@@ -343,7 +343,7 @@ test("unknown card identity remains count-only and multiple material owners neve
   const [multiOwner] = normalize({ event: [mixed], effects: [proof] });
   assert.equal(multiOwner.presentation, "eligible");
   assert.equal(publicDiscardSettlementCopy({ settlement: multiOwner, players }).headline,
-    "Publicly discarded 2 cards: 2♥ Attack · 3♣ Peach.");
+    "Publicly discarded 2 cards: [2♥ Attack] · [3♣ Peach].");
 });
 
 test("large voluntary discards preserve every distinct physical ID and avoid guessing an unproven actor", () => {
@@ -367,5 +367,5 @@ test("large voluntary discards preserve every distinct physical ID and avoid gue
     source: { kind: "skill", label: "Unresolved skill" }, activationOwnerId: "not-in-public-player-list", outcome: "COMMITTED" });
   const [unresolved] = normalize({ event: missingActor.event, effects: [missingActor.proof] });
   assert.equal(publicDiscardSettlementCopy({ settlement: unresolved, players }).headline,
-    "Publicly discarded 1 card from Player Two: 7♠ Attack.");
+    "Publicly discarded 1 card from Player Two: [7♠ Attack].");
 });

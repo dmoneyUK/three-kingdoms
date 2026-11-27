@@ -220,7 +220,7 @@ test("new public Attack and Steal replace settled Fanjian H4/CardFace ownership 
   await expect(attackDisplay).toBeVisible();
   await expect(attackDisplay).toHaveAttribute("data-public-card-id", "browser-post-fanjian-attack-card");
   await expect(page.locator('.public-interaction-event-announcement[data-public-interaction-event-id="browser-fanjian-settlement"]')).toHaveCount(0);
-  await expect(page.locator(".public-card-display-journey-copy")).toContainText("Player 1 played Attack on Player 2.");
+  await expect(page.locator(".public-card-display-journey-copy")).toContainText("Player 1 played [Attack] on Player 2.");
 
   await openStealNegation(page);
   const stealDisplay = page.locator('[data-public-card-display="true"][data-public-card-root-event-id="browser-post-fanjian-steal"]');

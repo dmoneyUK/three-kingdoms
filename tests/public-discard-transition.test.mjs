@@ -69,7 +69,7 @@ test("discard H4 lists every committed physical card in order and falls back to 
     { id: "second-attack", name: "Attack", rank: "A", suit: "♠" },
     { id: "peach", name: "Peach", rank: "10", suit: "♥" },
   ]);
-  assert.equal(announcement.headline, "Player One discarded 3 cards: A♠ Attack · A♠ Attack · 10♥ Peach.");
+  assert.equal(announcement.headline, "Player One discarded 3 cards: [A♠ Attack] · [A♠ Attack] · [10♥ Peach].");
 
   const incompleteCards = [{ id: "unknown-face", kind: "Attack" }];
   const incomplete = setup({ cards: incompleteCards, eventType: "card", transitions: [transition("committed-discard", "unknown-face", { zone: "HAND", ownerId: actorId })] });
@@ -99,20 +99,22 @@ test("effect-led discard H4 attributes the committed actor and names exact cards
     actor: { id: "frost-user", name: "Frost User" },
     materialOwner: { id: "frost-target", name: "Frost Target" },
     actionLabel: "Frost Sword",
+    actionSourceKind: "equipment",
     cards: [
       { id: "hidden-before-commit", kind: "Dodge", rank: "7", suit: "♣" },
       { id: "equipped-before-commit", kind: "NioShield", rank: "7", suit: "♠" },
     ],
   });
-  assert.equal(copy?.headline, "Frost User used Frost Sword to discard 2 cards from Frost Target: 7♣ Dodge · 7♠ Nio Shield.");
+  assert.equal(copy?.headline, "Frost User used [Frost Sword] to discard 2 cards from Frost Target: [7♣ Dodge] · [7♠ Nio Shield].");
   assert.equal(copy?.accessibleLabel, copy?.headline);
   assert.deepEqual(copy?.cards?.map(({ id }) => id), ["hidden-before-commit", "equipped-before-commit"]);
   assert.equal(publicDiscardByActionAnnouncement({
     actor: { id: "frost-user", name: "Frost User" },
     materialOwner: { id: "frost-target", name: "Frost Target" },
     actionLabel: "Frost Sword",
+    actionSourceKind: "equipment",
     cards: [{ id: "incomplete-card", kind: "Dodge" }],
-  })?.headline, "Frost User used Frost Sword to discard 1 card from Frost Target.");
+  })?.headline, "Frost User used [Frost Sword] to discard 1 card from Frost Target.");
 });
 
 test("a committed play root is not double-claimed by the generic discard route", () => {

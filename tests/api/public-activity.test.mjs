@@ -283,14 +283,14 @@ test("Negation PAC names only the publicly proven effect and counter direction",
 test("Bumper Harvest H4 and PAC follow committed recipient Negation facts through the real pick stage", () => {
   const initial = harvestSnapshot();
   const initialH4 = derivePublicNegationNarration({ snapshot: initial, players, rootEventId: "harvest-root-event" });
-  assert.equal(initialH4?.headline, "Test Player 1 played Bumper Harvest.");
+  assert.equal(initialH4?.headline, "Test Player 1 played [Bumper Harvest].");
   assert.deepEqual(playerIds(initialH4?.headlineSegments), ["p1"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: initial })).stage,
     "Negation can prevent Test Player 2 from picking.");
 
   const cancelled = harvestSnapshot({ responseCount: 1, effectState: "BLOCKED", nextEffectKind: "restore_effect" });
   const cancelledH4 = derivePublicNegationNarration({ snapshot: cancelled, players, rootEventId: "harvest-root-event" });
-  assert.equal(cancelledH4?.headline, "Test Player 3's Negation blocks Test Player 2's pick.");
+  assert.equal(cancelledH4?.headline, "Test Player 3's [Negation] blocks Test Player 2's pick.");
   assert.deepEqual(playerIds(cancelledH4?.headlineSegments), ["p3", "p2"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: cancelled })).stage,
     "Another Negation can restore Test Player 2's pick.");
@@ -298,7 +298,7 @@ test("Bumper Harvest H4 and PAC follow committed recipient Negation facts throug
   const restored = harvestSnapshot({ responseCount: 2, effectState: "ACTIVE", nextEffectKind: "cancel_effect" });
   const restoredH4 = derivePublicNegationNarration({ snapshot: restored, players, rootEventId: "harvest-root-event" });
   assert.equal(restoredH4?.headline,
-    "Test Player 4 counters Test Player 3's Negation. Test Player 2's pick is restored.");
+    "Test Player 4 counters Test Player 3's [Negation]. Test Player 2's pick is restored.");
   assert.deepEqual(playerIds(restoredH4?.headlineSegments), ["p4", "p3", "p2"]);
   assert.equal(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: restored })).stage,
     "Another Negation can prevent Test Player 2 from picking.");
@@ -343,7 +343,7 @@ test("a committed public Harvest pick owns the newest H4 through the next Negati
   chosenCard.bumperHarvestPick = pick;
   const snapshotWithPick = { ...base, publicEventFacts: [...base.publicEventFacts, chosenCard], bumperHarvestPicks: [pick] };
   const narration = derivePublicNegationNarration({ snapshot: snapshotWithPick, players, rootEventId: "harvest-root-event" });
-  assert.equal(narration?.headline, "Test Player 2 took 6♠ Overindulgence from Bumper Harvest.");
+  assert.equal(narration?.headline, "Test Player 2 took [6♠ Overindulgence] from [Bumper Harvest].");
   assert.deepEqual(playerIds(narration?.headlineSegments), ["p2"]);
   assert.equal(narration?.eventId, chosenCard.eventId);
   assert.equal(narration?.phase, "WINDOW_OPEN");
@@ -367,7 +367,7 @@ test("Bumper Harvest public copy fails closed for missing outcome proof and igno
   const committed = harvestSnapshot({ responseCount: 1, effectState: "BLOCKED", nextEffectKind: "restore_effect" });
   const hiddenOutcome = { ...committed, publicEventFacts: committed.publicEventFacts.filter((fact) => fact.category !== "EFFECT_CANCELLED") };
   assert.equal(derivePublicNegationNarration({ snapshot: hiddenOutcome, players, rootEventId: "harvest-root-event" })?.headline,
-    "Test Player 1 played Bumper Harvest.");
+    "Test Player 1 played [Bumper Harvest].");
   const baseStatus = derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: hiddenOutcome }));
   assert.equal(baseStatus.stage, "Waiting for Negation responses");
   for (const choice of ["pass", "negation_intent"]) {
@@ -430,13 +430,13 @@ test("H4 follows only the committed current-root Negation fact chain", () => {
   });
 
   const firstCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first]), players, rootEventId: "root-event" });
-  assert.equal(firstCopy?.headline, "Test Player 3's Negation cancels Test Player 1's Duel effect on Test Player 2.");
+  assert.equal(firstCopy?.headline, "Test Player 3's [Negation] cancels Test Player 1's [Duel] effect on Test Player 2.");
   assert.deepEqual(playerIds(firstCopy?.headlineSegments), ["p3", "p1", "p2"]);
   const secondCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first, second]), players, rootEventId: "root-event" });
-  assert.equal(secondCopy?.headline, "Test Player 4 counters Test Player 3's Negation. The Duel effect on Test Player 2 is restored.");
+  assert.equal(secondCopy?.headline, "Test Player 4 counters Test Player 3's [Negation]. The [Duel] effect on Test Player 2 is restored.");
   assert.deepEqual(playerIds(secondCopy?.headlineSegments), ["p4", "p3", "p2"]);
   const thirdCopy = derivePublicNegationNarration({ snapshot: withFacts([root, first, second, third]), players, rootEventId: "root-event" });
-  assert.equal(thirdCopy?.headline, "Test Player 1 counters Test Player 4's Negation. The Duel effect on Test Player 2 is cancelled.");
+  assert.equal(thirdCopy?.headline, "Test Player 1 counters Test Player 4's [Negation]. The [Duel] effect on Test Player 2 is cancelled.");
   assert.deepEqual(playerIds(thirdCopy?.headlineSegments), ["p1", "p4", "p2"]);
   assert.equal(secondCopy?.headlineSegments?.map(({ text }) => text).join(""), secondCopy?.headline);
 
@@ -445,17 +445,17 @@ test("H4 follows only the committed current-root Negation fact chain", () => {
   const duplicateCopy = derivePublicNegationNarration({
     snapshot: withFacts([root, first]), players: duplicateVisibleNames, rootEventId: "root-event",
   });
-  assert.equal(duplicateCopy?.headline, "Same Name's Negation cancels Duel effect on Same Name.");
+  assert.equal(duplicateCopy?.headline, "Same Name's [Negation] cancels [Duel] effect on Same Name.");
   assert.deepEqual(playerIds(duplicateCopy?.headlineSegments), ["p3", "p2"]);
   const missingTargetCopy = derivePublicNegationNarration({
     snapshot: withFacts([root, first]), players: players.filter((player) => player.id !== "p2"), rootEventId: "root-event",
   });
-  assert.equal(missingTargetCopy?.headline, "Test Player 3's Negation cancels Test Player 1's Duel effect.");
+  assert.equal(missingTargetCopy?.headline, "Test Player 3's [Negation] cancels Test Player 1's [Duel] effect.");
   assert.deepEqual(playerIds(missingTargetCopy?.headlineSegments), ["p3", "p1"]);
 
   const wrongRoot = { ...third, rootEventId: "another-root" };
   assert.equal(derivePublicNegationNarration({ snapshot: withFacts([root, wrongRoot]), players, rootEventId: "root-event" })?.headline,
-    "Test Player 1 played Duel targeting Test Player 2.");
+    "Test Player 1 played [Duel] targeting Test Player 2.");
 });
 
 test("H4 keeps a proven committed Negation when PAC advances and ignores private viewer choice", () => {
@@ -480,7 +480,7 @@ test("H4 keeps a proven committed Negation when PAC advances and ignores private
   };
   const pass = { ...advancedPac, viewerNegationChoice: { windowId: "window-1", locked: true, choice: "pass" } };
   const intent = { ...advancedPac, viewerNegationChoice: { windowId: "window-1", locked: true, choice: "negation_intent" } };
-  const expected = "Test Player 3's Negation cancels Test Player 1's Duel effect on Test Player 2.";
+  const expected = "Test Player 3's [Negation] cancels Test Player 1's [Duel] effect on Test Player 2.";
   for (const view of [advancedPac, pass, intent]) {
     const narration = derivePublicNegationNarration({ snapshot: view, players, rootEventId: "root-event" });
     assert.equal(narration?.headline, expected);
@@ -491,7 +491,7 @@ test("H4 keeps a proven committed Negation when PAC advances and ignores private
     snapshot: { ...base, publicEventFacts: [root, { ...cancelled, visibility: "PRIVATE" }] },
     players,
     rootEventId: "root-event",
-  })?.headline, "Test Player 1 played Duel targeting Test Player 2.");
+  })?.headline, "Test Player 1 played [Duel] targeting Test Player 2.");
 });
 
 test("target-card choice progress is identical across viewers and exposes no selection details", () => {
@@ -665,16 +665,16 @@ test("generic H4 retains damage through Skip and formats committed public or hid
     actorId: "p3", affectedPlayerIds: ["p2"], label: "Burning Bridges",
   });
   const burningNarration = derivePublicInteractionNarration(input([burningBridges]));
-  assert.equal(burningNarration?.headline, "Test Player 3 played Burning Bridges targeting Test Player 2.");
+  assert.equal(burningNarration?.headline, "Test Player 3 played [Burning Bridges] targeting Test Player 2.");
   assert.deepEqual(playerIds(burningNarration?.headlineSegments), ["p3", "p2"]);
   const missingTarget = derivePublicInteractionNarration(input([{ ...burningBridges, affectedPlayerIds: ["unverified-target"] }]));
-  assert.equal(missingTarget?.headline, "Test Player 3 played Burning Bridges.");
+  assert.equal(missingTarget?.headline, "Test Player 3 played [Burning Bridges].");
   assert.deepEqual(playerIds(missingTarget?.headlineSegments), ["p3"], "unknown IDs never receive a manufactured player-name span");
   const duplicateNameNarration = derivePublicInteractionNarration({
     ...input([burningBridges]),
     players: players.map((player) => player.id === "p3" || player.id === "p2" ? { ...player, name: "Same Name" } : player),
   });
-  assert.equal(duplicateNameNarration?.headline, "Same Name played Burning Bridges targeting Same Name.");
+  assert.equal(duplicateNameNarration?.headline, "Same Name played [Burning Bridges] targeting Same Name.");
   assert.deepEqual(playerIds(duplicateNameNarration?.headlineSegments), ["p3", "p2"], "identical visible names retain their distinct authoritative IDs");
   const fanjianActivation = fact("fanjian-activation", 2, "SKILL_USED", {
     actorId: "p1", affectedPlayerIds: ["p2"], label: "Sowing Distrust", effect: { kind: "targeted_skill" },
@@ -810,7 +810,7 @@ test("Equipment H4 uses the exact committed owner and card name for active and r
     interactionId: identity.interactionId, rootFrameId: identity.rootFrameId });
   const active = derivePublicInteractionNarration(input(snapshot({ stage: "SETTLEMENT", actorId: null,
     stableKind: "REST", publicEventFacts: [equip] })));
-  assert.equal(active?.headline, "Test Player 1 equipped Frost Sword.");
+  assert.equal(active?.headline, "Test Player 1 equipped [Frost Sword].");
   assert.deepEqual(playerIds(active?.headlineSegments), ["p1"]);
   assert.equal(active?.eventId, equip.eventId);
   assert.equal(active?.readDurationMs, 4_000);
@@ -840,14 +840,14 @@ test("committed own-hand equipment H4 names only the proven item and replacement
 
   for (const [slot, name] of [["weapon", "Frost Sword"], ["armor", "Eight Trigrams Formation"], ["mount", "Shadowrunner"]]) {
     const { outcome, fact } = makeEquip(name);
-    assert.equal(formatCommittedPublicOutcome(outcome, players, [fact]), `Test Player 1 equipped ${name}.`,
+  assert.equal(formatCommittedPublicOutcome(outcome, players, [fact]), `Test Player 1 equipped [${name}].`,
       `${slot} copy uses the same category-based proof path`);
     const narration = derivePublicInteractionNarration({
       snapshot: snapshot({ stage: "SETTLEMENT", publicEventFacts: [fact] }), players,
       rootEventId: fact.rootEventId, interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
       eventId: fact.eventId,
     });
-    assert.equal(narration?.headline, `Test Player 1 equipped ${name}.`);
+    assert.equal(narration?.headline, `Test Player 1 equipped [${name}].`);
     assert.equal(narration?.headlineSegments?.map((segment) => segment.text).join(""), narration?.headline);
     assert.deepEqual(playerIds(narration?.headlineSegments), ["p1"]);
   }
@@ -865,30 +865,30 @@ test("committed own-hand equipment H4 names only the proven item and replacement
     affectedPlayerIds: ["p1"], label: "Frost Sword", effect: { kind: "equipment_replaced", label: "Frost Sword" },
   };
   assert.equal(formatCommittedPublicOutcome(replacing, players, [oldEquipmentFact, equipFact]),
-    "Test Player 1 equipped Blue Steel Sword, replacing Frost Sword.");
+    "Test Player 1 equipped [Blue Steel Sword], replacing [Frost Sword].");
   assert.equal(formatCommittedPublicOutcome(replacing, players, [equipFact]),
-    "Test Player 1 equipped Blue Steel Sword, replacing 1 item.",
+    "Test Player 1 equipped [Blue Steel Sword], replacing 1 item.",
     "replacement count remains truthful when old public identity is unavailable");
   assert.equal(formatCommittedPublicOutcome(replacing, players, [
     { ...oldEquipmentFact, rootEventId: "unrelated-root" }, equipFact,
-  ]), "Test Player 1 equipped Blue Steel Sword, replacing 1 item.",
+  ]), "Test Player 1 equipped [Blue Steel Sword], replacing 1 item.",
   "an unrelated discard cannot supply the old Equipment name");
   assert.equal(formatCommittedPublicOutcome(replacing, players, [
     { ...oldEquipmentFact, actorId: "p2", affectedPlayerIds: ["p2"] }, equipFact,
-  ]), "Test Player 1 equipped Blue Steel Sword, replacing 1 item.",
+  ]), "Test Player 1 equipped [Blue Steel Sword], replacing 1 item.",
   "a different player's discarded Equipment cannot supply the old name");
 
   const { outcome: ordinary, fact: ordinaryFact } = makeEquip("Eight Trigrams Formation");
   assert.equal(formatCommittedPublicOutcome(ordinary, players, [
     { ...ordinaryFact, label: "Unrelated source", effect: { kind: "equipment_play", label: "Unrelated source" } },
-  ]), "Test Player 1 Eight Trigrams Formation: Test Player 1 equipped 1 item.",
+  ]), "Test Player 1 [Eight Trigrams Formation]: Test Player 1 equipped 1 item.",
   "source label mismatch retains the truthful generic fallback");
   const mismatchedOwner = {
     ...ordinary,
     changes: [{ kind: "CARD_EQUIPPED", playerId: "p2", amount: 1, fromZone: "HAND", toZone: "EQUIPMENT" }],
   };
   assert.equal(formatCommittedPublicOutcome(mismatchedOwner, players, [ordinaryFact]),
-    "Test Player 1 Eight Trigrams Formation: Test Player 2 equipped 1 item.",
+    "Test Player 1 [Eight Trigrams Formation]: Test Player 2 equipped 1 item.",
     "actor and equipment owner must agree before using concise copy");
 });
 
@@ -1108,7 +1108,7 @@ test("committed H4 uses natural damage copy and preserves verified source punctu
     players: punctuatedPlayers, rootEventId: punctuatedOutcome.rootEventId,
     interactionId: identity.interactionId, rootFrameId: identity.rootFrameId,
   });
-  assert.equal(punctuated?.headline, "A—B Kirin Bow — source detail: A—B equipped 1 item.");
+  assert.equal(punctuated?.headline, "A—B an effect: A—B equipped 1 item.");
   assert.equal(punctuated?.headlineSegments?.map((segment) => segment.text).join(""), punctuated?.headline);
   assert.deepEqual(playerIds(punctuated?.headlineSegments), ["p1", "p1"]);
   assert.equal(formatCommittedPublicOutcome({ ...base, semantics: "UNPROVEN" }, players), null);
@@ -1142,32 +1142,32 @@ test("committed H4 names proven actions and reports only actual public outcomes"
   const attack = narrationFor("attack-damage", { kind: "damage", label: "Attack" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
   ], { category: "DAMAGE_APPLIED" });
-  assert.equal(attack?.headline, "Test Player 1 dealt 1 damage to Test Player 2 with Attack.");
+  assert.equal(attack?.headline, "Test Player 1 dealt 1 damage to Test Player 2 with [Attack].");
   assert.deepEqual(playerIds(attack?.headlineSegments), ["p1", "p2"]);
 
   const multipleDamage = narrationFor("multiple-damage", { kind: "damage", label: "Raining Arrows" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
     { kind: "DAMAGE_APPLIED", playerId: "p3", amount: 2 },
   ], { affectedPlayerIds: ["p2", "p3"], category: "DAMAGE_APPLIED" });
-  assert.equal(multipleDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 and 2 damage to Test Player 3 with Raining Arrows.");
+  assert.equal(multipleDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 and 2 damage to Test Player 3.");
   assert.deepEqual(playerIds(multipleDamage?.headlineSegments), ["p1", "p2", "p3"]);
 
   const duel = narrationFor("duel-damage", { kind: "damage", label: "Duel damage" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p1", amount: 1 },
   ], { actorId: "p2", affectedPlayerIds: ["p1"], category: "DAMAGE_APPLIED" });
-  assert.equal(duel?.headline, "Test Player 2 dealt 1 damage to Test Player 1 with Duel.",
-    "the actual damage dealer is retained and the server's canonical Duel label is normalized");
+  assert.equal(duel?.headline, "Test Player 2 dealt 1 damage to Test Player 1.",
+    "a Duel name is omitted when the linked root fact does not prove Duel as the source card");
 
   const lightning = narrationFor("lightning-damage", { kind: "damage", label: "Lightning" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 3 },
   ], { actorId: undefined, affectedPlayerIds: ["p2"], category: "DAMAGE_APPLIED" });
-  assert.equal(lightning?.headline, "Test Player 2 took 3 damage from Lightning.",
+  assert.equal(lightning?.headline, "Test Player 2 took 3 damage.",
     "environmental damage names its source without inventing a dealer");
 
   const skillDamage = narrationFor("sowing-distrust-damage", { kind: "damage", label: "Sowing Distrust" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
   ], { category: "DAMAGE_APPLIED" });
-  assert.equal(skillDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2 with Sowing Distrust.");
+  assert.equal(skillDamage?.headline, "Test Player 1 dealt 1 damage to Test Player 2.");
 
   const unknownSourceDamage = narrationFor("unknown-source-damage", { kind: "damage", label: "Damage" }, [
     { kind: "DAMAGE_APPLIED", playerId: "p2", amount: 1 },
@@ -1224,7 +1224,7 @@ test("committed H4 names proven actions and reports only actual public outcomes"
   const oath = narrationFor("oath-recovery", { kind: "card", label: "Oath of the Peach Garden" }, [
     { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
   ], { affectedPlayerIds: ["p2"], label: "Oath of the Peach Garden" });
-  assert.equal(oath?.headline, "Test Player 1 played Oath of the Peach Garden. Test Player 2 recovered 1 HP.");
+  assert.equal(oath?.headline, "Test Player 1 played [Oath of the Peach Garden]. Test Player 2 recovered 1 HP.");
   assert.deepEqual(playerIds(oath?.headlineSegments), ["p1", "p2"]);
 
   const oathMany = narrationFor("oath-multiple-recovery", { kind: "card", label: "Oath of the Peach Garden" }, [
@@ -1232,14 +1232,14 @@ test("committed H4 names proven actions and reports only actual public outcomes"
     { kind: "HP_RECOVERED", playerId: "p2", amount: 1 },
     { kind: "HP_RECOVERED", playerId: "p3", amount: 1 },
   ], { affectedPlayerIds: ["p1", "p2", "p3"], label: "Oath of the Peach Garden" });
-  assert.equal(oathMany?.headline, "Test Player 1 played Oath of the Peach Garden. Test Player 1, Test Player 2 and Test Player 3 each recovered 1 HP.");
+  assert.equal(oathMany?.headline, "Test Player 1 played [Oath of the Peach Garden]. Test Player 1, Test Player 2 and Test Player 3 each recovered 1 HP.");
   assert.deepEqual(playerIds(oathMany?.headlineSegments), ["p1", "p1", "p2", "p3"]);
 
   const frostSword = narrationFor("frost-sword-discard", { kind: "equipment", label: "Frost Sword" }, [
     { kind: "CARD_DISCARDED", playerId: "p2", amount: 1, fromZone: "HAND", toZone: "DISCARD" },
     { kind: "CARD_DISCARDED", playerId: "p2", amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
   ], { affectedPlayerIds: ["p2"], label: "Frost Sword" });
-  assert.equal(frostSword?.headline, "Test Player 1 used Frost Sword to discard 2 cards from Test Player 2.");
+  assert.equal(frostSword?.headline, "Test Player 1 used [Frost Sword] to discard 2 cards from Test Player 2.");
   assert.deepEqual(playerIds(frostSword?.headlineSegments), ["p1", "p2"]);
 
   const unprovenFrostActor = narrationFor("frost-sword-unknown-actor", { kind: "equipment", label: "Frost Sword" }, [

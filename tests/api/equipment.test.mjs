@@ -808,7 +808,7 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
     rootFrameId: forcedDamage.publicFact.committedIdentity.rootFrameId,
     eventId: forcedDamage.id,
   });
-  assert.equal(forcedNarration?.headline, "Host dealt 1 damage to Alice with Attack.");
+  assert.equal(forcedNarration?.headline, "Host dealt 1 damage to Alice with [Attack].");
   const skippedTreachery = await requestAndSettle("decline_trigger", { code: game.code, token: alice.token });
   assert.equal(skippedTreachery.status, 200); assert.equal(skippedTreachery.data.room.phase, "play-struck");
   assert.ok(discardIds(game.code).includes("attack-axe-force"), "skipping Treachery leaves the original Attack in Discard");
@@ -1050,7 +1050,7 @@ test("Frost Sword prevents Attack damage only when its owner discards exactly tw
     { kind: "CARD_DISCARDED", playerId: alicePlayer.id, amount: 1, fromZone: "EQUIPMENT", toZone: "DISCARD" },
   ], "the shared outcome contains only actual public discard counts and zones");
   const frostOutcome = assertPublicOutcomeHasH4Owner(frost.data.room, frostEvent.id);
-  assert.equal(frostOutcome.narration.headline, `${hostPlayer.name} used Frost Sword to discard 2 cards from ${alicePlayer.name}.`);
+  assert.equal(frostOutcome.narration.headline, `${hostPlayer.name} used [Frost Sword] to discard 2 cards from ${alicePlayer.name}.`);
   assert.deepEqual(frostOutcome.owner, { eventId: frostEvent.id, owner: "PublicInteractionAnnouncementLayer" });
   const frostNotices = frost.data.room.timeline.filter((event) => event.type === "message" && event.effectNotice
     && event.message.includes("Frost Sword"));
@@ -1159,7 +1159,7 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
     publicEventFacts: attackerFacts,
   });
   assert.equal(discardCopy?.headline,
-    `${hostPlayer.name} used Kirin Bow to discard ${alicePlayer.name}’s A♠ Shadowrunner.`,
+    `${hostPlayer.name} used [Kirin Bow] to discard ${alicePlayer.name}’s [A♠ Shadowrunner].`,
     "the Kirin H4 identifies the actual discarded Mount instead of attributing damage to the bow");
   assert.equal(discardCopy?.cards?.[0]?.id, "shadowrunner-defensive");
 
@@ -1169,7 +1169,7 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   const damageH4 = assertPublicOutcomeHasH4Owner(resolved.data.room, damageEvent.id);
   assert.equal(damageH4.fact.committedOutcome.source.label, "Attack");
   assert.equal(damageH4.narration.headline,
-    `${hostPlayer.name} dealt 1 damage to ${alicePlayer.name} with Attack.`,
+    `${hostPlayer.name} dealt 1 damage to ${alicePlayer.name} with [Attack].`,
     "the following damage H4 names Attack, not Kirin Bow");
   const combinedKirinH4 = derivePublicInteractionNarration({
     snapshot: resolved.data.room.presentationSnapshot,
@@ -1181,7 +1181,7 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
     liveKirinBowEffectEventId: kirinEvent.id,
   });
   assert.equal(combinedKirinH4?.headline,
-    `${hostPlayer.name} used Kirin Bow to discard ${alicePlayer.name}’s A♠ Shadowrunner and dealt 1 damage to ${alicePlayer.name} with Attack.`,
+    `${hostPlayer.name} used [Kirin Bow] to discard ${alicePlayer.name}’s [A♠ Shadowrunner] and dealt 1 damage to ${alicePlayer.name} with [Attack].`,
     "the still-live Kirin Frame owns the real discard and subsequent committed Attack damage together");
 
   const observerFacts = [

@@ -1,4 +1,4 @@
-import { publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
+import { publicH4CardFaceReference, publicH4CardSourceReference, publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
 import type { PublicPhysicalZoneTransition, PublicZoneEndpoint } from "../game/presentation-semantics";
 import { cardDefinition } from "../game/cards";
 import type { CardKind, CardRank, CardSuit } from "../game/model";
@@ -69,7 +69,7 @@ export function publicDiscardCardFaces(cards: readonly PublicDiscardCard[]): rea
 }
 
 export function publicDiscardCardList(faces: readonly PublicDiscardCardFace[]): string {
-  return faces.map((card) => `${card.rank}${card.suit} ${card.name}`).join(" · ");
+  return faces.map((card) => publicH4CardFaceReference(card) ?? "a public card").join(" · ");
 }
 
 function isSourceEndpoint(value: unknown): value is Extract<PublicZoneEndpoint, { zone: "HAND" | "EQUIPMENT" | "JUDGEMENT" }> {
@@ -173,18 +173,25 @@ export function publicDiscardByActionAnnouncement(input: {
   actor: { id: string; name: string };
   materialOwner: { id: string; name: string };
   actionLabel: string;
+  actionSourceKind?: "card" | "equipment" | "skill";
   cards: readonly PublicDiscardCard[];
 }): PublicDiscardByActionAnnouncement | null {
   const { actor, materialOwner, actionLabel, cards } = input;
   if (!actor.id || !actor.name.trim() || !materialOwner.id || !materialOwner.name.trim()
     || !actionLabel.trim() || !cards.length || cards.some((card) => !card.id || !card.kind)
     || new Set(cards.map((card) => card.id)).size !== cards.length) return null;
+  const normalizedActionLabel = actionLabel.trim();
   const cardList = publicDiscardCardFaces(cards);
+  const sourceLabel = input.actionSourceKind === "card"
+    ? publicH4CardSourceReference({ kind: "card", label: normalizedActionLabel }) ?? "a card"
+    : input.actionSourceKind === "equipment"
+      ? publicH4CardSourceReference({ kind: "equipment", label: normalizedActionLabel }) ?? "an equipment effect"
+      : input.actionSourceKind === "skill" ? normalizedActionLabel : "a public effect";
   const count = cards.length;
   const cardCopy = cardList ? `: ${publicDiscardCardList(cardList)}.` : ".";
   const { message: headline, segments } = publicH4Copy([
     { id: actor.id, name: actor.name.trim() },
-    ` used ${actionLabel.trim()} to discard ${count} ${count === 1 ? "card" : "cards"} from `,
+    ` used ${sourceLabel} to discard ${count} ${count === 1 ? "card" : "cards"} from `,
     { id: materialOwner.id, name: materialOwner.name.trim() },
     cardCopy,
   ]);

@@ -40,6 +40,7 @@ const fastTests = [
   "tests/causal-context.test.mjs",
   "tests/attack-dodge-ux-trace.test.mjs",
   "tests/public-card-announcement.test.mjs",
+  "tests/public-h4-copy.test.mjs",
   "tests/public-card-effect-frame-layout.test.mjs",
   "tests/public-stage-layout.test.mjs",
   "tests/verified-player-copy.test.mjs",

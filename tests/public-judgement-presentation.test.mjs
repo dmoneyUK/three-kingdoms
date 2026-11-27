@@ -135,7 +135,7 @@ test("a committed replacement keeps the exact original Judgement identity and us
   assert.equal(projected[1].judgementStatus, "satisfied");
   assert.equal(projected[1].eventId, replacement.event.id);
   assert.equal(projected[1].copy.message,
-    "Player 4 used Stauchness. Judgement: 2♥.\nPlayer 2 used Necromancy to replace the Judgement card with 7♠. Match.");
+    "Player 4 used Stauchness. Judgement: [2♥].\nPlayer 2 used Necromancy to replace the Judgement card with [7♠]. Match.");
   assert.deepEqual(projected[1].copy.segments.filter((segment) => segment.kind === "player").map((segment) => segment.playerId), [judge.id, sima.id]);
   assert.equal(projected[1].replacement.physicalCardId, replacementCard.id);
   assert.equal(projected[1].replacement.materialOwnerId, sima.id);
@@ -211,7 +211,7 @@ test("delayed-card source remains distinct from the original Judgement reveal", 
   assert.equal(fact.sourceCard.id, sourceCard.id);
   assert.equal(fact.originalCard.id, revealedCard.id);
   assert.equal(fact.effectiveCard.id, revealedCard.id);
-  assert.equal(fact.copy.message, "Player 4 is judging Overindulgence. Judgement: 2♥. Match.");
+  assert.equal(fact.copy.message, "Player 4 is judging Overindulgence. Judgement: [2♥]. Match.");
 });
 
 test("canonical Judgement facts retain a separately proven originating action identity", () => {
@@ -254,5 +254,5 @@ test("an open replacement decision exposes only the public original Judgement", 
   assert.equal(facts[0].status, "PROVISIONAL");
   assert.equal(facts[0].replacement, undefined);
   assert.equal(JSON.stringify(facts).includes("private-selected-card"), false);
-  assert.equal(facts[0].copy.message, "Player 4 used Stauchness. Judgement: 9♠.");
+  assert.equal(facts[0].copy.message, "Player 4 used Stauchness. Judgement: [9♠].");
 });

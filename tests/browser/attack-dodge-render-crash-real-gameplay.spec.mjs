@@ -274,7 +274,7 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const attackEventId = await defenderDisplay.getAttribute("data-public-card-event-id");
   expect(attackEventId).toBeTruthy();
   const standardGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
-  expect(standardGeometry.text).toBe("Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban.");
+  expect(standardGeometry.text).toBe("Cao Cao the Valiant Strategist played [Attack] on Zhao Yun of Changban.");
   await testInfo.attach("attack-announcement-440x894.json", {
     body: JSON.stringify(standardGeometry, null, 2),
     contentType: "application/json",
@@ -400,7 +400,7 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   });
   await expect(defenderDisplay).toHaveAttribute("data-public-card-settlement-outcome", "ATTACK_BLOCKED_BY_DODGE", { timeout: 20_000 });
   const settledAnnouncement = defenderDisplay.locator('[data-public-card-announcement="true"]');
-  await expect(settledAnnouncement).toContainText("Zhao Yun of Changban played Dodge against Cao Cao the Valiant Strategist's Attack.");
+  await expect(settledAnnouncement).toContainText("Zhao Yun of Changban played [Dodge] against Cao Cao the Valiant Strategist's [Attack].");
   await expect(settledAnnouncement).toHaveAttribute("data-public-card-result", "ATTACK_BLOCKED_BY_DODGE");
   const dodgeCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.responseCard.id}"]`);
   await expect(dodgeCardJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
@@ -450,7 +450,7 @@ for (const playerCount of [6, 8]) {
     await expect(revealCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
     const initialGeometry = await assertAnnouncementAboveCurrentCard(display, eventId, 180);
     expect(initialGeometry.message.bottom).toBeLessThanOrEqual(initialGeometry.card.top - 5);
-    expect(initialGeometry.accessibleText).toBe("Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban.");
+    expect(initialGeometry.accessibleText).toBe("Cao Cao the Valiant Strategist played [Attack] on Zhao Yun of Changban.");
     await testInfo.attach(`announcement-${playerCount}-seats-440x894.json`, {
       body: JSON.stringify(initialGeometry, null, 2),
       contentType: "application/json",
@@ -468,8 +468,8 @@ for (const playerCount of [6, 8]) {
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
       const geometry = await assertAnnouncementAboveCurrentCard(display, eventId, 180);
-      expect(geometry.text).toMatch(/^(Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban\.|Cao Cao played Attack on Zhao Yun of Changban\.|Cao Cao the Valiant Strategist played Attack on Zhao Yun\.|Cao Cao played Attack on Zhao Yun\.)$/);
-      expect(geometry.accessibleText).toBe("Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban.");
+      expect(geometry.text).toMatch(/^(Cao Cao the Valiant Strategist played \[Attack\] on Zhao Yun of Changban\.|Cao Cao played \[Attack\] on Zhao Yun of Changban\.|Cao Cao the Valiant Strategist played \[Attack\] on Zhao Yun\.|Cao Cao played \[Attack\] on Zhao Yun\.)$/);
+      expect(geometry.accessibleText).toBe("Cao Cao the Valiant Strategist played [Attack] on Zhao Yun of Changban.");
       if (playerCount === 8) expect(geometry.compact).toBe(true);
       await testInfo.attach(`announcement-${playerCount}-seats-${viewport.width}x${viewport.height}.json`, {
         body: JSON.stringify(geometry, null, 2),

@@ -3,7 +3,12 @@
 import { gameRenderFailureDiagnostic, resyncStaleResponseTimer } from "../game/game-screen-recovery";
 
 import { sharedResponseContributions } from "../game/shared-response-contribution";
-import { publicH4Copy } from "../game/public-h4-copy";
+import {
+  publicH4CardFaceReference,
+  publicH4CardKindReference,
+  publicH4Copy,
+  publicH4RankSuitReference,
+} from "../game/public-h4-copy";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "../game/verified-player-copy";
 import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
 import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry";
@@ -911,7 +916,9 @@ function publicSerpentSpearAttackFrame(
   proof: VerifiedSerpentSpearAttackFrameProof,
   players: readonly Player[],
 ) {
-  const materials = proof.sourceCards.map((card) => `${card.rank}${card.suit} ${cardDefinition(card.kind).name}`).join(" and ");
+  const materials = proof.sourceCards.map((card) => publicH4CardFaceReference(card) ?? "a card").join(" and ");
+  const spear = publicH4CardKindReference("SerpentSpear");
+  const attack = publicH4CardKindReference("Attack");
   const owner = { id: proof.owner.id, name: proof.owner.name };
   const semanticActor = { id: proof.semanticActor.id, name: proof.semanticActor.name };
   const target = proof.target ? { id: proof.target.id, name: proof.target.name } : null;
@@ -920,17 +927,17 @@ function publicSerpentSpearAttackFrame(
     ? players.find((player) => player.id === context.borrowerId) : null;
   const semanticActorQualifier = owner.id === semanticActor.id ? [] : [" for ", semanticActor] as const;
   const copy = context.kind === "DIRECT_ATTACK" && target
-    ? verifiedPlayerCopy([owner, " used Serpent Spear to play Attack against ", target, " with ", materials, "."])
+    ? verifiedPlayerCopy([owner, " used ", spear, " to play ", attack, " against ", target, " with ", materials, "."])
     : context.kind === "DUEL_RESPONSE"
-      ? verifiedPlayerCopy([owner, " used Serpent Spear to respond to Duel", ...semanticActorQualifier, " with ", materials, " as Attack."])
+      ? verifiedPlayerCopy([owner, " used ", spear, " to respond to ", publicH4CardKindReference("Duel"), ...semanticActorQualifier, " with ", materials, " as ", attack, "."])
       : context.kind === "LUST_DUEL_RESPONSE"
-        ? verifiedPlayerCopy([owner, " used Serpent Spear to respond to a Lust Duel", ...semanticActorQualifier, " with ", materials, " as Attack."])
+        ? verifiedPlayerCopy([owner, " used ", spear, " to respond to a Lust Duel", ...semanticActorQualifier, " with ", materials, " as ", attack, "."])
         : context.kind === "GROUP_RESPONSE"
-          ? verifiedPlayerCopy([owner, " used Serpent Spear to respond to ", cardDefinition(context.groupCardKind).name, ...semanticActorQualifier, " with ", materials, " as Attack."])
+          ? verifiedPlayerCopy([owner, " used ", spear, " to respond to ", publicH4CardKindReference(context.groupCardKind), ...semanticActorQualifier, " with ", materials, " as ", attack, "."])
           : context.kind === "BORROWED_SWORD" && target && borrower?.name
-            ? verifiedPlayerCopy([owner, " used Serpent Spear to answer ", borrower, "'s Borrowed Sword with Attack against ", target, " using ", materials, "."])
+            ? verifiedPlayerCopy([owner, " used ", spear, " to answer ", borrower, "'s ", publicH4CardKindReference("BorrowedSword"), " with ", attack, " against ", target, " using ", materials, "."])
             : context.kind === "INFLUENCING_RESPONSE" && target
-              ? verifiedPlayerCopy([owner, " used Serpent Spear to provide Attack for ", semanticActor, " against ", target, " with ", materials, "."])
+              ? verifiedPlayerCopy([owner, " used ", spear, " to provide ", attack, " for ", semanticActor, " against ", target, " with ", materials, "."])
               : null;
   if (!copy) return null;
   const publicNotice = copy.message;
@@ -1186,6 +1193,10 @@ function publicNecromancyJudgementFrameForRoom(input: {
   const reached = candidate && (input.activeEventId === candidate.replacementEvent.id
     || input.presentedEventIds.has(candidate.replacementEvent.id));
   if (!candidate || !reached) return { candidate, action: null };
+  const originalJudgementFace = publicH4RankSuitReference(candidate.originalEvent.card.rank, candidate.originalEvent.card.suit)
+    ?? "a Judgement card";
+  const replacementJudgementFace = publicH4RankSuitReference(candidate.replacementCard.rank, candidate.replacementCard.suit)
+    ?? "a Judgement card";
 
   return {
     candidate,
@@ -1198,8 +1209,8 @@ function publicNecromancyJudgementFrameForRoom(input: {
       targetId: candidate.target.id,
       cardFace: candidate.replacementCard,
       cardLabel: "NECROMANCY · JUDGEMENT REPLACEMENT",
-      ariaLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${candidate.originalEvent.card.rank}${candidate.originalEvent.card.suit} → ${candidate.replacementCard.rank}${candidate.replacementCard.suit}.`,
-      publicNotice: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${candidate.originalEvent.card.rank}${candidate.originalEvent.card.suit} → ${candidate.replacementCard.rank}${candidate.replacementCard.suit}.`,
+      ariaLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${originalJudgementFace} → ${replacementJudgementFace}.`,
+      publicNotice: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${originalJudgementFace} → ${replacementJudgementFace}.`,
       publicNoticeCompact: `Necromancy replaced ${candidate.target.name}'s Judgement.`,
       motion: {
         type: "single-target",
@@ -1209,7 +1220,7 @@ function publicNecromancyJudgementFrameForRoom(input: {
       },
       publicCardEffectFrame: createPublicCardEffectFrameView(candidate.effect, {
         title: "NECROMANCY · JUDGEMENT REPLACEMENT",
-        accessibleLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement. Original: ${cardDefinition(candidate.originalEvent.card.kind).name}, ${candidate.originalEvent.card.rank}${candidate.originalEvent.card.suit}. Replacement: ${cardDefinition(candidate.replacementCard.kind).name}, ${candidate.replacementCard.rank}${candidate.replacementCard.suit}.`,
+        accessibleLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement. Original: ${originalJudgementFace}. Replacement: ${replacementJudgementFace}.`,
         activationOwnerName: candidate.owner.name,
         ownerNamesById: Object.fromEntries(input.players.map((player) => [player.id, player.name])),
       }) ?? undefined,
@@ -1364,7 +1375,8 @@ export function verifiedRockCleavingAxeCostFrameForEvent(
     || rootEvent.player !== activationOwner.name || rootEvent.target !== target.name
     || costEvent.player !== activationOwner.name || costEvent.target !== target.name) return null;
   return { costEvent, effect, rootEvent, costCards: [costEvent.cards[0], costEvent.cards[1]], activationOwner, target,
-    h4Copy: publicH4Copy([activationOwner, " used Rock Cleaving Axe; ", target, "'s Dodge was bypassed."]) };
+    h4Copy: publicH4Copy([activationOwner, " used ", publicH4CardKindReference("RockCleavingAxe"), "; ", target,
+      "'s ", publicH4CardKindReference("Dodge"), " was bypassed."]) };
 }
 type VerifiedKirinBowEffectFrameProof = {
   effectEvent: CardGroupEvent;
@@ -1472,9 +1484,9 @@ function kirinBowEffectFrameActions(
     targetId: candidate.materialOwner.id,
     cardFace: candidate.mount,
     cardLabel: "KIRIN BOW · MOUNT DISCARD",
-    ariaLabel: `${candidate.activationOwner.name} used Kirin Bow to discard ${candidate.materialOwner.name}'s ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name}.`,
-    publicNotice: `${candidate.activationOwner.name} used Kirin Bow to discard ${candidate.materialOwner.name}'s ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name}.`,
-    publicNoticeCompact: `Kirin Bow discarded ${candidate.materialOwner.name}'s ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name}.`,
+    ariaLabel: `${candidate.activationOwner.name} used ${publicH4CardKindReference("KirinBow")} to discard ${candidate.materialOwner.name}'s ${publicH4CardFaceReference(candidate.mount) ?? "a Mount"}.`,
+    publicNotice: `${candidate.activationOwner.name} used ${publicH4CardKindReference("KirinBow")} to discard ${candidate.materialOwner.name}'s ${publicH4CardFaceReference(candidate.mount) ?? "a Mount"}.`,
+    publicNoticeCompact: `${publicH4CardKindReference("KirinBow")} discarded ${candidate.materialOwner.name}'s ${publicH4CardFaceReference(candidate.mount) ?? "a Mount"}.`,
     motion: {
       type: "single-target",
       scopeKey: [roomCode, "kirin_bow_damage_about_to_apply", candidate.effectEvent.id].join(":"),
@@ -1482,7 +1494,7 @@ function kirinBowEffectFrameActions(
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(candidate.effect, {
       title: "KIRIN BOW · MOUNT EFFECT",
-      accessibleLabel: `${candidate.activationOwner.name} activated Kirin Bow. ${candidate.materialOwner.name}'s real equipped ${candidate.mount.rank}${candidate.mount.suit} ${cardDefinition(candidate.mount.kind).name} was discarded.`,
+      accessibleLabel: `${candidate.activationOwner.name} activated Kirin Bow. ${candidate.materialOwner.name}'s real equipped ${publicH4CardFaceReference(candidate.mount) ?? "Mount"} was discarded.`,
       activationOwnerName: candidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(players.map((player) => [player.id, player.name])),
     }) ?? undefined,
@@ -2137,8 +2149,7 @@ function cardAcquisitionDisplayAction(
   const cardFace = action.acquisitionKind === "STEAL" && candidate.rootEvent.type === "card"
     ? candidate.rootEvent.card : undefined;
   const acquiredFace = action.affectedCardFace;
-  const acquiredCardLabel = acquiredFace
-    ? `${acquiredFace.rank}${acquiredFace.suit} ${cardDefinition(acquiredFace.kind).name}` : "a Hand card";
+  const acquiredCardLabel = acquiredFace ? publicH4CardFaceReference(acquiredFace) ?? "a Hand card" : "a Hand card";
   const isRetaliation = action.acquisitionKind === "RETALIATION";
   return {
     key: ["card-acquisition-settlement", action.acquisitionKind, action.rootEventId, action.eventId].join(":"),
@@ -2186,7 +2197,7 @@ function cardAcquisitionNarration(
       ? privateParticipant.card : undefined);
   const copy = publicH4Copy([
     { id: source.id, name: source.name }, " used Retaliation to obtain ",
-    card ? `${card.rank}${card.suit} ${cardDefinition(card.kind).name}` : "a Hand card",
+    card ? publicH4CardFaceReference(card) ?? "a Hand card" : "a Hand card",
     " from ", { id: target.id, name: target.name }, ".",
   ]);
   return {
@@ -4846,7 +4857,9 @@ function entourageAttackBlockMessage(proof: PresentationAttackDodgeResponse, pla
   const source = players.find((player) => player.id === proof.rootSourceId)?.name;
   const target = players.find((player) => player.id === proof.targetId)?.name;
   const helper = players.find((player) => player.id === proof.responseActorId)?.name;
-  return source && target && helper ? `${source}'s Attack on ${target} was blocked by ${helper}'s Dodge.` : undefined;
+  return source && target && helper
+    ? `${source}'s ${publicH4CardKindReference("Attack")} on ${target} was blocked by ${helper}'s ${publicH4CardKindReference("Dodge")}.`
+    : undefined;
 }
 
 function publicDiscardAnnouncementCandidate(input: {
@@ -8189,7 +8202,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         actorName: actor.name,
         cardFace: event.card,
         cardLabel: "NEGATION",
-        ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? "Oath of the Peach Garden" : `Negation ${index}`}`,
+        ariaLabel: `${actor.name} played ${publicH4CardKindReference("Negation")} to counter ${index === 0
+          ? publicH4CardKindReference("Oath") : `${publicH4CardKindReference("Negation")} ${index}`}`,
         counterTarget: index === 0 ? { kind: "ROOT" as const } : { kind: "RESPONSE" as const, index: index - 1 },
       };
     });
@@ -8291,7 +8305,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         actorId: actor.id,
         actorName: actor.name,
         cardFace: event.card,
-        ariaLabel: `${actor.name} played Negation during Bumper Harvest.`,
+        ariaLabel: `${actor.name} played ${publicH4CardKindReference("Negation")} during ${publicH4CardKindReference("BumperHarvest")}.`,
       });
     }
     if (!responseHistoryIsValid) publicResponseHistory.length = 0;
@@ -8342,7 +8356,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             actorName: actor.name,
             cardFace: event.card,
             cardLabel: "NEGATION",
-            ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? `Bumper Harvest's effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}` : `Negation ${index}`}`,
+            ariaLabel: `${actor.name} played ${publicH4CardKindReference("Negation")} to counter ${index === 0
+              ? `${publicH4CardKindReference("BumperHarvest")}'s effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}`
+              : `${publicH4CardKindReference("Negation")} ${index}`}`,
             counterTarget: index === 0
               ? { kind: "ORDERED_TARGET_EFFECT" as const, targetId: progress.currentParticipantId! }
               : { kind: "RESPONSE" as const, index: index - 1 },
@@ -8568,7 +8584,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         actorName: actor.name,
         cardFace: event.card,
         cardLabel: "NEGATION",
-        ariaLabel: `${actor.name} played Negation during ${cardDefinition(group.cardKind).name}.`,
+        ariaLabel: `${actor.name} played ${publicH4CardKindReference("Negation")} during ${publicH4CardKindReference(group.cardKind)}.`,
       });
     }
     if (!responseHistoryIsValid) responseHistory.length = 0;
@@ -8599,9 +8615,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         actorName: actor.name,
         cardFace: event.card,
         cardLabel: "NEGATION",
-        ariaLabel: `${actor.name} played Negation to counter ${index === 0
-          ? `${cardDefinition(group.cardKind).name} effect on ${room.players.find((player) => player.id === groupTargetEffectScope!.targetId)?.name ?? "the proven target"}`
-          : `Negation ${index}`}`,
+        ariaLabel: `${actor.name} played ${publicH4CardKindReference("Negation")} to counter ${index === 0
+          ? `${publicH4CardKindReference(group.cardKind)} effect on ${room.players.find((player) => player.id === groupTargetEffectScope!.targetId)?.name ?? "the proven target"}`
+          : `${publicH4CardKindReference("Negation")} ${index}`}`,
         counterTarget: index === 0
           ? { kind: "GROUP_TARGET_EFFECT" as const, targetId: groupTargetEffectScope!.targetId }
           : { kind: "RESPONSE" as const, index: index - 1 },
@@ -9491,15 +9507,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const singleTargetNegationResponses = singleTargetNegationProofCandidate?.responseNodes.map(({ event, node, actor }, index) => {
     const counterTarget = node.counterTarget;
     const counterLabel = counterTarget?.kind === "ROOT"
-      ? cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name
-      : `Negation ${index}`;
+      ? publicH4CardKindReference(singleTargetNegationProofCandidate.root.cardKind!)
+      : `${publicH4CardKindReference("Negation")} ${index}`;
     return {
       eventId: event.id,
       ordinal: index + 1,
       actorId: node.actor.id!,
       actorName: actor.name,
       cardFace: event.card,
-      ariaLabel: `${actor.name} played Negation to counter ${counterLabel}`,
+      ariaLabel: `${actor.name} played ${publicH4CardKindReference("Negation")} to counter ${counterLabel}`,
     };
   }) ?? [];
   const singleTargetNegationUsesJourney = Boolean(singleTargetNegationProofCandidate
@@ -9517,7 +9533,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(singleTargetNegationUsesJourney ? { showNegationChainOrdinals: true } : {}),
       cardFace: singleTargetNegationProofCandidate.rootEvent.card,
       cardLabel: cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name.toUpperCase(),
-      ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
+      ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${publicH4CardKindReference(singleTargetNegationProofCandidate.root.cardKind!)} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
       ...(singleTargetNegationUsesJourney && singleTargetNegationNarration ? {
         publicNegationNarration: singleTargetNegationSettlement
           ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome,
@@ -9571,7 +9587,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardKind: "Duel",
       cardFace: duelNegationProofCandidate.rootEvent.card,
       cardLabel: "DUEL",
-      ariaLabel: `${duelNegationProofCandidate.root.source.name} played Duel targeting ${duelNegationProofCandidate.root.targets[0]!.name}`,
+      ariaLabel: `${duelNegationProofCandidate.root.source.name} played ${publicH4CardKindReference("Duel")} targeting ${duelNegationProofCandidate.root.targets[0]!.name}`,
       ...(singleTargetNegationNarration ? { publicNegationNarration: singleTargetNegationNarration } : {}),
       phaseNotice: duelNegationProofCandidate.responseNodes.length
         ? "NEGATION RESPONSE"
@@ -9768,10 +9784,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ariaLabel: dauntlessEquipmentEffectFrameCandidate.activationOwner.name + " used Dauntless on "
       + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + "; "
       + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded "
-      + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name
+      + (publicH4CardFaceReference(dauntlessEquipmentEffectFrameCandidate.equipmentCard) ?? "an Equipment card")
       + " from Equipment, preventing damage.",
     publicNotice: dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded "
-      + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name + " for "
+      + (publicH4CardFaceReference(dauntlessEquipmentEffectFrameCandidate.equipmentCard) ?? "an Equipment card") + " for "
       + dauntlessEquipmentEffectFrameCandidate.activationOwner.name + "'s Dauntless; no damage was dealt.",
     publicNoticeCompact: dauntlessEquipmentEffectFrameCandidate.materialOwner.name
       + " discarded Equipment for Dauntless; damage prevented.",
@@ -9785,7 +9801,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       title: "DAUNTLESS · EQUIPMENT EFFECT",
       accessibleLabel: dauntlessEquipmentEffectFrameCandidate.activationOwner.name + " activated Dauntless. "
         + dauntlessEquipmentEffectFrameCandidate.materialOwner.name + " discarded their "
-        + cardDefinition(dauntlessEquipmentEffectFrameCandidate.equipmentCard.kind).name
+        + (publicH4CardFaceReference(dauntlessEquipmentEffectFrameCandidate.equipmentCard) ?? "Equipment card")
         + " from Equipment, so no damage was dealt.",
       activationOwnerName: dauntlessEquipmentEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -9876,9 +9892,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     cardKind: "Peach",
     cardFace: firstAidConversionFrameCandidate.sourceCard,
     cardLabel: "FIRST AID · AS PEACH",
-    ariaLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
-    publicNotice: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} AS PEACH for ${firstAidConversionFrameCandidate.target.name}.`,
-    publicNoticeCompact: `First Aid: ${firstAidConversionFrameCandidate.owner.name} used ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} AS PEACH for ${firstAidConversionFrameCandidate.target.name}.`,
+    ariaLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${publicH4CardFaceReference(firstAidConversionFrameCandidate.sourceCard) ?? "a card"} as ${publicH4CardKindReference("Peach")} for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
+    publicNotice: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${publicH4CardFaceReference(firstAidConversionFrameCandidate.sourceCard) ?? "a card"} AS ${publicH4CardKindReference("Peach")} for ${firstAidConversionFrameCandidate.target.name}.`,
+    publicNoticeCompact: `First Aid: ${firstAidConversionFrameCandidate.owner.name} used ${publicH4CardFaceReference(firstAidConversionFrameCandidate.sourceCard) ?? "a card"} AS ${publicH4CardKindReference("Peach")} for ${firstAidConversionFrameCandidate.target.name}.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "hua_tuo_first_aid", firstAidConversionFrameCandidate.conversionEvent.id].join(":"),
@@ -9888,7 +9904,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     publicCardEffectFrame: createPublicCardEffectFrameView(firstAidConversionFrameCandidate.effect, {
       title: "FIRST AID · AS PEACH",
       titleParts: { skillName: "FIRST AID", effectLabel: "AS PEACH" },
-      accessibleLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid. ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name}, ${firstAidConversionFrameCandidate.sourceCard.rank} ${firstAidConversionFrameCandidate.sourceCard.suit}, was played as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
+      accessibleLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid. ${publicH4CardFaceReference(firstAidConversionFrameCandidate.sourceCard) ?? "a card"} was played as ${publicH4CardKindReference("Peach")} for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
       activationOwnerName: firstAidConversionFrameCandidate.owner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
@@ -9951,7 +9967,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: rockCleavingAxeCostFrameCandidate.target.id,
     cardFace: rockCleavingAxeCostFrameCandidate.costCards[0],
     cardLabel: "ROCK CLEAVING AXE · TWO CARD COST",
-    ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used Rock Cleaving Axe, paying two real cards to force the original Attack through after Dodge against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
+    ariaLabel: `${rockCleavingAxeCostFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("RockCleavingAxe")}, paying two real cards to force the original ${publicH4CardKindReference("Attack")} through after ${publicH4CardKindReference("Dodge")} against ${rockCleavingAxeCostFrameCandidate.target.name}.`,
     publicNotice: rockCleavingAxeCostFrameCandidate.h4Copy.message,
     publicNoticeSegments: rockCleavingAxeCostFrameCandidate.h4Copy.segments,
     motion: {
@@ -9999,6 +10015,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     actor: frostSwordEffectFrameCandidate.activationOwner,
     materialOwner: frostSwordEffectFrameCandidate.materialOwner,
     actionLabel: "Frost Sword",
+    actionSourceKind: "equipment",
     cards: frostSwordEffectFrameCandidate.discardedCards.map((card) => ({
       id: card.id, kind: card.kind, rank: card.rank, suit: card.suit,
     })),
@@ -10010,10 +10027,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: null,
     cardFace: frostSwordEffectFrameCandidate.discardedCards[0],
     cardLabel: "FROST SWORD · DISCARD",
-    ariaLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
-    publicNotice: frostSwordH4Copy?.headline ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
+    ariaLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("FrostSword")} to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
+    publicNotice: frostSwordH4Copy?.headline ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("FrostSword")} to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
     publicNoticeSegments: frostSwordH4Copy?.segments,
-    publicNoticeCompact: frostSwordH4Copy?.headline ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
+    publicNoticeCompact: frostSwordH4Copy?.headline ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("FrostSword")} to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "frost_sword_damage_about_to_apply", frostSwordEffectFrameCandidate.effectEvent.id].join(":"),
@@ -10025,7 +10042,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       titlePresentation: "compact-single-line",
       showMaterialCount: false,
       preferredLaneTopOffset: 8,
-      accessibleLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used Frost Sword to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
+      accessibleLabel: frostSwordH4Copy?.accessibleLabel ?? `${frostSwordEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("FrostSword")} to discard 2 cards from ${frostSwordEffectFrameCandidate.materialOwner.name}.`,
       activationOwnerName: frostSwordEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
@@ -10047,14 +10064,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: null,
     cardFace: yinYangSwordsEffectFrameCandidate.discardedCard,
     cardLabel: "YIN-YANG SWORDS · HAND DISCARD",
-    ariaLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords against "
+    ariaLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used " + publicH4CardKindReference("YinYangSwords") + " against "
       + yinYangSwordsEffectFrameCandidate.materialOwner.name + ". "
-      + cardDefinition(yinYangSwordsEffectFrameCandidate.discardedCard.kind).name + ", "
-      + yinYangSwordsEffectFrameCandidate.discardedCard.rank + yinYangSwordsEffectFrameCandidate.discardedCard.suit
+      + (publicH4CardFaceReference(yinYangSwordsEffectFrameCandidate.discardedCard) ?? "a public card")
       + ", was discarded from the target's Hand; the Attack continues.",
-    publicNotice: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords. "
+    publicNotice: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used " + publicH4CardKindReference("YinYangSwords") + ". "
       + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card; the Attack continues.",
-    publicNoticeCompact: "Yin-Yang Swords: " + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card.",
+    publicNoticeCompact: publicH4CardKindReference("YinYangSwords") + ": " + yinYangSwordsEffectFrameCandidate.materialOwner.name + " discarded a Hand card.",
     motion: {
       type: "single-target",
       scopeKey: [room.code, "yin_yang_swords_attack_targeted", yinYangSwordsEffectFrameCandidate.effectEvent.id].join(":"),
@@ -10063,10 +10079,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(yinYangSwordsEffectFrameCandidate.effect, {
       title: "YIN-YANG SWORDS · TARGET DISCARD",
-      accessibleLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used Yin-Yang Swords against "
+      accessibleLabel: yinYangSwordsEffectFrameCandidate.activationOwner.name + " used " + publicH4CardKindReference("YinYangSwords") + " against "
         + yinYangSwordsEffectFrameCandidate.materialOwner.name + ". The target's committed Hand discard was "
-        + cardDefinition(yinYangSwordsEffectFrameCandidate.discardedCard.kind).name + ", "
-        + yinYangSwordsEffectFrameCandidate.discardedCard.rank + yinYangSwordsEffectFrameCandidate.discardedCard.suit
+        + (publicH4CardFaceReference(yinYangSwordsEffectFrameCandidate.discardedCard) ?? "a public card")
         + "; the Attack continues.",
       activationOwnerName: yinYangSwordsEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
@@ -10089,9 +10104,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetId: greenDragonBladeEffectFrameCandidate.target.id,
     cardFace: greenDragonBladeEffectFrameCandidate.followUpAttack,
     cardLabel: "GREEN DRAGON BLADE · FOLLOW-UP ATTACK",
-    ariaLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original Attack. The real ${greenDragonBladeEffectFrameCandidate.followUpAttack.rank}${greenDragonBladeEffectFrameCandidate.followUpAttack.suit} Attack is a new follow-up, not a cost, and keeps its ordinary Dodge response.`,
-    publicNotice: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade to play a new Attack on ${greenDragonBladeEffectFrameCandidate.target.name} after the original Attack was dodged.`,
-    publicNoticeCompact: `Green Dragon Blade: ${greenDragonBladeEffectFrameCandidate.activationOwner.name} played a new Attack on ${greenDragonBladeEffectFrameCandidate.target.name}.`,
+    ariaLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("GreenDragonBlade")} after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original ${publicH4CardKindReference("Attack")}. The real ${publicH4CardFaceReference(greenDragonBladeEffectFrameCandidate.followUpAttack) ?? "Attack"} is a new follow-up, not a cost, and keeps its ordinary ${publicH4CardKindReference("Dodge")} response.`,
+    publicNotice: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("GreenDragonBlade")} to play a new ${publicH4CardKindReference("Attack")} on ${greenDragonBladeEffectFrameCandidate.target.name} after the original ${publicH4CardKindReference("Attack")} was dodged.`,
+    publicNoticeCompact: `${publicH4CardKindReference("GreenDragonBlade")}: ${greenDragonBladeEffectFrameCandidate.activationOwner.name} played a new ${publicH4CardKindReference("Attack")} on ${greenDragonBladeEffectFrameCandidate.target.name}.`,
     motion: {
       type: "single-target",
       scopeKey: [room.code, "green_dragon_blade_attack_dodged", greenDragonBladeEffectFrameCandidate.effectEvent.id].join(":"),
@@ -10100,7 +10115,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     },
     publicCardEffectFrame: createPublicCardEffectFrameView(greenDragonBladeEffectFrameCandidate.effect, {
       title: "GREEN DRAGON BLADE · FOLLOW-UP ATTACK",
-      accessibleLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used Green Dragon Blade after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original Attack. This is a new physical Attack card, not a weapon cost; it keeps its ordinary Dodge response.`,
+      accessibleLabel: `${greenDragonBladeEffectFrameCandidate.activationOwner.name} used ${publicH4CardKindReference("GreenDragonBlade")} after ${greenDragonBladeEffectFrameCandidate.target.name} dodged the original ${publicH4CardKindReference("Attack")}. This is a new physical ${publicH4CardKindReference("Attack")} card, not a weapon cost; it keeps its ordinary ${publicH4CardKindReference("Dodge")} response.`,
       activationOwnerName: greenDragonBladeEffectFrameCandidate.activationOwner.name,
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
@@ -10190,7 +10205,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ...(responseEvent.playedAs?.toLowerCase() === "attack" && cardFaces.some((card) => card.kind !== "Attack")
           ? { semanticLabel: "AS ATTACK" }
           : {}),
-        ariaLabel: serpentFrame?.accessibleLabel ?? `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+        ariaLabel: serpentFrame?.accessibleLabel ?? `${responseActor.name} played ${publicH4CardKindReference("Attack")} targeting ${responseTarget.name}`,
       })),
     } : {}),
   } : null;
@@ -10216,7 +10231,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: groupSettlementCandidate.rootEvent.card,
       cardKind: groupSettlementCandidate.settlement.cardKind,
       cardLabel: cardDefinition(groupSettlementCandidate.settlement.cardKind).name.toUpperCase(),
-      ariaLabel: `${groupSettlementCandidate.source.name} played ${cardDefinition(groupSettlementCandidate.settlement.cardKind).name}. ${groupSettlementCandidate.targets.length} targets resolved.`,
+      publicResolvedCount: { count: groupSettlementCandidate.targets.length, noun: "targets" },
+      ariaLabel: `${groupSettlementCandidate.source.name} played ${publicH4CardKindReference(groupSettlementCandidate.settlement.cardKind)}. ${groupSettlementCandidate.targets.length} targets resolved.`,
       motion: {
         type: "group-root",
         scopeKey: [room.code, groupSettlementCandidate.settlement.interactionId,
@@ -10236,7 +10252,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: bumperHarvestSettlementCandidate.rootEvent.card,
       cardKind: "BumperHarvest",
       cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
-      ariaLabel: `${bumperHarvestSettlementCandidate.source.name} played Bumper Harvest. ${bumperHarvestSettlementCandidate.targets.length} choices resolved.`,
+      publicResolvedCount: { count: bumperHarvestSettlementCandidate.targets.length, noun: "choices" },
+      ariaLabel: `${bumperHarvestSettlementCandidate.source.name} played ${publicH4CardKindReference("BumperHarvest")}. ${bumperHarvestSettlementCandidate.targets.length} choices resolved.`,
       settlement: { eventId: bumperHarvestSettlementCandidate.settlement.eventId, outcome: "BUMPER_HARVEST_RESOLVED", exiting: bumperHarvestSettlementCandidate.exiting },
     }
     : oathSimultaneousRootCandidate
@@ -10248,7 +10265,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: oathSimultaneousRootCandidate.rootEvent.card,
       cardKind: "Oath",
       cardLabel: cardDefinition("Oath").name.toUpperCase(),
-      ariaLabel: `${oathSimultaneousRootCandidate.source.name} played Oath of the Peach Garden.`,
+      ariaLabel: `${oathSimultaneousRootCandidate.source.name} played ${publicH4CardKindReference("Oath")}.`,
       phaseNotice: oathSimultaneousRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
       motion: {
         type: "negation",
@@ -10294,7 +10311,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       },
       cardKind: "BumperHarvest",
       cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
-      ariaLabel: `${bumperHarvestRootCandidate.source.name} played Bumper Harvest.`,
+      ariaLabel: `${bumperHarvestRootCandidate.source.name} played ${publicH4CardKindReference("BumperHarvest")}.`,
     }
     : halberdOrderedRootCandidate
     ? {
@@ -10306,7 +10323,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       targetId: null,
       cardFace: halberdOrderedRootCandidate.rootEvent.card,
       cardKind: "Attack",
-      ariaLabel: `${halberdOrderedRootCandidate.source.name} played Attack.`,
+      ariaLabel: `${halberdOrderedRootCandidate.source.name} played ${publicH4CardKindReference("Attack")}.`,
     }
     : groupTargetBranchCandidate
     ? {
@@ -10337,7 +10354,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } : {}),
       cardKind: groupTargetBranchCandidate.group.cardKind,
       cardLabel: cardDefinition(groupTargetBranchCandidate.group.cardKind).name.toUpperCase(),
-      ariaLabel: `${groupTargetBranchCandidate.source.name} played ${cardDefinition(groupTargetBranchCandidate.group.cardKind).name}.`,
+      ariaLabel: `${groupTargetBranchCandidate.source.name} played ${publicH4CardKindReference(groupTargetBranchCandidate.group.cardKind)}.`,
     }
     : skillEffectActionCandidate
     ? {
@@ -10367,7 +10384,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardKind: "Dismantle",
       cardFace: dismantleSettlementCandidate.rootEvent.card,
       cardLabel: "BURNING BRIDGE",
-      ariaLabel: `${dismantleSettlementCandidate.source.name} played Burning Bridge targeting ${dismantleSettlementCandidate.target.name}`,
+      ariaLabel: `${dismantleSettlementCandidate.source.name} played ${publicH4CardKindReference("Dismantle")} targeting ${dismantleSettlementCandidate.target.name}`,
       motion: {
         type: "single-target",
         scopeKey: [room.code, dismantleSettlementCandidate.action.rootEventId].join(":"),
@@ -10405,7 +10422,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : attackHitSettlementCandidate.rootEvent.type === "card" ? attackHitSettlementCandidate.rootEvent.card : undefined,
       cardLabel: attackHitSerpentSpearFrame ? "SERPENT SPEAR · AS ATTACK" : "ATTACK",
       ariaLabel: attackHitSerpentSpearFrame?.accessibleLabel
-        ?? `${attackHitSettlementCandidate.source.name} played Attack targeting ${attackHitSettlementCandidate.target.name}`,
+        ?? `${attackHitSettlementCandidate.source.name} played ${publicH4CardKindReference("Attack")} targeting ${attackHitSettlementCandidate.target.name}`,
       ...(attackHitSerpentSpearFrame ? {
         publicNotice: attackHitSerpentSpearFrame.publicNotice,
         publicNoticeSegments: attackHitSerpentSpearFrame.publicNoticeSegments,
@@ -10436,7 +10453,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardKind: "Duel",
       cardFace: duelExchangeDisplayCandidate.rootEvent.card,
       cardLabel: "DUEL",
-      ariaLabel: `${duelExchangeDisplayCandidate.source.name} played Duel targeting ${duelExchangeDisplayCandidate.target.name}`,
+      ariaLabel: `${duelExchangeDisplayCandidate.source.name} played ${publicH4CardKindReference("Duel")} targeting ${duelExchangeDisplayCandidate.target.name}`,
       suppressAnnouncement: !duelExchangeAttackCopy,
       ...(duelExchangeAttackCopy ? {
         publicNotice: duelExchangeAttackCopy.message,
@@ -10460,7 +10477,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             actorId: response.responseActorId,
             actorName: responseActor.name,
             cardFace: responseEvent.card,
-            ariaLabel: `${responseActor.name} played Negation during ${duelExchangeDisplayCandidate.source.name}'s Duel.`,
+          ariaLabel: `${responseActor.name} played ${publicH4CardKindReference("Negation")} during ${duelExchangeDisplayCandidate.source.name}'s ${publicH4CardKindReference("Duel")}.`,
           })),
           ...duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget, cardFaces, serpentFrame }) => ({
             eventId: response.responseEventId,
@@ -10478,7 +10495,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             ...(cardFaces.some((card) => card.kind !== "Attack") && responseEvent.playedAs?.toLowerCase() === "attack"
               ? { semanticLabel: "AS ATTACK" }
               : {}),
-            ariaLabel: serpentFrame?.accessibleLabel ?? `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+            ariaLabel: serpentFrame?.accessibleLabel ?? `${responseActor.name} played ${publicH4CardKindReference("Attack")} targeting ${responseTarget.name}`,
           })),
         ],
       } : {}),
@@ -10521,7 +10538,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && room.currentAction.requirement === "dodge"
           && room.currentAction.actorId === room.meId
           && canUseAction(room.currentAction, "respond")
-          ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} played Attack on you. Dodge or Skip.` }
+          ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} played ${publicH4CardKindReference("Attack")} on you. ${publicH4CardKindReference("Dodge")} or Skip.` }
           : {}),
       } : rootAction.cardKind === "Dismantle" || rootAction.cardKind === "Steal" ? {
         motion: {
@@ -10545,7 +10562,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           : attackDodgeDisplayCandidate.rootEvent.type === "card" ? attackDodgeDisplayCandidate.rootEvent.card : undefined,
         cardLabel: attackDodgeSerpentSpearFrame ? "SERPENT SPEAR · AS ATTACK" : "ATTACK",
         ariaLabel: attackDodgeSerpentSpearFrame?.accessibleLabel
-          ?? `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "unknown player"}`,
+          ?? `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played ${publicH4CardKindReference("Attack")} targeting ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "unknown player"}`,
         ...(attackDodgeSerpentSpearFrame ? {
           publicNotice: attackDodgeSerpentSpearFrame.publicNotice,
           publicNoticeSegments: attackDodgeSerpentSpearFrame.publicNoticeSegments,
@@ -10577,8 +10594,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             ? { semanticLabel: "AS DODGE" }
             : {}),
           ariaLabel: attackDodgeDisplayCandidate.proof.responsePhysicalCardKind === "Attack"
-            ? `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.responseActorId)?.name ?? "Unknown player"} used Attack as Dodge against ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack on ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "the target"}`
-            : `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge against ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack on ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "the target"}`,
+            ? `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.responseActorId)?.name ?? "Unknown player"} used ${publicH4CardKindReference("Attack")} as ${publicH4CardKindReference("Dodge")} against ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s ${publicH4CardKindReference("Attack")} on ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "the target"}`
+            : `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.responseActorId)?.name ?? "Unknown player"} played ${publicH4CardKindReference("Dodge")} against ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s ${publicH4CardKindReference("Attack")} on ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "the target"}`,
         },
       }
     : singleTargetNegationProofCandidate
@@ -10592,7 +10609,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         cardFace: selfTargetCandidate.event.card,
         cardKind: "Peach",
         cardLabel: "PEACH",
-        ariaLabel: `${selfTargetCandidate.source.name} used Peach on self`,
+        ariaLabel: `${selfTargetCandidate.source.name} used ${publicH4CardKindReference("Peach")} on self`,
       }
       : null;
   return nonHeroLivePublicCardActionBeforeAcquisition
@@ -10826,7 +10843,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const fanjianSettlementNarration: PublicInteractionNarration | null = skillEffectSettlementCandidate ? (() => {
     const settlement = skillEffectSettlementCandidate.action;
     const card = skillEffectSettlementCandidate.revealEvent.card;
-    const firstLine = `${skillEffectSettlementCandidate.target.name} guessed ${settlement.guess}; revealed ${card.rank}${card.suit} ${cardDefinition(card.kind).name}.`;
+    const firstLine = `${skillEffectSettlementCandidate.target.name} guessed ${settlement.guess}; revealed ${publicH4CardFaceReference(card) ?? "a card"}.`;
     const effectLine = settlement.outcome === "SUITS_MATCHED"
       ? "Suits match; no damage."
       : settlement.damage.outcome === "DAMAGE_PREVENTED"
@@ -10918,7 +10935,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const replacement = room.players.find((player) => player.id === proof.replacementTargetId);
     if (!actor?.name || !replacement?.name || proof.actorId !== proof.originalTargetId
       || proof.actorId === proof.sourceId || proof.actorId === proof.replacementTargetId) return null;
-    const publicNotice = `${actor.name} used Deflection, discarding ${cardDefinition(costCard.kind).name} and redirecting Attack to ${replacement.name}.`;
+    const publicNotice = `${actor.name} used Deflection, discarding ${publicH4CardFaceReference(costCard) ?? "a card"} and redirecting ${publicH4CardKindReference("Attack")} to ${replacement.name}.`;
     return {
       eventId: proof.eventId,
       actorId: proof.actorId,
@@ -10954,9 +10971,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (candidates.length !== 1) return null;
     const { proof, spec } = candidates[0];
-    const semanticCardName = spec.sourceKind === "DODGE" ? "Dodge" : cardDefinition(proof.sourceCard.kind).name;
-    const publicNotice = `${proof.owner.name} used ${spec.skillName}: ${semanticCardName} AS ATTACK, targeting ${proof.conversionEvent.target}.`;
-    const accessibleLabel = `${proof.owner.name} used ${spec.skillName}. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Attack targeting ${proof.conversionEvent.target}.`;
+    const sourceCard = publicH4CardFaceReference(proof.sourceCard) ?? "a card";
+    const publicNotice = `${proof.owner.name} used ${spec.skillName}: ${sourceCard} AS ${publicH4CardKindReference("Attack")}, targeting ${proof.conversionEvent.target}.`;
+    const accessibleLabel = `${proof.owner.name} used ${spec.skillName}. ${sourceCard} was played as ${publicH4CardKindReference("Attack")} targeting ${proof.conversionEvent.target}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: spec.title,
       titleParts: spec.titleParts,
@@ -10977,9 +10994,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     );
     if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
       || selectedPublicCardAction.targetId !== proof.target.id) return null;
-    const cardName = cardDefinition(proof.sourceCard.kind).name;
-    const publicNotice = `${proof.owner.name} used Ambushment AS BURNING BRIDGES on ${proof.target.name}.`;
-    const accessibleLabel = `${proof.owner.name} used Ambushment. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Burning Bridges targeting ${proof.target.name}.`;
+    const sourceCard = publicH4CardFaceReference(proof.sourceCard) ?? "a card";
+    const publicNotice = `${proof.owner.name} used Ambushment AS ${publicH4CardKindReference("Dismantle")} on ${proof.target.name}.`;
+    const accessibleLabel = `${proof.owner.name} used Ambushment. ${sourceCard} was played as ${publicH4CardKindReference("Dismantle")} targeting ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "AMBUSHMENT · AS BURNING BRIDGES",
       titleParts: { skillName: "AMBUSHMENT", effectLabel: "AS BURNING BRIDGES" },
@@ -11001,9 +11018,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     );
     if (!proof || selectedPublicCardAction.sourceId !== proof.owner.id
       || selectedPublicCardAction.targetId !== proof.target.id) return null;
-    const cardName = cardDefinition(proof.sourceCard.kind).name;
-    const publicNotice = `${proof.owner.name} used Captivating: ${cardName} ${proof.sourceCard.rank}${proof.sourceCard.suit} AS OVERINDULGENCE on ${proof.target.name}.`;
-    const accessibleLabel = `${proof.owner.name} used Captivating. ${cardName}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Overindulgence targeting ${proof.target.name}.`;
+    const sourceCard = publicH4CardFaceReference(proof.sourceCard) ?? "a card";
+    const publicNotice = `${proof.owner.name} used Captivating: ${sourceCard} AS ${publicH4CardKindReference("Overindulgence")} on ${proof.target.name}.`;
+    const accessibleLabel = `${proof.owner.name} used Captivating. ${sourceCard} was played as ${publicH4CardKindReference("Overindulgence")} targeting ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "CAPTIVATING · AS OVERINDULGENCE",
       titleParts: { skillName: "CAPTIVATING", effectLabel: "AS OVERINDULGENCE" },
@@ -11028,8 +11045,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     );
     if (!proof || selectedPublicCardAction.sourceId !== proof.attackSource.id
       || selectedPublicCardAction.targetId !== proof.target.id || response.actorId !== proof.owner.id) return null;
-    const publicNotice = `${proof.owner.name} used Braveheart: Attack AS DODGE against ${proof.attackSource.name}'s Attack.`;
-    const accessibleLabel = `${proof.owner.name} used Braveheart. Attack, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
+    const sourceCard = publicH4CardFaceReference(proof.sourceCard) ?? "a card";
+    const publicNotice = `${proof.owner.name} used Braveheart: ${sourceCard} AS ${publicH4CardKindReference("Dodge")} against ${proof.attackSource.name}'s ${publicH4CardKindReference("Attack")}.`;
+    const accessibleLabel = `${proof.owner.name} used Braveheart. ${sourceCard} was played as ${publicH4CardKindReference("Dodge")} against ${proof.attackSource.name}'s ${publicH4CardKindReference("Attack")} on ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "BRAVEHEART · ATTACK AS DODGE",
       titleParts: { skillName: "BRAVEHEART", effectLabel: "ATTACK AS DODGE" },
@@ -11054,8 +11072,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     );
     if (!proof || selectedPublicCardAction.sourceId !== proof.attackSource.id
       || selectedPublicCardAction.targetId !== proof.target.id || response.actorId !== proof.owner.id) return null;
-    const publicNotice = `${proof.owner.name} used Empress Dowager: ${cardDefinition(proof.sourceCard.kind).name} AS DODGE against ${proof.attackSource.name}'s Attack.`;
-    const accessibleLabel = `${proof.owner.name} used Empress Dowager. ${cardDefinition(proof.sourceCard.kind).name}, ${proof.sourceCard.rank} ${proof.sourceCard.suit}, was played as Dodge against ${proof.attackSource.name}'s Attack on ${proof.target.name}.`;
+    const sourceCard = publicH4CardFaceReference(proof.sourceCard) ?? "a card";
+    const publicNotice = `${proof.owner.name} used Empress Dowager: ${sourceCard} AS ${publicH4CardKindReference("Dodge")} against ${proof.attackSource.name}'s ${publicH4CardKindReference("Attack")}.`;
+    const accessibleLabel = `${proof.owner.name} used Empress Dowager. ${sourceCard} was played as ${publicH4CardKindReference("Dodge")} against ${proof.attackSource.name}'s ${publicH4CardKindReference("Attack")} on ${proof.target.name}.`;
     const publicCardEffectFrame = createPublicCardEffectFrameView(proof.effect, {
       title: "EMPRESS DOWAGER · AS DODGE",
       titleParts: { skillName: "EMPRESS DOWAGER", effectLabel: "AS DODGE" },
@@ -11129,21 +11148,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardLabel: attackConversionFrameCandidate.spec.title,
       ariaLabel: attackConversionFrameCandidate.accessibleLabel,
       publicNotice: attackConversionFrameCandidate.publicNotice,
-      publicNoticeCompact: `${attackConversionFrameCandidate.proof.owner.name} used ${attackConversionFrameCandidate.spec.skillName} AS ATTACK.`,
+      publicNoticeCompact: `${attackConversionFrameCandidate.proof.owner.name} used ${attackConversionFrameCandidate.spec.skillName} AS ${publicH4CardKindReference("Attack")}.`,
       publicCardEffectFrame: attackConversionFrameCandidate.publicCardEffectFrame,
     } : {}),
     ...(ambushmentConversionFrameCandidate ? {
       cardLabel: "AMBUSHMENT · AS BURNING BRIDGES",
       ariaLabel: ambushmentConversionFrameCandidate.accessibleLabel,
       publicNotice: ambushmentConversionFrameCandidate.publicNotice,
-      publicNoticeCompact: `${ambushmentConversionFrameCandidate.proof.owner.name} used Ambushment AS BURNING BRIDGES on ${ambushmentConversionFrameCandidate.proof.target.name}.`,
+      publicNoticeCompact: `${ambushmentConversionFrameCandidate.proof.owner.name} used Ambushment AS ${publicH4CardKindReference("Dismantle")} on ${ambushmentConversionFrameCandidate.proof.target.name}.`,
       publicCardEffectFrame: ambushmentConversionFrameCandidate.publicCardEffectFrame,
     } : {}),
     ...(captivatingConversionFrameCandidate ? {
       cardLabel: "CAPTIVATING · AS OVERINDULGENCE",
       ariaLabel: captivatingConversionFrameCandidate.accessibleLabel,
       publicNotice: captivatingConversionFrameCandidate.publicNotice,
-      publicNoticeCompact: `${captivatingConversionFrameCandidate.proof.owner.name} used Captivating AS OVERINDULGENCE on ${captivatingConversionFrameCandidate.proof.target.name}.`,
+      publicNoticeCompact: `${captivatingConversionFrameCandidate.proof.owner.name} used Captivating AS ${publicH4CardKindReference("Overindulgence")} on ${captivatingConversionFrameCandidate.proof.target.name}.`,
       publicCardEffectFrame: captivatingConversionFrameCandidate.publicCardEffectFrame,
     } : {}),
     ...(braveheartDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
@@ -11153,7 +11172,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         semanticLabel: "ATTACK AS DODGE",
       },
       publicNotice: braveheartDodgeResponseFrameCandidate.publicNotice,
-      publicNoticeCompact: `${braveheartDodgeResponseFrameCandidate.proof.owner.name} used Braveheart · ATTACK AS DODGE.`,
+      publicNoticeCompact: `${braveheartDodgeResponseFrameCandidate.proof.owner.name} used Braveheart · ${publicH4CardKindReference("Attack")} AS ${publicH4CardKindReference("Dodge")}.`,
       publicCardEffectFrame: braveheartDodgeResponseFrameCandidate.publicCardEffectFrame,
     } : {}),
     ...(empressDowagerDodgeResponseFrameCandidate && selectedPublicCardAction.response ? {
@@ -11163,7 +11182,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         semanticLabel: "AS DODGE",
       },
       publicNotice: empressDowagerDodgeResponseFrameCandidate.publicNotice,
-      publicNoticeCompact: `${empressDowagerDodgeResponseFrameCandidate.proof.owner.name} used Empress Dowager · AS DODGE.`,
+      publicNoticeCompact: `${empressDowagerDodgeResponseFrameCandidate.proof.owner.name} used Empress Dowager · AS ${publicH4CardKindReference("Dodge")}.`,
       publicCardEffectFrame: empressDowagerDodgeResponseFrameCandidate.publicCardEffectFrame,
     } : {}),
     publicActivityMessage: selectedLustOrderOwnsActivityBand

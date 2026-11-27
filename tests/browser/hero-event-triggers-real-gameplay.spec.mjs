@@ -320,7 +320,7 @@ test("E15: final Judgement, two-card discard and next-turn status stay coherent 
   await expect(renderedDiscardH4).toBeVisible();
   await expect(renderedDiscardH4).toHaveAttribute("data-public-h4-owner", "PublicDiscardAnnouncementLayer");
   await expect(renderedDiscardH4).toHaveAttribute("data-public-h4-public-sequence", String(discardEvent.publicSequence));
-  await expect(discardH4).toContainText("SIMA YI discarded 2 cards: 7♠ Dodge · 7♠ Peach.");
+  await expect(discardH4).toContainText("SIMA YI discarded 2 cards: [7♠ Dodge] · [7♠ Peach].");
   await expect(discardH4).toHaveAttribute("data-public-discard-announcement-card-ids", discarded.map((card) => card.id).join(","));
   const discardCards = page.locator(`[data-public-zone-transition-event-id="${discardEvent.id}"][data-public-zone-transition-destination="DISCARD"]`);
   await expect(discardCards).toHaveCount(2);
@@ -1631,7 +1631,7 @@ test("real Frost Sword frames the target's two discarded cards and prevents dama
       expect(evidence.accessibleLabel).toContain("7♣ Dodge");
       expect(evidence.accessibleLabel).toContain("7♠ Nio Shield");
       expect(evidence.announcement).toBe(
-        "FROST USER used Frost Sword to discard 2 cards from FROST TARGET: 7♣ Dodge · 7♠ Nio Shield.",
+        "FROST USER used [Frost Sword] to discard 2 cards from FROST TARGET: [7♣ Dodge] · [7♠ Nio Shield].",
       );
       expect(evidence.announcement).not.toContain("prevent");
       expect(Number(evidence.h4ZIndex)).toBeGreaterThan(Number(evidence.frameZIndex));

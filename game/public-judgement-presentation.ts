@@ -1,5 +1,6 @@
 import { judgementResolutionFor, judgementSucceeds, type JudgementPurpose } from "./decisions/judgement";
 import { CARD_DEFINITIONS } from "./cards";
+import { publicH4RankSuitReference } from "./public-h4-copy";
 import type { Card, CardKind, CardRank, CardSuit } from "./model";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "./verified-player-copy";
 import type { PublicInteractionNarration } from "./public-activity";
@@ -153,9 +154,11 @@ function copyFor(input: {
   replacementActor?: PublicJudgementPlayer;
 }): { message: string; segments: readonly VerifiedPlayerCopySegment[] } | null {
   const label = judgementResolutionFor(input.purpose).label;
+  const originalFace = publicH4RankSuitReference(input.originalCard.rank, input.originalCard.suit) ?? "a Judgement card";
+  const effectiveFace = publicH4RankSuitReference(input.effectiveCard.rank, input.effectiveCard.suit) ?? "a Judgement card";
   const originalLead = input.continuationKind === "delayed"
-    ? [input.target, ` is judging ${label}. Judgement: ${input.originalCard.rank}${input.originalCard.suit}.`]
-    : [input.target, ` used ${label}. Judgement: ${input.originalCard.rank}${input.originalCard.suit}.`];
+    ? [input.target, ` is judging ${label}. Judgement: ${originalFace}.`]
+    : [input.target, ` used ${label}. Judgement: ${originalFace}.`];
   if (input.phase === "ORIGINAL") {
     const formatted = verifiedPlayerCopy(input.includeStatus ? [...originalLead, ` ${statusCopy(input.judgementStatus)}`] : originalLead);
     return { message: formatted.message, segments: formatted.segments };
@@ -163,7 +166,7 @@ function copyFor(input: {
   if (!input.replacementActor) return null;
   const replacementLine = verifiedPlayerCopy([
     input.replacementActor,
-    ` used Necromancy to replace the Judgement card with ${input.effectiveCard.rank}${input.effectiveCard.suit}. ${statusCopy(input.judgementStatus)}`,
+    ` used Necromancy to replace the Judgement card with ${effectiveFace}. ${statusCopy(input.judgementStatus)}`,
   ]);
   const firstLine = verifiedPlayerCopy(originalLead);
   const segments = [...firstLine.segments, { kind: "text" as const, text: "\n" }, ...replacementLine.segments];

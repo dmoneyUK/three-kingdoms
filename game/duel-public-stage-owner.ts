@@ -1,3 +1,5 @@
+import { publicH4CardKindReference } from "./public-h4-copy";
+
 type SnapshotIdentity = {
   interactionId: string;
   checkpointId: string;
@@ -265,7 +267,7 @@ export function duelExchangeAttackNarration(
   return {
     eventId: response.responseEventId,
     actorId: response.responseActorId,
-    message: `${responder} played Attack in the Duel.`,
-    compactMessage: `${responder} played Attack in the Duel.`,
+    message: `${responder} played ${publicH4CardKindReference("Attack")} in the Duel.`,
+    compactMessage: `${responder} played ${publicH4CardKindReference("Attack")} in the Duel.`,
   };
 }

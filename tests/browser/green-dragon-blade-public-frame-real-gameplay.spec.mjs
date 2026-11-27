@@ -67,7 +67,7 @@ test("Green Dragon Blade shows its real follow-up Attack Frame to source and tar
     for (const viewerPage of [ownerPage, targetPage]) {
       const equipmentH4 = viewerPage.locator(`[data-public-card-announcement="true"][data-public-card-announcement-event-id="${equipEvent.id}"]`);
       await expect(equipmentH4).toHaveCount(1);
-      await expect(equipmentH4).toContainText("BLADE OWNER equipped Green Dragon Blade.");
+      await expect(equipmentH4).toContainText("BLADE OWNER equipped [Green Dragon Blade].");
       await expect(equipmentH4).toHaveAttribute("data-public-card-announcement-positioned", "true");
       await expect(equipmentH4).toHaveAttribute("data-public-card-announcement-placement", /center-band-(above|below)/);
     }

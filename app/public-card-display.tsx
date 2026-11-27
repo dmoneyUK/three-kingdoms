@@ -1,6 +1,13 @@
 "use client";
 
-import { publicH4Copy, matchingPublicH4Segments, publicH4WidthLimit, type PublicH4Segment } from "../game/public-h4-copy";
+import {
+  publicH4CardFaceReference,
+  publicH4CardKindReference,
+  publicH4Copy,
+  matchingPublicH4Segments,
+  publicH4WidthLimit,
+  type PublicH4Segment,
+} from "../game/public-h4-copy";
 import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, measuredPublicH4PaintRect, parkedCardSize } from "./public-upper-anchor";
 
 import { publicCorridorWidth } from "./public-corridor";
@@ -137,6 +144,8 @@ export type PublicCardDisplayAction = {
   targetId: string | null;
   cardKind?: CardKind;
   cardLabel: string;
+  /** Typed public count for an already-proven group outcome. */
+  publicResolvedCount?: { count: number; noun: "targets" | "choices" };
   ariaLabel: string;
   publicNotice?: string;
   publicNoticeSegments?: readonly PublicH4Segment[];
@@ -2207,22 +2216,9 @@ function settlementLabel(action: PublicCardDisplayAction, targetName: string | n
   }
 }
 
-function compactPublicNotice(notice: string, actorName: string | null) {
-  const deflection = notice.trim().match(/^.+? used Deflection, discarding (.+?) and redirecting Attack to (.+?)[.!?]?$/i);
-  if (deflection) return `Deflection: ${actorName ?? "A player"} redirected Attack to ${deflection[2]}; discarded ${deflection[1]}.`;
-
-  const playedTarget = notice.trim().match(/^.+? played (.+?) targeting (.+?)[.!?]?$/i);
-  if (playedTarget) return `${actorName ?? "A player"} played ${playedTarget[1]} on ${playedTarget[2]}.`;
-
-  const usedTarget = notice.trim().match(/^.+? used (.+?) targeting (.+?)[.!?]?$/i);
-  if (usedTarget) return `${actorName ?? "A player"} used ${usedTarget[1]} on ${usedTarget[2]}.`;
-
-  return notice.trim();
-}
-
 export function publicCardAnnouncement(
   action: PublicCardDisplayAction,
-  notice: string,
+  _notice: string,
   actorName: string | null,
   sourceName: string | null,
   targetName: string | null,
@@ -2231,38 +2227,43 @@ export function publicCardAnnouncement(
   const source = sourceName ?? "A player";
   const target = targetName ?? "the target";
   const actor = actorName ?? targetName ?? "The target";
-  const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+  const publicCardKind = action.cardKind ?? action.cardFace?.kind;
+  const cardName = publicCardKind ? publicH4CardKindReference(publicCardKind) : "a card";
   const targetCardMovement = action.settlement?.targetCardMovement;
   const targetCardSourceZone = targetCardMovement?.sourceZone === "hand" ? "Hand"
     : targetCardMovement?.sourceZone === "equipment" ? "Equipment"
       : targetCardMovement?.sourceZone === "judgement" ? "Judgement" : null;
   const targetCardFace = targetCardMovement?.affectedCardFace;
   const targetCardName = targetCardFace
-    ? cardDefinition(targetCardFace.kind).name
+    ? publicH4CardFaceReference(targetCardFace) ?? "a public card"
     : "one card";
   const dismantleFaceCopy = publicDismantleCardFaceCopy(action, sourceName, targetName, action.settlement?.eventId);
 
   if ((action.cardKind === "BumperHarvest" || action.cardFace?.kind === "BumperHarvest")
     && action.motion?.type === "negation" && !action.publicNegationNarration) {
-    return action.ariaLabel;
+    return `${source} played ${publicH4CardKindReference("BumperHarvest")}.`;
   }
 
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
-      return targetName ? `${targetName} took damage from ${source}'s Attack.` : notice;
+      return targetName ? `${targetName} took damage from ${source}'s ${publicH4CardKindReference("Attack")}.`
+        : `${source} resolved ${publicH4CardKindReference("Attack")}.`;
     case "ATTACK_BLOCKED_BY_DODGE":
       return action.response?.semanticLabel === "AS DODGE"
-        ? `${actor} used Attack as Dodge against ${source}'s Attack.`
-        : `${actor} played Dodge against ${source}'s Attack.`;
+        ? `${actor} used ${publicH4CardKindReference("Attack")} as ${publicH4CardKindReference("Dodge")} against ${source}'s ${publicH4CardKindReference("Attack")}.`
+        : `${actor} played ${publicH4CardKindReference("Dodge")} against ${source}'s ${publicH4CardKindReference("Attack")}.`;
     case "SUITS_MATCHED":
     case "SUITS_DIFFERED":
-      return `${source} used ${cardName} on ${target}; suits ${outcome === "SUITS_MATCHED" ? "matched" : "differed"}.`;
+      return publicCardKind
+        ? `${source} used ${cardName} on ${target}; suits ${outcome === "SUITS_MATCHED" ? "matched" : "differed"}.`
+        : action.ariaLabel;
     case "GROUP_RESOLVED":
     case "BUMPER_HARVEST_RESOLVED": {
-      const count = action.ariaLabel.match(/(\d+)\s+(targets|choices) resolved/i);
-      return count
-        ? `${source} played ${cardName}; ${count[1]} ${count[2].toLowerCase()} resolved.`
-        : compactPublicNotice(action.ariaLabel, actorName);
+      if (!publicCardKind) return "A public group effect resolved.";
+      const resolved = action.publicResolvedCount;
+      const resolutionCopy = resolved && Number.isSafeInteger(resolved.count) && resolved.count >= 0
+        ? `. ${resolved.count} ${resolved.noun} resolved.` : ".";
+      return `${source} played ${cardName}${resolutionCopy}`;
     }
     case "DISMANTLE_RESOLVED":
       return dismantleFaceCopy?.message ?? `${source} resolved ${cardName} on ${target}.`;
@@ -2283,11 +2284,13 @@ export function publicCardAnnouncement(
       }
       return `${source} resolved ${cardName} on ${target}.`;
     case "ROOT_CANCELLED":
-      return `${actor}'s Negation cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+      return `${actor}'s ${publicH4CardKindReference("Negation")} cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     case "ROOT_RESTORED":
-      return `${actor}'s Negation restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+      return `${actor}'s ${publicH4CardKindReference("Negation")} restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     default:
-      return settlementLabel(action, targetName) ?? compactPublicNotice(notice, actorName);
+      return settlementLabel(action, targetName) ?? (publicCardKind
+        ? targetName ? `${source} played ${cardName} on ${targetName}.` : `${source} played ${cardName}.`
+        : "A public effect resolved.");
   }
 }
 
@@ -2300,7 +2303,7 @@ function publicTargetCardSettlementAccessibleLabel(
   const source = sourceName ?? "A player";
   const target = targetName ?? "the target";
   const face = movement?.affectedCardFace;
-  const faceDescription = face ? `${cardDefinition(face.kind).name} (${face.rank}${face.suit})` : null;
+  const faceDescription = face ? publicH4CardFaceReference(face) : null;
   const zone = movement?.sourceZone === "hand" ? "Hand"
     : movement?.sourceZone === "equipment" ? "Equipment"
       : movement?.sourceZone === "judgement" ? "Judgement" : null;
@@ -2386,10 +2389,12 @@ export function PublicDismantleCardFaceH4({ copy }: { copy: PublicDismantleCardF
       data-card-id={copy.cardId}
       aria-hidden="true"
     >
+      {"["}
       <span className={`public-dismantle-card-suit-rank ${copy.suit === "♥" || copy.suit === "♦" ? "is-red" : "is-black"}`}>
-        {copy.suit}{copy.rank}
+        {copy.rank}{copy.suit}
       </span>
       <strong className="public-dismantle-card-name">{copy.name}</strong>
+      {"]"}
     </span>
     <PublicH4Text message={copy.suffix} segments={copy.suffixSegments} />
   </>;
@@ -2446,7 +2451,9 @@ function publicDismantleCardFaceCopy(
   const zone = movement.sourceZone === "hand" ? "Hand" : movement.sourceZone === "equipment" ? "Equipment" : "Judgement";
   const prefix = `${source} discarded `;
   const suffix = ` from ${target} (${zone}).`;
-  const message = `${prefix}${face.suit}${rank ?? ""} ${name}${suffix}`;
+  const faceReference = publicH4CardFaceReference(face);
+  if (!faceReference) return undefined;
+  const message = `${prefix}${faceReference}${suffix}`;
   const prefixCopy = sourceName && settlement.sourceId === action.sourceId
     ? publicH4Copy([{ id: settlement.sourceId, name: sourceName }, " discarded "])
     : undefined;
@@ -2480,17 +2487,19 @@ function publicCardPlayerSegments(action: PublicCardDisplayAction, message: stri
   const actor = actorName && actorId ? { id: actorId, name: actorName } : null;
   const sentences: ReturnType<typeof publicH4Copy>[] = [];
   if (source) {
-    const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
-    sentences.push(publicH4Copy([source, " played ", cardName, "."]));
+    const publicCardKind = action.cardKind ?? action.cardFace?.kind;
+    const typedCardName = publicCardKind ? publicH4CardKindReference(publicCardKind) : "a card";
+    sentences.push(publicH4Copy([source, " played ", typedCardName, "."]));
     if (target) {
-      sentences.push(publicH4Copy([source, " played ", cardName, " on ", target, "."]));
-      sentences.push(publicH4Copy([source, " played ", cardName, " targeting ", target, "."]));
+      sentences.push(publicH4Copy([source, " played ", typedCardName, " on ", target, "."]));
+      sentences.push(publicH4Copy([source, " played ", typedCardName, " targeting ", target, "."]));
       if (action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED")
-        sentences.push(publicH4Copy([target, " took damage from ", source, "'s Attack."]));
+        sentences.push(publicH4Copy([target, " took damage from ", source, "'s ", publicH4CardKindReference("Attack"), "."]));
     }
     if (actor && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE")
       sentences.push(publicH4Copy([actor, action.response?.semanticLabel === "AS DODGE"
-        ? " used Attack as Dodge against " : " played Dodge against ", source, "'s Attack."]));
+        ? ` used ${publicH4CardKindReference("Attack")} as ${publicH4CardKindReference("Dodge")} against `
+        : ` played ${publicH4CardKindReference("Dodge")} against `, source, "'s ", publicH4CardKindReference("Attack"), "."]));
   }
   return sentences.find((copy) => copy.message === message)?.segments;
 }
@@ -2526,9 +2535,9 @@ export function publicCardAnnouncementCopy(
     && action.settlement.publicOutcomeMessage && action.sourceId && sourceName
     && action.targetId && targetName && action.response?.actorId && action.response.actorName
     ? publicH4Copy([
-      { id: action.sourceId, name: sourceName }, "'s Attack on ",
+      { id: action.sourceId, name: sourceName }, "'s ", publicH4CardKindReference("Attack"), " on ",
       { id: action.targetId, name: targetName }, " was blocked by ",
-      { id: action.response.actorId, name: action.response.actorName }, "'s Dodge.",
+      { id: action.response.actorId, name: action.response.actorName }, "'s ", publicH4CardKindReference("Dodge"), ".",
     ])
     : undefined;
   if (blockedAttackCopy && blockedAttackCopy.message === action.settlement?.publicOutcomeMessage) {
@@ -2572,8 +2581,7 @@ export function publicCardAnnouncementCopy(
         const compact = compactLustDuelAttackMessage(responseActorName, response.targetName);
         return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact ?? compact ?? notice, accessibleLabel: notice };
       }
-      const compact = compactPublicNotice(notice, responseActorName);
-      return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact ?? (compact === notice ? undefined : compact), accessibleLabel: notice };
+      return { message: notice, segments: matchingPublicH4Segments(notice, response.publicNoticeSegments), compactMessage: response.publicNoticeCompact, accessibleLabel: notice };
     }
     return {
       message: action.lustCostFrame.message,
