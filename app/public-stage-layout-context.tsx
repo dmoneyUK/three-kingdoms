@@ -193,7 +193,10 @@ export function PublicStageLayoutProvider({
   children: ReactNode;
 }) {
   const [snapshot, setSnapshot] = useState<SharedPublicStageLayout | null>(null);
-  const [coordinateSpace, setCoordinateSpace] = useState<PublicStageTableCoordinateSpace | null>(null);
+  const [coordinateState, setCoordinateState] = useState<{
+    scopeId: string | null;
+    value: PublicStageTableCoordinateSpace | null;
+  }>({ scopeId: null, value: null });
   const snapshotRef = useRef<SharedPublicStageLayout | null>(null);
   const generationRef = useRef({ sceneKey: "", geometrySignature: "", generation: 0 });
   const movePathRef = useRef<{ sceneKey: string; rect: PublicStageRect } | null>(null);
@@ -207,17 +210,16 @@ export function PublicStageLayoutProvider({
       ? [...document.querySelectorAll<HTMLElement>(".play-table")]
         .find((candidate) => candidate.dataset.publicStageLayoutScope === scopeId) ?? null
       : null;
-    if (!table) {
-      setCoordinateSpace(null);
-      return;
-    }
+    if (!table) return;
     const refreshCoordinateSpace = () => {
       const next = publicStageCoordinateSpaceForTable(table);
-      setCoordinateSpace((current) => sameCoordinateSpace(current, next) ? current : next);
+      setCoordinateState((current) => current.scopeId === scopeId && sameCoordinateSpace(current.value, next)
+        ? current
+        : { scopeId, value: next });
     };
-    refreshCoordinateSpace();
     const coordinateResizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refreshCoordinateSpace);
     coordinateResizeObserver?.observe(table);
+    const initialCoordinateFrame = coordinateResizeObserver ? 0 : window.requestAnimationFrame(refreshCoordinateSpace);
     window.addEventListener("resize", refreshCoordinateSpace);
     window.addEventListener("orientationchange", refreshCoordinateSpace);
     let frame = 0;
@@ -870,6 +872,7 @@ export function PublicStageLayoutProvider({
     measure();
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
+      if (initialCoordinateFrame) window.cancelAnimationFrame(initialCoordinateFrame);
       coordinateResizeObserver?.disconnect();
       window.removeEventListener("resize", refreshCoordinateSpace);
       window.removeEventListener("orientationchange", refreshCoordinateSpace);
@@ -893,7 +896,8 @@ export function PublicStageLayoutProvider({
     && snapshot.layout.scene.viewerId === viewerId
     && snapshot.layout.scene.interactionId === interactionId
     ? snapshot : null;
-  return <PublicStageCoordinateContext.Provider value={coordinateSpace}>
+  const currentCoordinateSpace = coordinateState.scopeId === scopeId ? coordinateState.value : null;
+  return <PublicStageCoordinateContext.Provider value={currentCoordinateSpace}>
     <PublicStageLayoutContext.Provider value={currentSnapshot}>{children}</PublicStageLayoutContext.Provider>
   </PublicStageCoordinateContext.Provider>;
 }
