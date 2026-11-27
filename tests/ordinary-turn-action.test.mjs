@@ -23,7 +23,7 @@ test("ordinary turn actions require the exact fresh server-owned turn action", (
     [{ status: "heroes" }, "play_card"],
     [{ phase: "draw" }, "play_card"],
     [{ phase: "discard" }, "play_card"],
-    [{ phase: "response" }, "trigger"],
+    [{ phase: "draw" }, "trigger"],
     [{ isMyTurn: false }, "play_card"],
     [{ isMyAction: false }, "end_turn"],
     [{ viewerId: "player-2" }, "play_card"],
@@ -32,4 +32,17 @@ test("ordinary turn actions require the exact fresh server-owned turn action", (
     [{ currentAction: { kind: "turn", actorId: "player-1", legalActions: ["draw"] } }, "play_card"],
   ];
   for (const [overrides, action] of denied) assert.equal(isOrdinaryTurnActionAuthorized(authorizedInput(overrides), action), false, `${action} is denied for ${JSON.stringify(overrides)}`);
+});
+
+test("server-authorized trigger selections remain available before ordinary Play", () => {
+  const input = authorizedInput({
+    phase: "draw",
+    isMyTurn: false,
+    currentAction: { kind: "trigger", actorId: "player-1", legalActions: ["trigger", "decline_trigger"] },
+  });
+  assert.equal(isOrdinaryTurnActionAuthorized(input, "trigger"), true);
+  for (const action of ["play_card", "serpent_spear_attack", "end_turn"]) {
+    assert.equal(isOrdinaryTurnActionAuthorized(input, action), false, `${action} remains blocked during an authorized pre-Play trigger`);
+  }
+  assert.equal(isOrdinaryTurnActionAuthorized({ ...input, currentAction: { ...input.currentAction, legalActions: ["decline_trigger"] } }, "trigger"), false, "a trigger without server-authorized trigger action stays disabled");
 });

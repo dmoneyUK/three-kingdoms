@@ -10,11 +10,26 @@ export function isOrdinaryTurnActionAuthorized(input: {
   viewerId: string | null;
   currentAction: CurrentAction | null;
 }, action: OrdinaryTurnAction) {
+  const currentAction = input.currentAction;
+  const decisionOwnerMatches = Boolean(
+    input.status === "playing"
+    && input.isMyAction
+    && currentAction?.actorId === input.viewerId,
+  );
+
+  // A server-authored TriggerPending is already the exact authorization for
+  // turn-start, Draw, Judgement, response, and other skill decisions. Keep
+  // these legal selections available even when the ordinary Play phase has
+  // not begun (or the trigger actor is not the current turn owner).
+  if (action === "trigger" && currentAction?.kind === "trigger") {
+    return decisionOwnerMatches && canUseAction(currentAction, action);
+  }
+
   return input.status === "playing"
     && input.phase?.startsWith("play") === true
     && input.isMyTurn
     && input.isMyAction
-    && input.currentAction?.kind === "turn"
-    && input.currentAction.actorId === input.viewerId
-    && canUseAction(input.currentAction, action);
+    && currentAction?.kind === "turn"
+    && currentAction.actorId === input.viewerId
+    && canUseAction(currentAction, action);
 }
