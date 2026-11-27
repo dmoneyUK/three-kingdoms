@@ -27,7 +27,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 ### Historical delivery checkpoints — archive only
 
-Completed migration stages and technical evidence (including §10.64-B) are in [the pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/72319b44d591f175379b52df6d53b9edb30c0f72/docs/UX2-refine.md#L32); see Table C and §10.64 for retained scope. No replay of old tasks.
+Completed migration stages and technical evidence are in [the pre-cleanup revision](https://github.com/dmoneyUK/three-kingdoms/blob/72319b44d591f175379b52df6d53b9edb30c0f72/docs/UX2-refine.md#L32); see Table C for retained scope. No replay of old tasks.
 
 **Current executable boundary:** actual Agent execution is recorded in `HANDOVER.md`; the approved scope and latest Owner decisions remain in Tables A/B and original task sections. §10.81-B correction delivered 14:33 UTC; Owner review 14:41 UTC 8/9 PASS, only replacement visible hold FAIL; 14:47 video/trace confirms H4 hide during 4s clock, bounded correction below, preserve accepted fixes, no new dispatch. No new dispatch, queue reordering, scope expansion or closure of unfinished work is authorized by this editorial update. §10.67 USER-ACCEPTED / CLOSED 14:11 UTC; §10.89 independently queued, §10.90 proposed; preserve current authorization for §10.88. Missing Axe H4/Frame belongs only to §10.82-A/B. Frost picker flicker remains deferred/non-blocking with unverified cause (§10.78).
 
@@ -1043,15 +1043,6 @@ Preserve 4/5/6-seat priority and tie, all-replied early resolution versus a sile
 **Verified technical basis:** Corrective code `9482d59d4035` and test follow-up `44130bec756e3335cf13018d2a9b284d8cd6381d`, with passing [exact-SHA Actions 43990716580](https://github.com/dmoneyUK/three-kingdoms/actions/runs/43990716580) and deployed `5aa83ac5940a82d0ba2d635ed39e32f4ac080815` including the Kirin Bow/TREACHERY targeted browser case. The Owner's real-phone PASS is the actual acceptance authority; CI alone had not closed it.
 
 **History:** The prior 2026-11-16 iPhone failure `IMG_4373.jpeg` and earlier `IMG_4362.jpeg`, detailed WebKit stacking-context diagnoses, rejected implementation `46c5c333`, paint-layer correction contract and the five-minute combined local UI/browser test budget are retained in [pre-acceptance Git history](https://github.com/dmoneyUK/three-kingdoms/blob/9ca5dd1097daed99fa31ee3494d3c54cf947cdd9/docs/UX2-refine.md). These are no longer active implementation instructions. Future modifications affecting this overlap must preserve these regression checks; only new Owner-reported failure can reopen the original scope.
-
-### 10.64 WORKER-1102-LONG-SESSION-RESOURCE-01 — delivered repeated-work optimization (B IMPLEMENTED / DEPLOYED)
-
-#### 10.64-B — reduce proven repeated work while preserving fresh state
-
-1. Derive the public event projection from the current authenticated viewer timeline, preserving the original public-event filters and sequence order. A viewer-private card event may remain visible to its owner but must never enter public facts, public card effects, interaction context or another viewer's projection.
-2. Compute optional Attack/Dodge diagnostics only for the final fresh projection of an authenticated request with a valid `uxTraceId`. Keep the trace opt-in and preserve its existing public proof content and privacy boundaries.
-3. Preserve the second full room projection after the discard-handoff step. It is the current freshness boundary for committed or concurrent state changes; do not remove it without a server-owned freshness proof and regression evidence for concurrent GET/POST and once-only handoff behavior.
-4. Keep gameplay rules, response timers, polling recovery/backoff, POST behavior, authorization and viewer-specific data unchanged. Add focused assertions for equal public projections, owner-only private events, retained public roots and opt-in diagnostics. Exact-SHA CI, deployment and production smoke are required; none of them alone proves the 1102 incident is resolved.
 
 ### 10.65 CONCEALED-STEAL-FACE-UNTIL-RETIRE-01 — private real result stays face until full exit (**USER-ACCEPTED / CLOSED 2026-11-18 19:18 UTC**)
 
