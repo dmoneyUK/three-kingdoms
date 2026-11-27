@@ -1374,7 +1374,7 @@ test("real Kirin Bow frames the target's discarded Mount for attacker, target an
       expect(evidence).toMatchObject({
         viewerId, eventId: effectEvent.id, phase: "reveal", revealReadiness: "ready",
         journeyActorId: seedData.players[1].id, frameCount: 1, frameClass: "EFFECT",
-        frameMaterialCardIds: mount.id, frameFaces: [mount.id], frameTitle: "KIRIN BOW · MOUNT EFFECT",
+        frameMaterialCardIds: mount.id, frameFaces: [mount.id], frameTitle: "KIRIN BOW · DISCARD",
         frameVisibility: { display: "block", visibility: "visible", opacity: expect.any(Number) },
         announcementOwner: "PublicCardDisplay",
         announcementEventId: effectEvent.id,

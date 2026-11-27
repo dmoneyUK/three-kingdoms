@@ -52,6 +52,16 @@ test("Frost discard's compact single-line title reduces only its header, not the
   assert.equal(frost.frameHeight, frost.headerHeight + frost.gridHeight + 12);
 });
 
+test("Kirin discard uses the same compact single-line title without changing the real Mount face size", () => {
+  const kirin = publicCardEffectFrameLayout(1, 390, 844, {
+    title: "KIRIN BOW · DISCARD",
+    titlePresentation: "compact-single-line",
+    showMaterialCount: false,
+  });
+  assert.equal(kirin.headerHeight, 28);
+  assert.deepEqual([kirin.frameWidth, kirin.cardWidth, kirin.cardHeight], [168, 90, 135]);
+});
+
 test("the two-card Serpent Spear frame hugs two full-size CardFaces at the approved phone width", () => {
   const layout = publicCardEffectFrameLayout(2, 390, 844, {
     title: "SERPENT SPEAR · AS ATTACK",
