@@ -4,7 +4,7 @@ import { createOpenAIMockDecisionPolicy } from "../ai/openai-decision-transport"
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { seedPlayingGame, type SeedPlayingGameInput } from "./test-playing-game";
-import { BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP, runBotScheduler, runBotStep } from "./bot-driver";
+import { BOT_SCHEDULER_MAX_STEPS_PER_WAKEUP, runBotScheduler, runBotStep, runBotStepOutcome } from "./bot-driver";
 import { runBotSchedulerWake, type BotSchedulerDiagnosticContext, type BotWakeSource } from "./bot-diagnostics";
 import { runBoundedPostWriteBotScheduler } from "./postwrite-bot-scheduler";
 
@@ -84,14 +84,15 @@ const worker = {
       }
     }
     if (url.pathname === "/__test/run-bot-step" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
-      const body = await request.json<{ code?: unknown; botId?: unknown; actionRevision?: unknown; decisionId?: unknown; mockChoiceKind?: unknown }>().catch(() => ({}));
+      const body = await request.json<{ code?: unknown; botId?: unknown; actionRevision?: unknown; decisionId?: unknown; mockChoiceKind?: unknown; compactOutcome?: unknown }>().catch(() => ({}));
       if (typeof body.code !== "string" || typeof body.botId !== "string"
         || body.actionRevision !== undefined && typeof body.actionRevision !== "string"
         || body.decisionId !== undefined && typeof body.decisionId !== "string"
-        || body.mockChoiceKind !== undefined && !BOT_CHOICE_KINDS.includes(body.mockChoiceKind as BotChoiceKind)) {
+        || body.mockChoiceKind !== undefined && !BOT_CHOICE_KINDS.includes(body.mockChoiceKind as BotChoiceKind)
+        || body.compactOutcome !== undefined && typeof body.compactOutcome !== "boolean") {
         return Response.json({ error: "A valid room, bot, and optional revision/decision ID are required." }, { status: 400 });
       }
-      return runBotStep(env.DB, {
+      const stepInput = {
         code: body.code,
         botId: body.botId,
         ...(typeof body.actionRevision === "string" ? { actionRevision: body.actionRevision } : {}),
@@ -111,7 +112,12 @@ const worker = {
               content: [{ type: "output_text", text: JSON.stringify(result) }] }] });
           },
         }) } : {}),
-      });
+      };
+      // This remains behind the existing local test capability gate and only
+      // returns the server-owned compact outcome needed by proof regressions.
+      // It is not a public runtime response mode.
+      if (body.compactOutcome === true) return Response.json(await runBotStepOutcome(env.DB, stepInput));
+      return runBotStep(env.DB, stepInput);
     }
     if (url.pathname === "/__test/run-bot-scheduler" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
       const body = await request.json<{ maxRoomsPerWakeup?: unknown; maxStepsPerWakeup?: unknown; captureDiagnostics?: unknown; captureRuntimeCounters?: unknown; roomCode?: unknown; simulateDispatchError?: unknown }>().catch(() => ({}));

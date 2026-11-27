@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { attachBotExecutionContext, createBotActionPrincipal, createBotExecutionContext, getBotExecutionContext, isBotActionPrincipal } from "../worker/bot-principal.ts";
+import { attachBotExecutionContext, createBotActionPrincipal, createBotExecutionContext, getBotExecutionContext, isBotActionPrincipal, recordBotCommit } from "../worker/bot-principal.ts";
 import { isBotActionOutcome } from "../worker/bot-outcome.ts";
 
 const correlation = {
@@ -58,4 +58,20 @@ test("compact outcomes reject placeholders, private extras, and malformed proof 
   assert.equal(isBotActionOutcome({ ...correlation, kind: "committed", commitProof: proof, privateHand: [{ id: "hidden" }] }), false);
   assert.equal(isBotActionOutcome({ ...correlation, kind: "committed", commitProof: { ...proof, roomId: " " } }), false);
   assert.equal(isBotActionOutcome({ ...correlation, kind: "failed", errorCode: "malformed_result", retryable: true, response: {} }), false);
+});
+
+test("terminal Bot proof cannot be downgraded or replaced by another dispatch", () => {
+  const context = createBotExecutionContext(correlation);
+  const terminal = {
+    source: "canonical_executor",
+    roomId: "room-1",
+    ...correlation,
+    commitKind: "terminal",
+    reference: { kind: "row", id: "room-1" },
+  };
+  recordBotCommit(context, terminal);
+  recordBotCommit(context, { ...terminal, commitKind: "checkpoint", reference: { kind: "checkpoint", id: "later" } });
+  assert.deepEqual(context.commit, terminal);
+  recordBotCommit(context, { ...terminal, decisionId: "other-dispatch" });
+  assert.deepEqual(context.commit, terminal, "an unrelated correlation cannot claim the terminal proof");
 });

@@ -3710,18 +3710,48 @@ function matchVictoryLog(log: string[], outcome: NonNullable<ReturnType<typeof d
   const winner = outcome === "traitor" ? "Traitor victory" : outcome === "rebel" ? "Rebel victory" : "Lord and Loyalist victory";
   return addLog(log, `${winner}! The match is over.`);
 }
+function matchVictoryLogOnce(log: string[], outcome: NonNullable<ReturnType<typeof determineMatchOutcome>>) {
+  const victoryLine = outcome === "traitor" ? "Traitor victory! The match is over." : outcome === "rebel" ? "Rebel victory! The match is over." : "Lord and Loyalist victory! The match is over.";
+  return log.some((entry) => entry === victoryLine || entry.includes(victoryLine)) ? log : matchVictoryLog(log, outcome);
+}
 
 async function finishIfWon(roomId: string, botContext: BotExecutionContext | null = null) {
-  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const outcome = determineMatchOutcome(rows.results ?? []);
-  if (!outcome) return false;
-  const room = await db().prepare("SELECT log_json, discard_json, pending_json FROM rooms WHERE id = ?").bind(roomId).first<{ log_json: string | null; discard_json: string | null; pending_json: string | null }>();
-  const stored = parse<Pending | null>(room?.pending_json ?? null, null);
+  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+  const players = rows.results ?? [];
+  const room = await db().prepare("SELECT id, status, phase, turn_seat, turn_epoch, log_json, discard_json, pending_json FROM rooms WHERE id = ?")
+    .bind(roomId).first<Pick<RoomRow, "id" | "status" | "phase" | "turn_seat" | "turn_epoch" | "log_json" | "discard_json" | "pending_json">>();
+  if (!room) return false;
+  // A competing writer may have completed the same outcome already.  Treat
+  // the fresh durable read as finished, without appending another victory log
+  // or attributing the other writer's terminal proof to this Bot dispatch.
+  if (room.status === "finished") return true;
+  const outcome = determineMatchOutcome(players);
+  if (!outcome || room.status !== "playing") return false;
+  const stored = parse<Pending | null>(room.pending_json ?? null, null);
   const sequence = stored?.kind === "response" || stored?.kind === "dying" ? groupSequenceFromPending(stored) : null;
-  const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room?.discard_json ?? null, []), sequence) : parse<Card[]>(room?.discard_json ?? null, []);
-  const log = matchVictoryLog(parse<string[]>(room?.log_json ?? null, []), outcome);
-  const settled = await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run();
+  const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room.discard_json ?? null, []), sequence) : parse<Card[]>(room.discard_json ?? null, []);
+  const currentLog = parse<string[]>(room.log_json ?? null, []);
+  const log = matchVictoryLogOnce(currentLog, outcome);
+  // Fence the terminal write to the exact outcome-bearing snapshot we read.
+  // This prevents a stale death/recovery continuation from finishing a room
+  // after another action changed the authoritative player or room state.
+  let where = "id = ? AND status = 'playing' AND phase IS ? AND turn_seat IS ? AND turn_epoch = ? AND pending_json IS ? AND log_json IS ? AND discard_json IS ?";
+  const values: unknown[] = [roomId, room.phase, room.turn_seat, room.turn_epoch, room.pending_json, room.log_json, room.discard_json];
+  for (const player of players) {
+    where += " AND EXISTS (SELECT 1 FROM players AS terminal_player WHERE terminal_player.room_id = rooms.id AND terminal_player.id = ? AND terminal_player.role IS ? AND terminal_player.alive = ? AND terminal_player.hp IS ?)";
+    values.push(player.id, player.role, player.alive, player.hp);
+  }
+  const settled = await db().prepare(`UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE ${where}`)
+    .bind(JSON.stringify(discard), JSON.stringify(log), ...values).run();
   if ((settled.meta.changes ?? 0) > 0) recordCanonicalBotCommit(botContext, roomId, "terminal", { kind: "row", id: roomId });
-  return (settled.meta.changes ?? 0) > 0;
+  if ((settled.meta.changes ?? 0) > 0) return true;
+  // A CAS loser must not continue using the obsolete snapshot.  A fresh read
+  // distinguishes a normal competing terminal commit from a changed playing
+  // room; both paths stop this recovery attempt and allow a later canonical
+  // wake/GET to re-evaluate the new state.
+  const latest = await db().prepare("SELECT status, phase FROM rooms WHERE id = ?").bind(roomId).first<{ status: string; phase: string | null }>();
+  if (latest?.status === "finished") return true;
+  return true;
 }
 
 function turnStartContext(player: PlayerRow) {
@@ -4318,9 +4348,9 @@ async function commitTurnBoundary(room: RoomRow, actor: PlayerRow, state: {
       .bind(JSON.stringify(payment.hand), room.id, actor.id, pendingJson)]))[0]
     : await write.run();
   if (!(result.meta.changes ?? 0)) return false;
-  if (checkpoint) await advanceTurnEndCheckpoint(room.id, pendingJson!, botContext);
   recordCanonicalBotCommit(botContext, room.id, checkpoint ? "checkpoint" : "transition",
     checkpoint ? { kind: "checkpoint", id: checkpoint.id } : { kind: "event", id: botEventIdFromCanonicalLog(state.log) ?? "" });
+  if (checkpoint) await advanceTurnEndCheckpoint(room.id, pendingJson!, botContext);
   return true;
 }
 
@@ -4383,7 +4413,7 @@ async function settleTurnEndCheckpoint(room: RoomRow, checkpoint: TurnEndCheckpo
   nextSeat?: number;
   turnStart?: ReturnType<typeof turnStartTransition>;
   envelope?: CausalEnvelope | null;
-}) {
+}, botContext: BotExecutionContext | null = null) {
   const finished = state.phase === "finished";
   const turnSeat = state.nextSeat ?? room.turn_seat;
   const trigger = !finished && endingPlayer && checkpoint.lostHand
@@ -4391,7 +4421,7 @@ async function settleTurnEndCheckpoint(room: RoomRow, checkpoint: TurnEndCheckpo
       phase: state.phase, pending: state.pending as Pending | null, log: state.log, turnSeat,
     }) : null;
   const pending = trigger?.pending ?? state.pending;
-  await db().prepare(`UPDATE rooms SET status = ?, phase = ?, pending_json = ?, log_json = ?, turn_seat = ?,
+  const settled = await db().prepare(`UPDATE rooms SET status = ?, phase = ?, pending_json = ?, log_json = ?, turn_seat = ?,
     turn_epoch = turn_epoch + ?, turn_start_public_sequence = ?, skill_state_json = ?, causal_envelope_json = ?
     WHERE id = ? AND status = 'playing' AND phase = 'resolving' AND turn_seat IS ? AND turn_epoch = ?
       AND pending_json = ? AND log_json IS ?`)
@@ -4401,6 +4431,10 @@ async function settleTurnEndCheckpoint(room: RoomRow, checkpoint: TurnEndCheckpo
       state.turnStart?.skillState ?? room.skill_state_json,
       state.envelope === undefined ? room.causal_envelope_json : state.envelope ? JSON.stringify(state.envelope) : null,
       room.id, room.turn_seat, room.turn_epoch, room.pending_json, room.log_json).run();
+  if (finished && (settled.meta.changes ?? 0) > 0) {
+    recordCanonicalBotCommit(botContext, room.id, "terminal", { kind: "row", id: room.id });
+  }
+  return (settled.meta.changes ?? 0) > 0;
 }
 
 /** Finds turn-end providers, then advances only after the persisted event is exhausted. */
@@ -4440,7 +4474,7 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
       if (checkpoint) {
         await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, {
           phase: "response", pending, log: presentation?.log ?? log, envelope: publicTriggerRoot?.envelope,
-        });
+        }, botContext);
         return;
       }
       await causalRoomStateWrite(room.id, {
@@ -4458,8 +4492,8 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
     const outcome = determineMatchOutcome(players);
     if (outcome) {
       await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, {
-        phase: "finished", pending: null, log: matchVictoryLog(log, outcome),
-      });
+        phase: "finished", pending: null, log: matchVictoryLogOnce(log, outcome),
+      }, botContext);
       return;
     }
   } else if (await finishIfWon(room.id, botContext)) return;
@@ -4492,7 +4526,7 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
     };
     const nextLog = addLog(log, `${endingPlayer?.name ?? "The ending character"}'s turn-end effects finish; the next turn will begin after the public discard handoff.`);
     if (checkpoint) {
-      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, { phase: "resolving", pending, log: nextLog, nextSeat: next });
+      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, { phase: "resolving", pending, log: nextLog, nextSeat: next }, botContext);
       return;
     }
     await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND status = 'playing'")
@@ -4504,7 +4538,7 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
     const player = currentPlayers.find((candidate) => candidate.seat === next && candidate.alive);
     if (player) {
       const turnStart = turnStartTransition(player, nextLog);
-      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, { ...turnStart, nextSeat: next, turnStart });
+      await settleTurnEndCheckpoint(room, checkpoint, endingPlayer, { ...turnStart, nextSeat: next, turnStart }, botContext);
     }
     return;
   }

@@ -67,6 +67,14 @@ export function recordBotOutcome(context: BotExecutionContext, outcome: BotActio
 }
 
 export function recordBotCommit(context: BotExecutionContext, proof: BotCommitProof) {
+  const { correlation } = context;
+  if (proof.decisionId !== correlation.decisionId
+    || proof.actorId !== correlation.actorId
+    || proof.actionRevision !== correlation.actionRevision) return;
+  // A terminal proof is the durable outcome of this dispatch.  Recovery and
+  // nested continuation code may still report a later checkpoint/transition,
+  // but that non-terminal proof must never downgrade the genuine terminal CAS.
+  if (context.commit?.commitKind === "terminal") return;
   context.commit = proof;
 }
 
