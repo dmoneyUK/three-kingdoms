@@ -107,6 +107,49 @@ export function reconcileAutomaticDrawAttempt(attempt, { identity, freshSnapshot
   }
 }
 
+export function isNormalDrawH4Message(event, presentation) {
+  return Boolean(event?.type === "message" && presentation && event.id === presentation.eventId);
+}
+
+export function normalDrawQueuedH4DisplayDuration(event, isQueuedPublicH4, presentation, normalDrawMs, otherMessageMs) {
+  if (!isQueuedPublicH4 || event?.type !== "message") return 0;
+  return isNormalDrawH4Message(event, presentation) ? normalDrawMs : otherMessageMs;
+}
+
+export function normalDrawStageEventId(visible, presentation) {
+  return visible ? presentation?.eventId : undefined;
+}
+
+/** Resolves the already-proven private draw stage without changing its owner or expiry. */
+export function normalDrawPresentationView({
+  state,
+  roomCode,
+  viewerId,
+  activeEventId,
+  queuedEventId,
+  fallbackCards,
+  hasActiveEvent,
+  queuedEventCount,
+  now,
+}) {
+  const cursorEventId = activeEventId ?? queuedEventId ?? "";
+  const scopeMatches = Boolean(state && state.roomCode === roomCode && state.viewerId === viewerId);
+  const cursorMatches = scopeMatches && state.eventId === cursorEventId;
+  const proofStillFresh = Boolean(state
+    && (state.visibleSinceMs !== null || now < state.expiresAtWallMs));
+  const visible = Boolean(scopeMatches && proofStillFresh
+    && (state.visibleSinceMs !== null || cursorMatches));
+  const stageVisible = visible
+    || fallbackCards.length > 0 && !hasActiveEvent && queuedEventCount === 0;
+  return { visible, cards: visible ? state.cards : fallbackCards, stageVisible };
+}
+
+export function normalDrawPrivateCardIds(state, roomCode, viewerId) {
+  return state?.roomCode === roomCode && state.viewerId === viewerId
+    ? state.cards.map((card) => card.id)
+    : [];
+}
+
 /** Links recipient-private physical arrivals to one committed normal Draw H4. */
 export function normalDrawPresentationBatch({ viewerId, transfers, cards, events, publicFacts }) {
   if (typeof viewerId !== "string" || !viewerId || !Array.isArray(transfers)

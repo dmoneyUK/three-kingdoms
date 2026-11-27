@@ -3,8 +3,13 @@ import test from "node:test";
 import {
   beginAutomaticDrawAttempt,
   createAutomaticDrawAttempt,
+  isNormalDrawH4Message,
   normalDrawDecisionIdentity,
+  normalDrawQueuedH4DisplayDuration,
+  normalDrawPresentationView,
   normalDrawPresentationBatch,
+  normalDrawPrivateCardIds,
+  normalDrawStageEventId,
   prepareAutomaticDrawAttempt,
   reconcileAutomaticDrawAttempt,
   sameNormalDrawDecision,
@@ -114,5 +119,43 @@ test("private faces synchronize only with the exact public Draw Phase result and
   assert.equal(normalDrawPresentationBatch({ viewerId: "player-1", transfers: [transfer], cards: [], events: [event], publicFacts: [fact] }), null);
   assert.equal(normalDrawPresentationBatch({ viewerId: "player-1", transfers: [transfer], cards: [card], events: [{ ...event, publicSequence: 15 }], publicFacts: [fact] }), null);
   assert.equal(normalDrawPresentationBatch({ viewerId: "player-1", transfers: [{ ...transfer, initialDeal: true }], cards: [card], events: [event], publicFacts: [fact] }), null);
+});
+
+test("normal Draw stage is scoped to its viewer and committed H4 cursor, then remains visible for its bounded presentation", () => {
+  const state = {
+    roomCode: "ABCDE",
+    viewerId: "player-1",
+    eventId: "draw-event",
+    cards: [{ id: "private-card" }],
+    transferIds: ["private-transfer"],
+    expiresAtWallMs: 5_000,
+    visibleSinceMs: null,
+  };
+  const base = {
+    state, roomCode: "ABCDE", viewerId: "player-1", activeEventId: null,
+    queuedEventId: "draw-event", fallbackCards: [], hasActiveEvent: false,
+    queuedEventCount: 0, now: 1_000,
+  };
+  assert.deepEqual(normalDrawPresentationView(base), {
+    visible: true, cards: state.cards, stageVisible: true,
+  });
+  assert.equal(normalDrawPresentationView({ ...base, queuedEventId: "prior-passive-event" }).visible, false);
+  assert.equal(normalDrawPresentationView({ ...base, viewerId: "player-2" }).visible, false);
+  assert.equal(normalDrawPresentationView({ ...base, now: 5_001 }).visible, false);
+  assert.deepEqual(normalDrawPresentationView({
+    ...base,
+    state: { ...state, visibleSinceMs: 900 },
+    queuedEventId: "later-event",
+    now: 5_001,
+  }), { visible: true, cards: state.cards, stageVisible: true });
+  assert.deepEqual(normalDrawPrivateCardIds(state, "ABCDE", "player-1"), ["private-card"]);
+  assert.deepEqual(normalDrawPrivateCardIds(state, "ABCDE", "player-2"), []);
+  assert.equal(isNormalDrawH4Message({ type: "message", id: "draw-event" }, state), true);
+  assert.equal(isNormalDrawH4Message({ type: "card", id: "draw-event" }, state), false);
+  assert.equal(normalDrawQueuedH4DisplayDuration({ type: "message", id: "draw-event" }, true, state, 3_000, 2_400), 3_000);
+  assert.equal(normalDrawQueuedH4DisplayDuration({ type: "message", id: "other-event" }, true, state, 3_000, 2_400), 2_400);
+  assert.equal(normalDrawQueuedH4DisplayDuration({ type: "message", id: "draw-event" }, false, state, 3_000, 2_400), 0);
+  assert.equal(normalDrawStageEventId(true, state), "draw-event");
+  assert.equal(normalDrawStageEventId(false, state), undefined);
 });
 
