@@ -1,7 +1,8 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import { publicCorridorWidth } from "./public-corridor";
+import { tableLocalPublicCorridorWidth } from "./public-corridor";
+import { publicStageRectFromTableLocal, publicStageRectToTableLocal } from "../game/public-stage-layout";
 import type { PublicActivityStatus } from "../game/public-activity";
 import { VerifiedPlayerCopy } from "./verified-player-copy";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
@@ -11,6 +12,7 @@ import {
   canRetainPublicStageLayout,
   publicStageLayoutCandidateMatchesElement,
   sharedPublicStageMatchesElement,
+  publicStageCoordinateSpaceForTable,
   usePublicStageLayout,
   type SharedPublicStageLayout,
 } from "./public-stage-layout-context";
@@ -125,19 +127,50 @@ function visibleRect(element: HTMLElement): DOMRect | null {
   return rect.width > 0 && rect.height > 0 ? rect : null;
 }
 
+function toTableLocalRect(table: HTMLElement, rect: Pick<DOMRect, "left" | "top" | "right" | "bottom">): Rect | null {
+  const space = publicStageCoordinateSpaceForTable(table);
+  const local = space ? publicStageRectToTableLocal(rect, space) : null;
+  return local ? {
+    left: local.left,
+    top: local.top,
+    right: local.right,
+    bottom: local.bottom,
+    width: local.right - local.left,
+    height: local.bottom - local.top,
+  } : null;
+}
+
+function toClientRect(table: HTMLElement, rect: Rect): Rect | null {
+  const space = publicStageCoordinateSpaceForTable(table);
+  const client = space ? publicStageRectFromTableLocal(rect, space) : null;
+  return client ? {
+    left: client.left,
+    top: client.top,
+    right: client.right,
+    bottom: client.bottom,
+    width: client.right - client.left,
+    height: client.bottom - client.top,
+  } : null;
+}
+
+function tableContentBounds(table: HTMLElement): Rect {
+  return {
+    left: 0,
+    top: 0,
+    right: table.clientWidth,
+    bottom: table.clientHeight,
+    width: table.clientWidth,
+    height: table.clientHeight,
+  };
+}
+
 function protectedRects(table: HTMLElement): ProtectedRect[] {
   const tableRect = table.getBoundingClientRect();
   const elements = [...document.querySelectorAll<HTMLElement>(SAFE_OBSTACLES)];
   const rectsByGeometry = new Map<string, ProtectedRect>();
-  const add = (rect: Rect, source: string) => {
-    const normalized: Rect = {
-      left: rect.left,
-      top: rect.top,
-      right: rect.right,
-      bottom: rect.bottom,
-      width: rect.width,
-      height: rect.height,
-    };
+  const add = (rect: Rect, source: string, alreadyLocal = false) => {
+    const normalized: Rect | null = alreadyLocal ? rect : toTableLocalRect(table, rect);
+    if (!normalized) return;
     const rounded = (value: number) => Math.round(value * 2) / 2;
     const key = [normalized.left, normalized.top, normalized.right, normalized.bottom].map(rounded).join(":");
     const id = `${source}@${key}`;
@@ -157,7 +190,8 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
     if (passiveReveal) continue;
     const rect = visibleRect(element);
     const parked = element.closest<HTMLElement>('[data-public-card-journey-phase="parked"]');
-    const parkedRect = parked ? visibleRect(parked) : null;
+    const parkedRectClient = parked ? visibleRect(parked) : null;
+    const parkedRect = parkedRectClient ? toTableLocalRect(table, parkedRectClient) : null;
     const parkedThumbnail = Boolean(parkedRect && parkedRect.width <= 70 && parkedRect.height <= 110);
     if (!parkedThumbnail && rect && rect.right > tableRect.left && rect.left < tableRect.right
       && rect.bottom > tableRect.top && rect.top < tableRect.bottom) {
@@ -173,10 +207,14 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
       width: Number(element.dataset.publicCardJourneyTargetWidth),
       height: Number(element.dataset.publicCardJourneyTargetHeight),
     };
-    if (Object.values(target).every(Number.isFinite) && target.width > 0 && target.height > 0
-      && (target.width > 70 || target.height > 110)) {
+    const projected = Object.values(target).every(Number.isFinite) && target.width > 0 && target.height > 0
+      ? toTableLocalRect(table, {
+        left: target.left, top: target.top,
+        right: target.left + target.width, bottom: target.top + target.height,
+      }) : null;
+    if (projected && (projected.width > 70 || projected.height > 110)) {
       const classNames = typeof element.className === "string" ? element.className.trim().replace(/\s+/g, ".") : "";
-      add({ ...target, right: target.left + target.width, bottom: target.top + target.height }, `projected-final:${element.tagName.toLowerCase()}${classNames ? `.${classNames}` : ""}`);
+      add(projected, `projected-final:${element.tagName.toLowerCase()}${classNames ? `.${classNames}` : ""}`, true);
     }
   }
   return [...rectsByGeometry.values()];
@@ -211,20 +249,17 @@ function sameActivityScene(left: ActivitySceneIdentity | null | undefined, right
 }
 
 function safeCurrentActivityRect(table: HTMLElement, activity: Rect): boolean {
-  const tableRect = table.getBoundingClientRect();
   const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-  const consoleRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
+  const consoleClientRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
+  const consoleRect = consoleClientRect ? toTableLocalRect(table, consoleClientRect) : null;
   if (!consoleRect) return false;
-  const viewportLeft = Math.max(0, window.visualViewport?.offsetLeft ?? 0);
-  const viewportTop = Math.max(0, window.visualViewport?.offsetTop ?? 0);
-  const viewportRight = Math.min(window.innerWidth, viewportLeft + (window.visualViewport?.width ?? window.innerWidth));
-  const viewportBottom = Math.min(window.innerHeight, viewportTop + (window.visualViewport?.height ?? window.innerHeight));
-  const leftBound = Math.max(tableRect.left + 8, viewportLeft + 8);
-  const rightBound = Math.min(tableRect.right - 8, viewportRight - 8);
-  const topBound = Math.max(tableRect.top + 8, viewportTop + 8);
+  const tableBounds = tableContentBounds(table);
+  const leftBound = tableBounds.left + 8;
+  const rightBound = tableBounds.right - 8;
+  const topBound = tableBounds.top + 8;
   const gapAboveConsole = consoleRect.top - activity.bottom;
   if (activity.left < leftBound || activity.right > rightBound || activity.top < topBound
-    || activity.bottom > viewportBottom || gapAboveConsole < -1 || gapAboveConsole > 8) return false;
+    || activity.bottom > tableBounds.bottom || gapAboveConsole < -1 || gapAboveConsole > 8) return false;
   return protectedRects(table).every((obstacle) => !intersects(activity, obstacle, 0));
 }
 
@@ -258,13 +293,13 @@ function placeChip(
   seatLayoutKey: string,
   previousMemory: PlacementMemory | null,
 ): PlacementMemory {
-  const tableRect = table.getBoundingClientRect();
+  const tableRect = tableContentBounds(table);
   const activeFullRevealCards = [...table.querySelectorAll<HTMLElement>(
     '.public-card-journey-card[data-public-card-journey-phase="reveal"][data-public-card-journey-size="reveal"]',
   )].filter((card) => {
     const style = window.getComputedStyle(card);
-    const rect = card.getBoundingClientRect();
-    return style.display !== "none" && style.visibility !== "hidden" && rect.width >= 70 && rect.height >= 110;
+    const rect = toTableLocalRect(table, card.getBoundingClientRect());
+    return style.display !== "none" && style.visibility !== "hidden" && Boolean(rect && rect.width >= 70 && rect.height >= 110);
   });
   const activeRevealKey = activeFullRevealCards.map((card) =>
     `${card.dataset.publicCardJourneyEventId ?? ""}:${card.dataset.publicCardJourneyCardId ?? ""}`,
@@ -275,27 +310,25 @@ function placeChip(
   let compact = hasActiveFullReveal && previousMemory?.compact === true && previousMemory.activeRevealKey === activeRevealKey;
   if (compact) chip.dataset.publicActivityCompact = "true";
   else delete chip.dataset.publicActivityCompact;
-  const visualViewport = window.visualViewport;
   const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-  const consoleRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
-  const viewportTop = Math.max(0, visualViewport?.offsetTop ?? 0);
-  const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
-  const leftBound = Math.max(tableRect.left + 8, 8);
-  const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
-  const upperBandTop = Math.max(tableRect.top + 8, viewportTop + 8);
-  const lowerBandTop = Math.max(tableRect.top + tableRect.height * 0.58, viewportTop + 8);
+  const consoleClientRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
+  const consoleRect = consoleClientRect ? toTableLocalRect(table, consoleClientRect) : null;
+  const leftBound = tableRect.left + 8;
+  const rightBound = tableRect.right - 8;
+  const upperBandTop = tableRect.top + 8;
+  const lowerBandTop = Math.max(tableRect.top + tableRect.height * 0.58, upperBandTop);
   // Every standalone PAC shares the measured Local Console top edge. Longer
   // copy grows upward; it never moves away from this seam to avoid an obstacle.
-  const fixedLowerEdge = fixedLowerActivityEdge(tableRect.bottom, viewportBottom, consoleRect?.top);
+  const fixedLowerEdge = fixedLowerActivityEdge(tableRect.bottom, tableRect.bottom, consoleRect?.top);
   const bottom = fixedLowerEdge;
   const fixedBand = {
-    top: Math.max(tableRect.top + 8, viewportTop + 8, fixedLowerEdge - 112),
+    top: Math.max(tableRect.top + 8, fixedLowerEdge - 112),
     bottom: fixedLowerEdge,
   };
   const fixedWidth = Math.min(340, Math.max(0, rightBound - leftBound));
   chip.style.width = `${fixedLowerCenter
     ? fixedWidth
-    : publicCorridorWidth(table, { top: lowerBandTop, bottom }, 340, { reserveTimer: false })}px`;
+    : tableLocalPublicCorridorWidth(table, { top: lowerBandTop, bottom }, 340, { reserveTimer: false })}px`;
   const width = chip.offsetWidth;
   let height = chip.offsetHeight;
   const placementBottom = fixedLowerEdge;
@@ -316,7 +349,6 @@ function placeChip(
     : obstacles.filter((obstacle) => intersects(obstacle, candidateRegion, collisionGap));
   const placementContext = {
     table: rectSummary(tableRect),
-    viewport: { width: window.innerWidth, height: window.innerHeight, top: viewportTop, bottom: viewportBottom },
     chip: { width, height },
     statusKind,
     statusStage: statusStage ?? null,
@@ -369,8 +401,9 @@ function placeChip(
     }
     : null;
   const finishTrace = (outcome: string, chosen?: Record<string, unknown>, reason = outcome): PlacementMemory => {
-    const visible = Boolean(visibleRect(chip));
-    const chosenRect = rectSummary(visibleRect(chip));
+    const visibleClientRect = visibleRect(chip);
+    const visible = Boolean(visibleClientRect);
+    const chosenRect = rectSummary(visibleClientRect ? toTableLocalRect(table, visibleClientRect) : null);
     const chosenCollisionIds = chosenRect
       ? obstacles.filter((obstacle) => intersects(chosenRect, obstacle, collisionGap)).flatMap(({ ids }) => ids).sort()
       : [];
@@ -430,8 +463,9 @@ function placeChip(
     return finishTrace("hidden:missing-console-anchor", undefined, "missing-console-anchor");
   }
 
-  const currentRect = rectSummary(visibleRect(chip));
-  const currentMinTop = Math.max(tableRect.top + 8, viewportTop + 8);
+  const currentClientRect = visibleRect(chip);
+  const currentRect = rectSummary(currentClientRect ? toTableLocalRect(table, currentClientRect) : null);
+  const currentMinTop = tableRect.top + 8;
   const currentIsSafe = currentRect && currentRect.left >= leftBound && currentRect.right <= rightBound
     && currentRect.top >= currentMinTop && currentRect.bottom <= placementBottom
     && !obstacles.some((obstacle) => intersects(currentRect, obstacle, collisionGap));
@@ -456,8 +490,8 @@ function placeChip(
     const blockers = obstacles.filter((obstacle) => intersects(rect, obstacle, ACTIVITY_CHIP_GAP));
     const outOfBounds = rect.left < leftBound || rect.right > rightBound
       || rect.top < fixedBand.top || rect.bottom > bottom;
-    chip.style.left = `${rect.left - tableRect.left}px`;
-    chip.style.top = `${rect.top - tableRect.top}px`;
+    chip.style.left = `${rect.left}px`;
+    chip.style.top = `${rect.top}px`;
     chip.style.visibility = "visible";
     chip.dataset.publicActivityLayout = blockers.length || outOfBounds ? "fixed-lower-center-overlap" : "fixed-lower-center";
     chip.dataset.publicActivityPlacementBlockers = [
@@ -535,8 +569,8 @@ function placeChip(
     };
     if (trace && trace.candidates.length < 64) trace.candidates.push(candidateRecord);
     if (collisions.length > 0) continue;
-    chip.style.left = `${candidate.left - tableRect.left}px`;
-    chip.style.top = `${candidate.top - tableRect.top}px`;
+    chip.style.left = `${candidate.left}px`;
+    chip.style.top = `${candidate.top}px`;
     chip.style.visibility = "visible";
     chip.dataset.publicActivityLayout = `${top < lowerBandTop ? "upper-band" : verticalStep === 0 ? "bottom" : "lower-band"}-${horizontalOffset === 0 ? "center" : horizontalOffset < 0 ? "left" : "right"}`;
     return finishTrace("placed", candidateRecord, horizontalOffset === 0
@@ -605,11 +639,15 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
             && canRetainPublicStageLayout(currentTable, retained.shared)
             ? retained.shared : null;
         if (currentChip && currentTable && chosenSharedStage) {
-          const tableRect = currentTable.getBoundingClientRect();
           const activityRect = chosenSharedStage.layout.activity;
-          currentChip.style.width = `${activityRect.right - activityRect.left}px`;
-          currentChip.style.left = `${activityRect.left - tableRect.left}px`;
-          currentChip.style.top = `${activityRect.top - tableRect.top}px`;
+          const activityLocal = toTableLocalRect(currentTable, activityRect);
+          if (!activityLocal) {
+            currentChip.style.visibility = "hidden";
+            return;
+          }
+          currentChip.style.width = `${activityLocal.width}px`;
+          currentChip.style.left = `${activityLocal.left}px`;
+          currentChip.style.top = `${activityLocal.top}px`;
           currentChip.style.visibility = "visible";
           currentChip.dataset.publicActivityLayout = `shared-${chosenSharedStage.layout.scene.phase.toLowerCase()}`;
           currentChip.dataset.publicStageLayoutIdentity = chosenSharedStage.layout.identity;
@@ -640,27 +678,30 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
           // seam only while the same room/viewer/card scene remains proven
           // and the actual H4, Seats and controls leave it safe.
           if (retainedMatchesCurrentScene && retained && currentTable) {
-            const tableRect = currentTable.getBoundingClientRect();
-            const oldActivity = retained.shared.layout.activity;
-            const safeLeft = Math.max(tableRect.left + 8, window.visualViewport?.offsetLeft ?? 0);
-            const safeRight = Math.min(tableRect.right - 8,
-              (window.visualViewport?.offsetLeft ?? 0) + (window.visualViewport?.width ?? window.innerWidth));
-            const width = Math.min(oldActivity.right - oldActivity.left, safeRight - safeLeft);
+            const oldActivity = toTableLocalRect(currentTable, retained.shared.layout.activity);
+            const safeLeft = 8;
+            const safeRight = currentTable.clientWidth - 8;
+            const width = Math.min(oldActivity?.width ?? 0, safeRight - safeLeft);
             const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-            const consoleTop = consoleGuidance?.getBoundingClientRect().top;
-            const height = currentChip.getBoundingClientRect().height || oldActivity.bottom - oldActivity.top;
+            const consoleClientRect = consoleGuidance ? visibleRect(consoleGuidance) : null;
+            const consoleRect = consoleClientRect ? toTableLocalRect(currentTable, consoleClientRect) : null;
+            const consoleTop = consoleRect?.top;
+            const height = currentChip.offsetHeight || oldActivity?.height || 0;
             if (Number.isFinite(consoleTop) && width > 0 && height > 0) {
-              const left = Math.max(safeLeft, Math.min((tableRect.left + tableRect.right - width) / 2, safeRight - width));
-              const activity = {
+              const left = Math.max(safeLeft, Math.min((safeLeft + safeRight - width) / 2, safeRight - width));
+              const activityLocal = {
                 left,
                 right: left + width,
                 top: consoleTop! - height,
                 bottom: consoleTop!,
+                width,
+                height,
               };
-              if (canPlaceRetainedPublicActivity(currentTable, retained.shared, activity)) {
+              const activityClient = toClientRect(currentTable, activityLocal);
+              if (activityClient && canPlaceRetainedPublicActivity(currentTable, retained.shared, activityClient)) {
                 currentChip.style.width = `${width}px`;
-                currentChip.style.left = `${left - tableRect.left}px`;
-                currentChip.style.top = `${activity.top - tableRect.top}px`;
+                currentChip.style.left = `${activityLocal.left}px`;
+                currentChip.style.top = `${activityLocal.top}px`;
                 currentChip.style.visibility = "visible";
                 currentChip.dataset.publicActivityLayout = "shared-safe-reflow";
                 currentChip.dataset.publicStageLayoutIdentity = retained.shared.layout.identity;
@@ -668,7 +709,7 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
                   ...retained,
                   shared: {
                     ...retained.shared,
-                    layout: { ...retained.shared.layout, activity },
+                  layout: { ...retained.shared.layout, activity: activityClient },
                   },
                 };
                 delete currentChip.dataset.publicActivityPlacementBlockers;
@@ -714,10 +755,9 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
             // React may briefly restore the JSX default visibility while a
             // shared generation is being remeasured. Reapply the prior safe
             // geometry for the current public copy after the collision proof.
-            const tableRect = currentTable.getBoundingClientRect();
             currentChip.style.width = `${priorPlacement.rect.width}px`;
-            currentChip.style.left = `${priorPlacement.rect.left - tableRect.left}px`;
-            currentChip.style.top = `${priorPlacement.rect.top - tableRect.top}px`;
+            currentChip.style.left = `${priorPlacement.rect.left}px`;
+            currentChip.style.top = `${priorPlacement.rect.top}px`;
             currentChip.style.visibility = "visible";
             currentChip.dataset.publicActivityLayout = "shared-pending-safe-retained";
             delete currentChip.dataset.publicStageLayoutIdentity;
@@ -819,8 +859,6 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
     resizeObserver?.observe(chip);
     for (const obstacle of externalObstacles) resizeObserver?.observe(obstacle);
     if (harvestPanel) resizeObserver?.observe(harvestPanel);
-    window.addEventListener("resize", schedule);
-    window.visualViewport?.addEventListener("resize", schedule);
     schedule();
 
     return () => {
@@ -828,8 +866,6 @@ export function PublicActivityChip({ status, roomId, viewerId, seatLayoutKey, ha
       mutationObserver.disconnect();
       harvestLayoutObserver?.disconnect();
       resizeObserver?.disconnect();
-      window.removeEventListener("resize", schedule);
-      window.visualViewport?.removeEventListener("resize", schedule);
     };
   }, [harvestPoolReadOnly, roomId, statusIdentity, status.kind, status.stage, status.text, stableLowerCenter, viewerId, seatLayoutKey, sharedPublicStage]);
 

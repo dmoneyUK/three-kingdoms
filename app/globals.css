@@ -1265,8 +1265,9 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 
 /* Proof-backed public card journeys reveal at the battlefield centre, then
    park at the event author's real Seat or Dock. */
-.public-card-display-journey{position:fixed!important;inset:0;z-index:34;display:block;width:auto;max-width:none;height:auto;margin:0;padding:0;translate:none;border:0;background:transparent;box-shadow:none;overflow:visible;pointer-events:none}
-.public-card-journey-card{position:fixed;z-index:1;display:block;flex:none;margin:0;padding:0;border:0;border-radius:8px;transform:none;opacity:1;transition:left var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),top var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),width var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),height var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),opacity .18s ease,filter .18s ease;pointer-events:none}
+.public-card-display-journey{position:absolute!important;inset:0;z-index:34;display:block;width:100%;max-width:none;height:100%;margin:0;padding:0;translate:none;border:0;background:transparent;box-shadow:none;overflow:visible;pointer-events:none}
+.public-card-journey-card{position:absolute;z-index:1;display:block;flex:none;margin:0;padding:0;border:0;border-radius:8px;transform:none;opacity:1;transition:left var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),top var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),width var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),height var(--public-card-journey-move-duration,.38s) cubic-bezier(.2,.7,.2,1),opacity .18s ease,filter .18s ease;pointer-events:none}
+.public-card-journey-card[data-public-card-journey-phase="move"],.public-card-journey-card[data-public-card-journey-phase="parked"]{position:fixed}
 .public-card-duel-physical-group{position:absolute;inset:0;display:block;pointer-events:none}
 .public-card-duel-physical-face{position:absolute;top:0;width:100%;height:100%;transform:translateX(-50%);pointer-events:none}
 .public-card-duel-physical-face>.played-card{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;padding:7px 4px;animation:none;border-radius:7px;box-shadow:0 0 0 1px #d4b46f99,0 8px 20px #000c}
@@ -1327,7 +1328,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-deflection::before{content:"";position:absolute;z-index:0;left:50%;top:-17px;width:calc(100% + 12px);min-width:66px;height:calc(100% + 21px);transform:translateX(-50%);box-sizing:border-box;border:1px solid #d9c17f88;border-radius:3px;background:#18191333;pointer-events:none}
 .public-card-journey-card.is-deflection>.played-card{position:relative;z-index:1}
 .public-card-journey-card.is-deflection .public-card-journey-semantic{left:50%;right:auto;top:-14px;bottom:auto;transform:translateX(-50%);padding:2px 4px;background:#181913;color:#f5dda1;font-size:7px;letter-spacing:.06em}
-.public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:38;box-sizing:border-box;width:min(calc(100vw - 16px),520px);max-width:520px;min-height:28px;margin:0;padding:5px 9px;translate:none;border:1px solid #d9c17f88;background:#11140fdb;box-shadow:0 4px 12px #0008,inset 0 0 0 1px #d9c17f33;text-align:center;pointer-events:none}
+.public-card-display-journey-copy{position:absolute;left:0;top:0;z-index:38;box-sizing:border-box;width:min(calc(100% - 16px),520px);max-width:520px;min-height:28px;margin:0;padding:5px 9px;translate:none;border:1px solid #d9c17f88;background:#11140fdb;box-shadow:0 4px 12px #0008,inset 0 0 0 1px #d9c17f33;text-align:center;pointer-events:none}
 .public-card-display.public-skill-event-announcement{display:contents}
 .public-skill-event-announcement>.public-card-display-journey-copy{z-index:38}
 .public-skill-event-announcement.is-exiting>.public-card-display-journey-copy{opacity:0;transition:opacity .16s ease}

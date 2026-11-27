@@ -1,5 +1,79 @@
 export type PublicStageRect = { left: number; top: number; right: number; bottom: number };
 export type PublicStageSize = { width: number; height: number };
+export type PublicStageTableCoordinateSpace = {
+  originLeft: number;
+  originTop: number;
+  borderLeft: number;
+  borderTop: number;
+  scaleX: number;
+  scaleY: number;
+};
+
+/** Convert one client-space measurement to the .play-table padding-box space. */
+export function publicStageRectToTableLocal(
+  rect: PublicStageRect,
+  space: PublicStageTableCoordinateSpace,
+): PublicStageRect | null {
+  if (!finiteRect(rect) || !validTableCoordinateSpace(space)) return null;
+  const left = (rect.left - space.originLeft) / space.scaleX - space.borderLeft;
+  const top = (rect.top - space.originTop) / space.scaleY - space.borderTop;
+  const right = (rect.right - space.originLeft) / space.scaleX - space.borderLeft;
+  const bottom = (rect.bottom - space.originTop) / space.scaleY - space.borderTop;
+  const local = { left, top, right, bottom };
+  return finiteRect(local) ? local : null;
+}
+
+/** Convert one .play-table-local measurement back to client space. */
+export function publicStageRectFromTableLocal(
+  rect: PublicStageRect,
+  space: PublicStageTableCoordinateSpace,
+): PublicStageRect | null {
+  if (!finiteRect(rect) || !validTableCoordinateSpace(space)) return null;
+  const left = space.originLeft + (rect.left + space.borderLeft) * space.scaleX;
+  const top = space.originTop + (rect.top + space.borderTop) * space.scaleY;
+  const right = space.originLeft + (rect.right + space.borderLeft) * space.scaleX;
+  const bottom = space.originTop + (rect.bottom + space.borderTop) * space.scaleY;
+  const client = { left, top, right, bottom };
+  return finiteRect(client) ? client : null;
+}
+
+export function publicStageCoordinateToTableLocal(
+  value: number,
+  axis: "x" | "y",
+  space: PublicStageTableCoordinateSpace,
+): number | null {
+  if (!Number.isFinite(value) || !validTableCoordinateSpace(space)) return null;
+  return axis === "x"
+    ? (value - space.originLeft) / space.scaleX - space.borderLeft
+    : (value - space.originTop) / space.scaleY - space.borderTop;
+}
+
+export function publicStageCoordinateFromTableLocal(
+  value: number,
+  axis: "x" | "y",
+  space: PublicStageTableCoordinateSpace,
+): number | null {
+  if (!Number.isFinite(value) || !validTableCoordinateSpace(space)) return null;
+  return axis === "x"
+    ? space.originLeft + (value + space.borderLeft) * space.scaleX
+    : space.originTop + (value + space.borderTop) * space.scaleY;
+}
+
+export function publicStageLengthToTableLocal(
+  value: number,
+  axis: "x" | "y",
+  space: PublicStageTableCoordinateSpace,
+): number | null {
+  if (!Number.isFinite(value) || value <= 0 || !validTableCoordinateSpace(space)) return null;
+  return value / (axis === "x" ? space.scaleX : space.scaleY);
+}
+
+function validTableCoordinateSpace(space: PublicStageTableCoordinateSpace): boolean {
+  return [space.originLeft, space.originTop, space.borderLeft, space.borderTop, space.scaleX, space.scaleY]
+    .every(Number.isFinite) && space.borderLeft >= 0 && space.borderTop >= 0
+    && space.scaleX > 0 && space.scaleY > 0;
+}
+
 export type PublicStagePhase = "REVEAL" | "MOVE" | "PARKED";
 export type PublicStageStationarySurface = "card" | "effect-frame";
 export type PublicStageH4Geometry = {

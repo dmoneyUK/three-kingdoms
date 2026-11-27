@@ -1,3 +1,5 @@
+import { publicStageRectToTableLocal, type PublicStageTableCoordinateSpace } from "../game/public-stage-layout";
+
 type HorizontalRect = { left: number; right: number; width: number };
 type VerticalBand = { top: number; bottom: number };
 type MeasuredRect = HorizontalRect & VerticalBand;
@@ -54,6 +56,48 @@ export function publicCorridorWidth(
   const right = safeRight - (Number.isFinite(inset) ? inset : 14);
   const clusterRect = cluster?.getBoundingClientRect();
   const reserved = clusterRect && clusterRect.height > 0
+    ? { left: right - timerMaxWidth, right, width: timerMaxWidth, top: clusterRect.top, bottom: clusterRect.bottom }
+    : null;
+  return measuredPublicCorridorWidth(bounds, sides, reserved, cap, band);
+}
+/** Measure the same corridor in the CSS coordinate space used by absolute
+ * children of .play-table. Client viewport translation and scale therefore
+ * cannot change a public label's local width or placement identity. */
+export function tableLocalPublicCorridorWidth(
+  table: HTMLElement,
+  band: VerticalBand,
+  cap = 340,
+  options: PublicCorridorOptions = {},
+): number {
+  const tableRect = table.getBoundingClientRect();
+  const space: PublicStageTableCoordinateSpace = {
+    originLeft: tableRect.left,
+    originTop: tableRect.top,
+    borderLeft: table.clientLeft,
+    borderTop: table.clientTop,
+    scaleX: table.offsetWidth > 0 ? tableRect.width / table.offsetWidth : 0,
+    scaleY: table.offsetHeight > 0 ? tableRect.height / table.offsetHeight : 0,
+  };
+  const localRect = (element: Element) => {
+    const rect = element.getBoundingClientRect();
+    return publicStageRectToTableLocal(rect, space);
+  };
+  const bounds = { left: 0, right: table.clientWidth, width: table.clientWidth };
+  const sides = [...table.querySelectorAll<HTMLElement>('[data-side-column="left"], [data-side-column="right"]')]
+    .filter((side) => getComputedStyle(side).visibility !== "hidden")
+    .flatMap((side) => {
+      const rect = localRect(side);
+      return rect ? [{ left: rect.left, right: rect.right, width: rect.right - rect.left, top: rect.top, bottom: rect.bottom }] : [];
+    }).filter((rect) => rect.width > 0 && rect.bottom > rect.top);
+  if (options.reserveTimer === false) return measuredPublicCorridorWidth(bounds, sides, null, cap, band);
+  const safeZone = table.querySelector<HTMLElement>(":scope > .interaction-safe-zone");
+  const cluster = safeZone?.querySelector<HTMLElement>(":scope > .stage-system-cluster");
+  const safeRight = safeZone ? localRect(safeZone)?.right ?? bounds.right : bounds.right;
+  const inset = cluster ? Number.parseFloat(getComputedStyle(cluster).right) : 14;
+  const timerMaxWidth = 68;
+  const right = safeRight - (Number.isFinite(inset) ? inset : 14);
+  const clusterRect = cluster ? localRect(cluster) : null;
+  const reserved = clusterRect && clusterRect.bottom > clusterRect.top
     ? { left: right - timerMaxWidth, right, width: timerMaxWidth, top: clusterRect.top, bottom: clusterRect.bottom }
     : null;
   return measuredPublicCorridorWidth(bounds, sides, reserved, cap, band);

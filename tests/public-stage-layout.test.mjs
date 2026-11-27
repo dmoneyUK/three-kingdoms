@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicEffectFrameLanePreferredTop, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicEffectFrameLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -36,6 +36,34 @@ function h4Geometry(left, top, width, reserveHeight, paintHeight = reserveHeight
     overlapPolicy: "PASSIVE_REVEAL_FOREGROUND",
   };
 }
+
+test("table-local H4, PAC and CardFace coordinates stay fixed when the visible viewport changes", () => {
+  const stationaryPublicElements = {
+    h4: { left: 24, top: 40, right: 342, bottom: 96 },
+    pac: { left: 38, top: 520, right: 352, bottom: 574 },
+    cardFace: { left: 150, top: 278, right: 240, bottom: 413 },
+  };
+  const spaces = [
+    { originLeft: 12, originTop: 28, borderLeft: 2, borderTop: 3, scaleX: 1, scaleY: 1 },
+    { originLeft: -90, originTop: 140, borderLeft: 2, borderTop: 3, scaleX: 1.5, scaleY: 1.5 },
+    { originLeft: 260, originTop: -35, borderLeft: 2, borderTop: 3, scaleX: 0.8, scaleY: 0.8 },
+  ];
+  for (const space of spaces) {
+    for (const [owner, tableLocal] of Object.entries(stationaryPublicElements)) {
+      const client = publicStageRectFromTableLocal(tableLocal, space);
+      assert.ok(client, `${owner} projects into client coordinates`);
+      const roundTrip = publicStageRectToTableLocal(client, space);
+      assert.ok(roundTrip, `${owner} round-trips into table coordinates`);
+      for (const edge of ["left", "top", "right", "bottom"]) {
+        assert.ok(Math.abs(roundTrip[edge] - tableLocal[edge]) < 1e-8, `${owner} keeps ${edge} at its table anchor`);
+      }
+    }
+    assert.ok(Math.abs(publicStageCoordinateToTableLocal(
+      publicStageCoordinateFromTableLocal(stationaryPublicElements.h4.left, "x", space), "x", space,
+    ) - stationaryPublicElements.h4.left) < 1e-8);
+  }
+  assert.equal(publicStageLengthToTableLocal(180, "y", spaces[1]), 120);
+});
 
 test("public stage identity is scoped to proven event, physical card, viewer, phase and generation", () => {
   const identity = publicStageSceneIdentity(scene);

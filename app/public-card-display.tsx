@@ -10,7 +10,7 @@ import {
 } from "../game/public-h4-copy";
 import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, measuredPublicH4PaintRect, parkedCardSize } from "./public-upper-anchor";
 
-import { publicCorridorWidth } from "./public-corridor";
+import { tableLocalPublicCorridorWidth } from "./public-corridor";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Card, CardKind } from "../game/model";
@@ -24,9 +24,14 @@ import {
   publicEffectFrameLanePreferredTop,
   positionLabeledCardAboveBand,
   publicStageEffectFrameRevealTargetMatches,
+  publicStageCoordinateFromTableLocal,
   publicStageJourneyPhaseReady,
   publicStageJourneyTargetReady,
   publicStagePrimaryOriginFromVisualRect,
+  publicStageRectToTableLocal,
+  publicStageRectFromTableLocal,
+  publicStageCoordinateToTableLocal,
+  publicStageLengthToTableLocal,
   publicStageRevealCanRetire,
   publicStageSceneMatchesCard,
   type PublicStageStationarySurface,
@@ -42,6 +47,8 @@ import {
   publicStageLayoutCandidateMatchesElement,
   sharedPublicStageMatchesElement,
   publicEffectFrameVisualFootprint,
+  publicStageCoordinateSpaceForTable,
+  usePublicStageCoordinates,
   usePublicStageLayout,
   type SharedPublicStageLayout,
 } from "./public-stage-layout-context";
@@ -514,6 +521,7 @@ function PublicJourneyCard({
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const sharedPublicStage = usePublicStageLayout();
+  const coordinateSpace = usePublicStageCoordinates();
   const sharesCurrentStageIdentity = Boolean(sharedPublicStage && primary && !visualPlacementUnavailable
     && sharedStageIdentity
     && publicStageSceneMatchesCard(sharedPublicStage.layout.scene, {
@@ -529,17 +537,31 @@ function PublicJourneyCard({
   const journeyTop = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.top - sharedPublicStage.primaryOffset.top
     : card.rect.top;
+  const tableLocalCardRect = coordinateSpace ? publicStageRectToTableLocal({
+    left: journeyLeft,
+    top: journeyTop,
+    right: journeyLeft + card.rect.width,
+    bottom: journeyTop + card.rect.height,
+  }, coordinateSpace) : null;
+  const usesTableLocalPosition = card.phase === "reveal";
+  const localCardRect = usesTableLocalPosition ? tableLocalCardRect : null;
   const placementUnavailable = visualPlacementUnavailable
     || !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const sharedRevealReadinessPending = Boolean(primary && card.phase === "reveal" && sharedStageIdentity
     && (!sharesCurrentStageIdentity || !sharedPublicStage?.revealReady));
-  const positionUnavailable = placementUnavailable || sharedRevealReadinessPending;
+  const positionUnavailable = placementUnavailable || sharedRevealReadinessPending
+    || usesTableLocalPosition && !localCardRect;
   const inspectable = !positionUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !positionUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
   const frameMaterials = publicCardEffectFrame?.materials ?? [];
   const frameLayout = publicCardEffectFrame && typeof window !== "undefined"
     ? publicCardEffectFrameLayout(frameMaterials.length, window.innerWidth, window.innerHeight, publicCardEffectFrame)
     : null;
+  // publicCardEffectFrameLayout returns CSS dimensions, already in the same
+  // local coordinate space as the positioned CardFace. Only measured DOMRects
+  // are converted through the table scale; dividing these values again would
+  // shrink the authored Frame geometry under a transformed ancestor.
+  const renderedFrameLayout = frameLayout;
   const physicalCards = card.cardFaces ?? [card.cardFace];
   const definition = cardDefinition(card.cardFace.kind);
   const groupDescription = physicalCards.map((face) => {
@@ -602,15 +624,15 @@ function PublicJourneyCard({
     data-public-card-inspectable={inspectable ? "true" : "false"}
     data-public-card-copy-anchor-event-id={card.eventId}
     style={{
-      left: journeyLeft,
-      top: journeyTop,
-      width: card.rect.width,
-      height: card.rect.height,
+      left: localCardRect?.left ?? journeyLeft,
+      top: localCardRect?.top ?? journeyTop,
+      width: localCardRect ? localCardRect.right - localCardRect.left : card.rect.width,
+      height: localCardRect ? localCardRect.bottom - localCardRect.top : card.rect.height,
       ["--public-card-journey-move-duration"]: `${Math.max(0, Math.round(card.moveRemainingMs ?? MOVE_DURATION_MS))}ms`,
       ...(positionUnavailable ? { visibility: "hidden", pointerEvents: "none" } : {}),
     } as CSSProperties}
   >
-    {publicCardEffectFrame && frameLayout && card.phase !== "parked" && <span
+    {publicCardEffectFrame && renderedFrameLayout && card.phase !== "parked" && <span
       className={`public-card-effect-frame-panel public-card-lust-cost-frame-panel${card.phase === "move" ? " is-moving" : ""}`}
       aria-hidden="true"
       data-public-card-frame-kind={publicCardEffectFrame.effectId === "diao_chan_lust" ? "DIAO_CHAN_LUST_COST" : publicCardEffectFrame.effectClass}
@@ -625,12 +647,12 @@ function PublicJourneyCard({
       data-public-card-frame-root-event-id={publicCardEffectFrame.rootEventId}
       data-public-card-frame-root-resolution-id={publicCardEffectFrame.rootResolutionId}
       style={{
-        left: -frameLayout.cardOffsetLeft,
-        top: -frameLayout.cardOffsetTop,
-        width: frameLayout.frameWidth,
-        height: frameLayout.frameHeight,
-        transform: `scale(${card.rect.width / REVEAL_CARD.width})`,
-        transformOrigin: `${frameLayout.cardOffsetLeft}px ${frameLayout.cardOffsetTop}px`,
+        left: -renderedFrameLayout.cardOffsetLeft,
+        top: -renderedFrameLayout.cardOffsetTop,
+        width: renderedFrameLayout.frameWidth,
+        height: renderedFrameLayout.frameHeight,
+        transform: `scale(${(localCardRect ? localCardRect.right - localCardRect.left : card.rect.width) / REVEAL_CARD.width})`,
+        transformOrigin: `${renderedFrameLayout.cardOffsetLeft}px ${renderedFrameLayout.cardOffsetTop}px`,
         opacity: card.phase === "move" ? 0 : 1,
       }}
     >
@@ -638,15 +660,16 @@ function PublicJourneyCard({
       <PublicCardEffectFrameMaterialCount frame={publicCardEffectFrame} materialCount={frameMaterials.length} />
       <span
         className="public-card-effect-frame-materials"
-        data-public-card-frame-grid-columns={frameLayout.columns}
+        data-public-card-frame-grid-columns={renderedFrameLayout.columns}
         style={{
-          left: frameLayout.cardOffsetLeft,
-          top: frameLayout.cardOffsetTop,
-          width: frameLayout.gridWidth,
-          height: frameLayout.gridHeight,
-          gridTemplateColumns: `repeat(${frameLayout.columns}, minmax(0, 1fr))`,
-          gridAutoRows: frameLayout.cardHeight,
-          gap: frameLayout.gap,
+          left: renderedFrameLayout.cardOffsetLeft,
+          top: renderedFrameLayout.cardOffsetTop,
+          width: renderedFrameLayout.gridWidth,
+          height: renderedFrameLayout.gridHeight,
+          gridTemplateColumns: `repeat(${renderedFrameLayout.columns}, minmax(0, 1fr))`,
+          gridAutoRows: renderedFrameLayout.cardHeight,
+          columnGap: renderedFrameLayout.gap,
+          rowGap: renderedFrameLayout.gap,
         }}
       >
         {frameMaterials.map(({ card: face, ownerId }, index) => <span
@@ -796,15 +819,10 @@ function battlefieldCenterCard(
     : boundCardRect((window.innerWidth - size.width) / 2, (window.innerHeight - size.height) / 2, size.width, size.height);
   const bounds = table.getBoundingClientRect();
   if (safety.fixedPublicBands || safety.respectFixedUpperH4) {
-    const viewport = window.visualViewport;
-    const viewportLeft = viewport?.offsetLeft ?? 0;
-    const viewportTop = viewport?.offsetTop ?? 0;
-    const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth);
-    const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
-    const safeLeft = Math.max(8, bounds.left + 8, viewportLeft + 8);
-    const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8, viewportRight - 8);
-    const safeTop = Math.max(8, bounds.top + 8, viewportTop + 8);
-    const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
+    const safeLeft = bounds.left + 8;
+    const safeRight = bounds.right - 8;
+    const safeTop = bounds.top + 8;
+    const safeBottom = bounds.bottom - 8;
     if (safeRight - safeLeft < size.width) return null;
     const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
     const fixedFrameLaneTop = safety.stationarySurface === "effect-frame"
@@ -902,11 +920,6 @@ function singleTargetBattlefieldRevealCard(size: { width: number; height: number
   const table = document.querySelector<HTMLElement>(".play-table");
   if (!table) return null;
   const tableRect = table.getBoundingClientRect();
-  const visualViewport = window.visualViewport;
-  const viewportTop = visualViewport?.offsetTop ?? 0;
-  const viewportLeft = visualViewport?.offsetLeft ?? 0;
-  const viewportRight = viewportLeft + (visualViewport?.width ?? window.innerWidth);
-  const viewportBottom = Math.min(window.innerHeight, viewportTop + (visualViewport?.height ?? window.innerHeight));
   const visibleSeats = [...table.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")]
     .flatMap((seat) => {
       const rect = seat.getBoundingClientRect();
@@ -928,7 +941,7 @@ function singleTargetBattlefieldRevealCard(size: { width: number; height: number
     : tableRect.bottom;
   const candidate = centerRevealCardInSafeBattlefield({
     table: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom },
-    viewport: { left: viewportLeft, top: viewportTop, right: viewportRight, bottom: viewportBottom },
+    viewport: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom },
     size,
     topSeatBottom,
     leftSideSeatRights,
@@ -1149,12 +1162,11 @@ function hasPaintedLargePublicEffectFrame(
   const layoutCard = shared.layout.card;
   const announcementStyle = window.getComputedStyle(announcement);
   const announcementPaint = measuredPublicH4PaintRect(announcement);
-  const visibleViewport = window.visualViewport;
-  const viewportLeft = visibleViewport?.offsetLeft ?? 0;
-  const viewportTop = visibleViewport?.offsetTop ?? 0;
-  const viewportRight = viewportLeft + (visibleViewport?.width ?? window.innerWidth);
-  const viewportBottom = viewportTop + (visibleViewport?.height ?? window.innerHeight);
   const tableRect = table.getBoundingClientRect();
+  const tableCoordinates = publicStageCoordinateSpaceForTable(table);
+  const localPrimaryRect = tableCoordinates ? publicStageRectToTableLocal({
+    left: primaryRect.left, top: primaryRect.top, right: primaryRect.right, bottom: primaryRect.bottom,
+  }, tableCoordinates) : null;
   const withinOnePixel = (left: number, right: number) => Math.abs(left - right) <= 1;
   const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
   if (!consoleGuidance) return fail("missing-console-boundary");
@@ -1170,17 +1182,17 @@ function hasPaintedLargePublicEffectFrame(
   if (!announcement.isConnected || announcement.getClientRects().length === 0
     || announcementStyle.display === "none" || announcementStyle.visibility === "hidden"
     || Number(announcementStyle.opacity) <= 0 || !announcementPaint) return fail("matching-h4-not-paint-enabled");
-  if (!withinOnePixel(primaryRect.width, REVEAL_CARD.width) || !withinOnePixel(primaryRect.height, REVEAL_CARD.height)) {
+  if (!localPrimaryRect
+    || !withinOnePixel(localPrimaryRect.right - localPrimaryRect.left, REVEAL_CARD.width)
+    || !withinOnePixel(localPrimaryRect.bottom - localPrimaryRect.top, REVEAL_CARD.height)) {
     return fail("card-face-size-mismatch");
   }
   if (!withinOnePixel(visualRect.left, layoutCard.left) || !withinOnePixel(visualRect.top, layoutCard.top)
     || !withinOnePixel(visualRect.right, layoutCard.right) || !withinOnePixel(visualRect.bottom, layoutCard.bottom)) {
     return fail("frame-not-at-canonical-anchor");
   }
-  if (visualRect.left < Math.max(viewportLeft, tableRect.left)
-    || visualRect.right > Math.min(viewportRight, tableRect.right)
-    || visualRect.top < Math.max(viewportTop, tableRect.top)
-    || visualRect.bottom > Math.min(viewportBottom, tableRect.bottom, consoleTop)) return fail("frame-outside-safe-scene");
+  if (visualRect.left < tableRect.left || visualRect.right > tableRect.right
+    || visualRect.top < tableRect.top || visualRect.bottom > Math.min(tableRect.bottom, consoleTop)) return fail("frame-outside-safe-scene");
   return true;
 }
 
@@ -1202,14 +1214,20 @@ function hasPaintedLargePublicCard(
     && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element, onFailure));
   const face = element?.querySelector<HTMLElement>(".played-card");
   const rect = element?.getBoundingClientRect();
+  const table = element?.closest<HTMLElement>(".play-table");
+  const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+  const localRect = rect && coordinates ? publicStageRectToTableLocal({
+    left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+  }, coordinates) : null;
   const elementStyle = element ? window.getComputedStyle(element) : null;
   const faceStyle = face ? window.getComputedStyle(face) : null;
   const painted = Boolean(element && face && rect && elementStyle && faceStyle
     && element.isConnected && element.getClientRects().length > 0
     && elementStyle.display !== "none" && elementStyle.visibility !== "hidden" && Number(elementStyle.opacity) > 0
     && faceStyle.display !== "none" && faceStyle.visibility !== "hidden" && Number(faceStyle.opacity) > 0
-    && Math.abs(rect.width - size.width) < 1 && Math.abs(rect.height - size.height) < 1
-    && rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight);
+    && Boolean(localRect)
+    && Math.abs((localRect?.right ?? 0) - (localRect?.left ?? 0) - size.width) < 1
+    && Math.abs((localRect?.bottom ?? 0) - (localRect?.top ?? 0) - size.height) < 1);
   if (!painted) onFailure?.("card-face-not-paint-enabled");
   return painted;
 }
@@ -1239,10 +1257,7 @@ function observeUntilPublicCardFirstPaint(table: HTMLElement | null, check: () =
     mutationObserver?.disconnect();
     resizeObserver?.disconnect();
     window.removeEventListener("resize", schedule);
-    window.removeEventListener("scroll", schedule, true);
     document.removeEventListener("visibilitychange", onVisibilityChange);
-    window.visualViewport?.removeEventListener("resize", schedule);
-    window.visualViewport?.removeEventListener("scroll", schedule);
   };
   const runCheck = () => {
     scheduled = false;
@@ -1277,10 +1292,7 @@ function observeUntilPublicCardFirstPaint(table: HTMLElement | null, check: () =
   observeCurrentNodes();
   mutationObserver?.observe(table!, { attributes: true, childList: true, subtree: true, characterData: true });
   window.addEventListener("resize", schedule);
-  window.addEventListener("scroll", schedule, true);
   document.addEventListener("visibilitychange", onVisibilityChange);
-  window.visualViewport?.addEventListener("resize", schedule);
-  window.visualViewport?.addEventListener("scroll", schedule);
   schedule();
   return stop;
 }
@@ -3102,6 +3114,26 @@ function PublicCardAnnouncement({
     let placementFailureTimer: number | null = null;
     let revealAnchorFollowTimer: number | null = null;
     let currentGeometryIdentity = "";
+    let currentTableCoordinates: ReturnType<typeof publicStageCoordinateSpaceForTable> = null;
+    const clientCardRectToTableLocal = (rect: CardRect): CardRect | null => {
+      if (!currentTableCoordinates) return null;
+      const local = publicStageRectToTableLocal({
+        left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height,
+      }, currentTableCoordinates);
+      return local ? { left: local.left, top: local.top, width: local.right - local.left, height: local.bottom - local.top } : null;
+    };
+    const tableLocalCardRectToClient = (rect: CardRect): CardRect | null => {
+      if (!currentTableCoordinates) return null;
+      const client = publicStageRectFromTableLocal({
+        left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height,
+      }, currentTableCoordinates);
+      return client ? { left: client.left, top: client.top, width: client.right - client.left, height: client.bottom - client.top } : null;
+    };
+    const lastValidPlacementInClientSpace = () => {
+      const placement = lastValidPlacementRef.current;
+      const rect = placement ? tableLocalCardRectToClient(placement) : null;
+      return placement && rect ? { ...placement, ...rect } : null;
+    };
     const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : []), ...(protectFirstParkedMiniature ? ['.public-card-journey-card[data-public-card-journey-phase="parked"]'] : [])].join(", ");
     const setData = (name: string, value: string | undefined) => {
       const current = copy.getAttribute(name);
@@ -3118,8 +3150,15 @@ function PublicCardAnnouncement({
       setData("data-public-card-announcement-delivery", stage);
     };
     const setPx = (property: "left" | "top" | "width", value: number) => {
+      const table = display.closest<HTMLElement>(".play-table");
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      const localValue = coordinates ? property === "width"
+        ? publicStageLengthToTableLocal(value, "x", coordinates)
+        : publicStageCoordinateToTableLocal(value, property === "left" ? "x" : "y", coordinates)
+        : null;
+      if (localValue === null) return;
       const current = Number.parseFloat(copy.style[property]);
-      if (!Number.isFinite(current) || Math.abs(current - value) > 1) copy.style[property] = `${value}px`;
+      if (!Number.isFinite(current) || Math.abs(current - localValue) > 1) copy.style[property] = `${localValue}px`;
     };
     const commitDisplayedCopy = (next: DisplayedPublicCardAnnouncement) => {
       const previous = displayedCopyRef.current!;
@@ -3160,7 +3199,7 @@ function PublicCardAnnouncement({
     };
 
     const retainLastValidPlacement = (layoutEpoch: string) => {
-      const previous = lastValidPlacementRef.current;
+      const previous = lastValidPlacementInClientSpace();
       const sustainedFailure = notePlacementFailure(layoutEpoch);
       if (sustainedFailure || !previous || previous.geometryIdentity !== currentGeometryIdentity
         || previous.layoutEpoch !== layoutEpoch) return false;
@@ -3237,8 +3276,11 @@ function PublicCardAnnouncement({
         setData("data-public-card-announcement-positioned", "true");
         const sharedUpper = sharedTable ? fixedUpperHistoryAnnouncementAnchor(sharedTable) : null;
         const matchesUpper = sharedUpper && Math.abs(sharedUpper.top - rect.top) <= 0.5;
+        const sharedCoordinates = sharedTable ? publicStageCoordinateSpaceForTable(sharedTable) : null;
+        const sharedUpperLocalTop = matchesUpper && sharedCoordinates
+          ? publicStageCoordinateToTableLocal(rect.top, "y", sharedCoordinates) : null;
         setData("data-public-card-announcement-fixed-upper", matchesUpper ? "true" : undefined);
-        setData("data-public-card-announcement-fixed-upper-top", matchesUpper ? `${Math.round(rect.top * 2) / 2}` : undefined);
+        setData("data-public-card-announcement-fixed-upper-top", sharedUpperLocalTop === null ? undefined : `${Math.round(sharedUpperLocalTop * 2) / 2}`);
         setData("data-public-card-announcement-width", `${Math.round(rect.right - rect.left)}`);
         const text = copy.querySelector("b");
         if (text) {
@@ -3276,16 +3318,13 @@ function PublicCardAnnouncement({
         // same-event shared card geometry is being measured. Passive card/H4
         // intersections and parked-slot reservations never suppress copy.
         const tableBounds = sharedTable.getBoundingClientRect();
-        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
-        const viewportTop = window.visualViewport?.offsetTop ?? 0;
-        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
         const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
         const band = fixedPublicH4Band(sharedTable);
-        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
-        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const safeLeft = tableBounds.left + 8;
+        const safeRight = tableBounds.right - 8;
         const width = Math.max(1, Math.min(band?.width ?? tableBounds.width - 16, safeRight - safeLeft));
         const left = band && width >= band.width - 1 ? band.left : (safeLeft + safeRight - width) / 2;
-        const top = upper?.top ?? band?.top ?? Math.max(tableBounds.top + 8, viewportTop + 8);
+        const top = upper?.top ?? band?.top ?? tableBounds.top + 8;
         setPx("left", left);
         setPx("top", top);
         setPx("width", width);
@@ -3293,7 +3332,9 @@ function PublicCardAnnouncement({
         setData("data-public-stage-layout-identity", undefined);
         setData("data-public-card-announcement-positioned", "true");
         setData("data-public-card-announcement-fixed-upper", "true");
-        setData("data-public-card-announcement-fixed-upper-top", `${Math.round(top * 2) / 2}`);
+        const sharedCoordinates = publicStageCoordinateSpaceForTable(sharedTable);
+        const topLocal = sharedCoordinates ? publicStageCoordinateToTableLocal(top, "y", sharedCoordinates) : null;
+        setData("data-public-card-announcement-fixed-upper-top", topLocal === null ? undefined : `${Math.round(topLocal * 2) / 2}`);
         setData("data-public-card-announcement-width", `${Math.round(width)}`);
         setData("data-public-card-announcement-placement", "independent-upper-anchor-shared-pending");
         setData("data-public-card-announcement-stability", "canonical-anchor-during-shared-measurement");
@@ -3312,10 +3353,8 @@ function PublicCardAnnouncement({
         // upper anchor, the current real card and every visible control.
         const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
         const tableBounds = sharedTable.getBoundingClientRect();
-        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
-        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
-        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
-        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const safeLeft = tableBounds.left + 8;
+        const safeRight = tableBounds.right - 8;
         const width = Math.min(copy.getBoundingClientRect().width, safeRight - safeLeft);
         if (upper && width > 0) {
           setPx("left", (safeLeft + safeRight - width) / 2);
@@ -3329,18 +3368,17 @@ function PublicCardAnnouncement({
             return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && other.width > 0 && other.height > 0
               && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
           };
-          const tableBottom = Math.min(tableBounds.bottom, (window.visualViewport?.offsetTop ?? 0)
-            + (window.visualViewport?.height ?? window.innerHeight));
+          const tableBottom = tableBounds.bottom;
           const consoleTop = document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableBottom;
-          const viewportTop = window.visualViewport?.offsetTop ?? 0;
-          const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
-          const safePaint = rect.top >= viewportTop && rect.bottom <= Math.min(tableBottom, consoleTop, viewportBottom)
+          const safePaint = rect.top >= tableBounds.top && rect.bottom <= Math.min(tableBottom, consoleTop)
             && upper.slots.every(({ rect: slot }) => rect.right <= slot.left || rect.left >= slot.left + slot.width
               || rect.bottom <= slot.top || rect.top >= slot.top + slot.height);
           if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safePaint && !controls.some(collision)) {
             setData("data-public-card-announcement-positioned", "true");
             setData("data-public-card-announcement-fixed-upper", "true");
-            setData("data-public-card-announcement-fixed-upper-top", `${Math.round(upper.top * 2) / 2}`);
+            const tableCoordinates = publicStageCoordinateSpaceForTable(sharedTable);
+            const topLocal = tableCoordinates ? publicStageCoordinateToTableLocal(upper.top, "y", tableCoordinates) : null;
+            setData("data-public-card-announcement-fixed-upper-top", topLocal === null ? undefined : `${Math.round(topLocal * 2) / 2}`);
             setData("data-public-card-announcement-width", `${Math.round(rect.width)}`);
             setData("data-public-card-announcement-placement", "measured-upper-reflow");
             setDelivery("VISIBLE", currentEventCopyKey);
@@ -3376,8 +3414,10 @@ function PublicCardAnnouncement({
       setData("data-public-card-announcement-placement", undefined);
       const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
-      const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
-      if (!tableRect) {
+      const table = display.closest<HTMLElement>(".play-table");
+      const tableRect = table?.getBoundingClientRect() ?? null;
+      const tableCoordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      if (!table || !tableRect || !tableCoordinates) {
         if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
         reportH4Placement({
@@ -3386,26 +3426,24 @@ function PublicCardAnnouncement({
         });
         return;
       }
-      const table = display.closest<HTMLElement>(".play-table")!;
+      currentTableCoordinates = tableCoordinates;
+      const localRect = (rect: { left: number; top: number; right: number; bottom: number }) =>
+        publicStageRectToTableLocal(rect, tableCoordinates) ?? rect;
+      const localTableRect = localRect(tableRect);
       const upperHistoryAnchor = fixedUpperHistoryAnnouncementAnchor(table);
       const fixedUpperTop = upperHistoryAnchor?.top ?? null;
+      const fixedUpperLocalTop = fixedUpperTop === null
+        ? null : publicStageCoordinateToTableLocal(fixedUpperTop, "y", tableCoordinates);
       setData("data-public-card-announcement-fixed-upper", fixedUpperTop === null ? undefined : "true");
-      setData("data-public-card-announcement-fixed-upper-top", fixedUpperTop === null ? undefined : `${Math.round(fixedUpperTop * 2) / 2}`);
+      setData("data-public-card-announcement-fixed-upper-top", fixedUpperLocalTop === null ? undefined : `${Math.round(fixedUpperLocalTop * 2) / 2}`);
       // An announcement band and its measured centre card belong to the
       // viewer's current battlefield geometry. Reuse them across semantic
       // checkpoints only while that geometry remains materially unchanged.
       // A phone resize can shorten the battlefield by 100px while the old
       // centre remains barely inside safeBottom; keeping that band would hide
       // the next two-line public result behind the Local Player Dock.
-      const layoutEpoch = [tableRect.left, tableRect.top, tableRect.width, tableRect.height]
-        .map((value) => Math.round(value / 24) * 24)
-        .join(":");
-      const visualViewport = window.visualViewport;
+      const layoutEpoch = `${Math.round(tableRect.width / tableCoordinates.scaleX)}:${Math.round(tableRect.height / tableCoordinates.scaleY)}`;
       const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-      const viewportLeft = visualViewport?.offsetLeft ?? 0;
-      const viewportTop = visualViewport?.offsetTop ?? 0;
-      const viewportRight = viewportLeft + (visualViewport?.width ?? viewportWidth);
-      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
       const geometryNumber = (value: number) => Math.round(value * 2) / 2;
       const shell = display.closest<HTMLElement>(".game-shell") ?? document;
       const playerAnchorGeometry: PublicAnnouncementSeatGeometry[] = [...shell.querySelectorAll<HTMLElement>("[data-player-anchor]")]
@@ -3415,10 +3453,13 @@ function PublicCardAnnouncement({
           if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
           return [{
             anchorId: element.dataset.playerAnchor ?? "",
-            rect: {
-              left: geometryNumber(rect.left), top: geometryNumber(rect.top),
-              right: geometryNumber(rect.right), bottom: geometryNumber(rect.bottom),
-            },
+            rect: (() => {
+              const local = localRect(rect);
+              return {
+                left: geometryNumber(local.left), top: geometryNumber(local.top),
+                right: geometryNumber(local.right), bottom: geometryNumber(local.bottom),
+              };
+            })(),
           }];
         })
         .sort((left, right) => left.anchorId.localeCompare(right.anchorId)
@@ -3444,34 +3485,30 @@ function PublicCardAnnouncement({
         const rect = slot.rect;
         obstacles.push({ element: slot.element, rect: new DOMRect(rect.left, rect.top, rect.width, rect.height) });
       }
-      const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => ({
-        kind: element?.className?.toString() ?? "journey-target",
-        identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
-        rect: {
-          left: geometryNumber(rect.left), top: geometryNumber(rect.top),
-          right: geometryNumber(rect.right), bottom: geometryNumber(rect.bottom),
-        },
-      })).sort((left, right) => left.kind.localeCompare(right.kind)
+      const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => {
+        const local = localRect(rect);
+        return {
+          kind: element?.className?.toString() ?? "journey-target",
+          identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
+          rect: {
+            left: geometryNumber(local.left), top: geometryNumber(local.top),
+            right: geometryNumber(local.right), bottom: geometryNumber(local.bottom),
+          },
+        };
+      }).sort((left, right) => left.kind.localeCompare(right.kind)
         || left.identity.localeCompare(right.identity)
         || left.rect.left - right.rect.left || left.rect.top - right.rect.top);
       const actualObstacleIds = protectedGeometry.map(({ kind, identity }) => identity ? `${kind}:${identity}` : kind).sort();
-      const anchorGeometry = actualRect && actualRect.width > 0 && actualRect.height > 0
-        ? {
-          left: geometryNumber(actualRect.left), top: geometryNumber(actualRect.top),
-          right: geometryNumber(actualRect.right), bottom: geometryNumber(actualRect.bottom),
-        }
-        : null;
+      const anchorLocalRect = actualRect && actualRect.width > 0 && actualRect.height > 0 ? localRect(actualRect) : null;
+      const anchorGeometry = anchorLocalRect ? {
+        left: geometryNumber(anchorLocalRect.left), top: geometryNumber(anchorLocalRect.top),
+        right: geometryNumber(anchorLocalRect.right), bottom: geometryNumber(anchorLocalRect.bottom),
+      } : null;
       currentGeometryIdentity = publicAnnouncementGeometryIdentity({
         viewerKey: geometryKey,
         layoutRevision: `${viewerLayoutKey}:${layoutEpoch}`,
-        viewport: {
-          left: geometryNumber(viewportLeft), top: geometryNumber(viewportTop),
-          right: geometryNumber(viewportRight), bottom: geometryNumber(viewportBottom),
-        },
-        table: {
-          left: geometryNumber(tableRect.left), top: geometryNumber(tableRect.top),
-          right: geometryNumber(tableRect.right), bottom: geometryNumber(tableRect.bottom),
-        },
+        viewport: localTableRect,
+        table: localTableRect,
         seats: playerAnchorGeometry,
         anchor: anchorGeometry,
         protectedRects: protectedGeometry,
@@ -3482,12 +3519,12 @@ function PublicCardAnnouncement({
       const bandKey = `${publicAnnouncementGeometryIdentity({
         viewerKey: geometryKey,
         layoutRevision: `${viewerLayoutKey}:${layoutEpoch}`,
-        viewport: { left: geometryNumber(viewportLeft), top: geometryNumber(viewportTop), right: geometryNumber(viewportRight), bottom: geometryNumber(viewportBottom) },
-        table: { left: geometryNumber(tableRect.left), top: geometryNumber(tableRect.top), right: geometryNumber(tableRect.right), bottom: geometryNumber(tableRect.bottom) },
+        viewport: localTableRect,
+        table: localTableRect,
         seats: playerAnchorGeometry,
         anchor: null,
         protectedRects: [],
-      })}:${stableHarvestAnchor ? "harvest" : "public"}${fixedUpperTop === null ? "" : `:upper-${Math.round(fixedUpperTop * 2) / 2}`}`;
+      })}:${stableHarvestAnchor ? "harvest" : "public"}${fixedUpperLocalTop === null ? "" : `:upper-${Math.round(fixedUpperLocalTop * 2) / 2}`}`;
       const geometryEpoch = `${layoutEpoch}:${publicAnnouncementTraceHash(currentGeometryIdentity)}`;
       if (!viewerGeometryReady && fixedUpperTop === null) {
         if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
@@ -3503,7 +3540,7 @@ function PublicCardAnnouncement({
         const retained = retainLastValidPlacement(layoutEpoch);
         if (!retained && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         setDelivery(retained ? "VISIBLE" : "PENDING_PLACEMENT", currentEventCopyKey);
-        const previous = lastValidPlacementRef.current;
+        const previous = lastValidPlacementInClientSpace();
         reportH4Placement({
           geometryEpoch, obstacleIds: actualObstacleIds, decision: retained ? "reuse" : "hide",
           reason: retained ? "journey-layout-pending; retained-same-geometry-placement-until-layout-settles"
@@ -3514,19 +3551,34 @@ function PublicCardAnnouncement({
         });
         return;
       }
-      const safeLeft = Math.max(viewportLeft + 8, tableRect.left + 8);
-      const safeRight = Math.min(viewportRight - 8, tableRect.right - 8);
-      const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8);
-      const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
+      const safeLeft = tableRect.left + 8;
+      const safeRight = tableRect.right - 8;
+      const safeTop = tableRect.top + 8;
+      const safeBottom = Math.min(tableRect.bottom - 8,
+        document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableRect.bottom);
       const terminalLustResult = outcome === "LUST_DUEL_DAMAGE_APPLIED" || outcome === "LUST_DUEL_DAMAGE_PREVENTED";
       const lustDisplayAllowsNameWrapping = display.dataset.publicCardMotion === "lust-cost"
         || display.dataset.publicCardMotion === "lust-duel";
       const mobileLustFrame = !terminalLustResult && lustDisplayAllowsNameWrapping && viewportWidth <= 480;
-      const compactMobileLustFrame = mobileLustFrame && viewportBottom - viewportTop <= 860;
+      const compactMobileLustFrame = mobileLustFrame && (document.documentElement.clientHeight || window.innerHeight) <= 860;
       const availableAnnouncementWidth = mobileLustFrame
         ? Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, viewportWidth - 16)
         : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
-      const existingBand = fixedUpperTop === null ? publicCardAnnouncementBands.get(bandKey) : undefined;
+      const cachedBand = fixedUpperTop === null ? publicCardAnnouncementBands.get(bandKey) : undefined;
+      const existingBandPosition = cachedBand ? tableLocalCardRectToClient({
+        left: cachedBand.left, top: cachedBand.top, width: cachedBand.width, height: 1,
+      }) : null;
+      const existingBand = cachedBand && existingBandPosition
+        ? {
+          ...cachedBand,
+          left: existingBandPosition.left,
+          top: existingBandPosition.top,
+          width: existingBandPosition.width,
+          centerX: publicStageCoordinateFromTableLocal(cachedBand.centerX, "x", tableCoordinates) ?? existingBandPosition.left + existingBandPosition.width / 2,
+          centerY: publicStageCoordinateFromTableLocal(cachedBand.centerY, "y", tableCoordinates) ?? existingBandPosition.top,
+          centerCardRect: tableLocalCardRectToClient(cachedBand.centerCardRect) ?? cachedBand.centerCardRect,
+        }
+        : undefined;
       const defaultCenterY = stableHarvestAnchor
         ? tableRect.top + tableRect.height * 0.3
         : tableRect.top + tableRect.height * 0.45;
@@ -3537,11 +3589,17 @@ function PublicCardAnnouncement({
       // Reserve one fixed H4 stage band so text length and countdown mounting
       // cannot alter its width or horizontal center.
       const h4CorridorBand = { top: stableCenterY - 64, bottom: stableCenterY + 64 };
+      const h4CorridorTopLocal = publicStageCoordinateToTableLocal(h4CorridorBand.top, "y", tableCoordinates);
+      const h4CorridorBottomLocal = publicStageCoordinateToTableLocal(h4CorridorBand.bottom, "y", tableCoordinates);
+      const corridorWidth = h4CorridorTopLocal !== null && h4CorridorBottomLocal !== null
+        ? tableLocalPublicCorridorWidth(table, { top: h4CorridorTopLocal, bottom: h4CorridorBottomLocal })
+        : Math.max(1, table.clientWidth - 16);
+      const localSafeWidth = (safeRight - safeLeft) / tableCoordinates.scaleX;
       const maxWidth = Math.max(1, Math.min(
-        publicCorridorWidth(table, h4CorridorBand),
+        corridorWidth,
         availableAnnouncementWidth,
-        publicH4WidthLimit(viewportWidth, publicCorridorWidth(table, h4CorridorBand), safeRight - safeLeft),
-        safeRight - safeLeft,
+        publicH4WidthLimit(viewportWidth, corridorWidth, localSafeWidth),
+        localSafeWidth,
       ));
       const harvestPool = stableHarvestAnchor
         ? display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null
@@ -3553,8 +3611,13 @@ function PublicCardAnnouncement({
       let centerCardRect = stableHarvestAnchor
         ? stableHarvestPoolRect
         : isLargeRevealAnchor ? toCardRect(actualRect) : null;
-      if (centerCardRect) measuredCenterRef.current = { bandKey, rect: centerCardRect };
-      if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) centerCardRect = measuredCenterRef.current.rect;
+      if (centerCardRect) {
+        const localCenter = clientCardRectToTableLocal(centerCardRect);
+        if (localCenter) measuredCenterRef.current = { bandKey, rect: localCenter };
+      }
+      if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) {
+        centerCardRect = tableLocalCardRectToClient(measuredCenterRef.current.rect);
+      }
       if (!centerCardRect && currentFallbackCardRect) centerCardRect = currentFallbackCardRect;
       if (!centerCardRect) {
         centerCardRect = {
@@ -3601,7 +3664,7 @@ function PublicCardAnnouncement({
         : null;
       const staysAbovePrivateDraw = (top: number, height: number) => !privateDrawObstacle
         || top + height + 10 <= privateDrawObstacle.rect.top;
-      const previousPlacement = lastValidPlacementRef.current;
+      const previousPlacement = lastValidPlacementInClientSpace();
       const sameCopyAndGeometry = previousPlacement?.eventCopyKey === eventCopyKey
         && previousPlacement.copySignature === copySignature
         && previousPlacement.geometryIdentity === currentGeometryIdentity
@@ -3819,13 +3882,9 @@ function PublicCardAnnouncement({
         }
       }
 
-      const previousCopyRect = lastValidPlacementRef.current
-        ? new DOMRect(
-          lastValidPlacementRef.current.left,
-          lastValidPlacementRef.current.top,
-          lastValidPlacementRef.current.width,
-          lastValidPlacementRef.current.height,
-        )
+      const previousCopy = lastValidPlacementInClientSpace();
+      const previousCopyRect = previousCopy
+        ? new DOMRect(previousCopy.left, previousCopy.top, previousCopy.width, previousCopy.height)
         : null;
       const priorBandOverlapsProtectedCenter = keepCenterAnchorClear && (
         Boolean(existingBandRect && rectsOverlap(existingBandRect, centerCardRect, gap))
@@ -3973,7 +4032,7 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        const previous = lastValidPlacementRef.current;
+        const previous = lastValidPlacementInClientSpace();
         if (previous?.geometryIdentity === currentGeometryIdentity) setPx("width", previous.width);
         const retained = retainLastValidPlacement(layoutEpoch);
         if (!retained && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
@@ -4014,16 +4073,30 @@ function PublicCardAnnouncement({
       setPx("left", selected.left);
       setPx("top", selected.top);
       setPx("width", selected.width);
-      rememberPublicCardAnnouncementBand(bandKey, {
-        left: selected.left,
-        top: selected.top,
-        width: selected.width,
-        centerX: hasNegationNarration && placementBand ? placementBand.centerX : selected.left + selected.width / 2,
-        centerY: fixedUpperTop !== null ? selected.top + selected.height / 2
-          : hasNegationNarration && placementBand ? placementBand.centerY : selected.top + selected.height / 2,
-        centerCardRect,
-        verticalMode,
+      const selectedLocal = clientCardRectToTableLocal({
+        left: selected.left, top: selected.top, width: selected.width, height: selected.height,
       });
+      const centerCardLocal = clientCardRectToTableLocal(centerCardRect);
+      if (selectedLocal && centerCardLocal) {
+        const localCenterX = hasNegationNarration && placementBand
+          ? publicStageCoordinateToTableLocal(placementBand.centerX, "x", tableCoordinates)
+          : selectedLocal.left + selectedLocal.width / 2;
+        const localCenterY = fixedUpperTop !== null ? selectedLocal.top + selectedLocal.height / 2
+          : hasNegationNarration && placementBand
+            ? publicStageCoordinateToTableLocal(placementBand.centerY, "y", tableCoordinates)
+            : selectedLocal.top + selectedLocal.height / 2;
+        if (localCenterX !== null && localCenterY !== null) {
+          rememberPublicCardAnnouncementBand(bandKey, {
+            left: selectedLocal.left,
+            top: selectedLocal.top,
+            width: selectedLocal.width,
+            centerX: localCenterX,
+            centerY: localCenterY,
+            centerCardRect: centerCardLocal,
+            verticalMode,
+          });
+        }
+      }
       const nextDisplayedCopy: DisplayedPublicCardAnnouncement = {
         message: selected.message,
         supporting: selected.supporting,
@@ -4037,7 +4110,7 @@ function PublicCardAnnouncement({
         segments: verifiedAnnouncementSegments(selected.message, narration?.headlineSegments, incomingDisplayedCopy.segments),
       };
       commitDisplayedCopy(nextDisplayedCopy);
-      const previous = lastValidPlacementRef.current;
+      const previous = lastValidPlacementInClientSpace();
       const sameBand = previous?.geometryIdentity === currentGeometryIdentity
         && previous.layoutEpoch === layoutEpoch
         && Math.abs(previous.left - selected.left) <= 1
@@ -4063,16 +4136,21 @@ function PublicCardAnnouncement({
         visible: true, text: selected.message,
       });
       lastGeometryKeyRef.current = geometryKey;
+      const selectedInTableLocal = clientCardRectToTableLocal({
+        left: selected.left, top: selected.top, width: selected.width, height: selected.height,
+      });
+      if (!selectedInTableLocal) {
+        if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
+        setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
+        return;
+      }
       lastValidPlacementRef.current = {
         geometryIdentity: currentGeometryIdentity,
         layoutEpoch,
         viewerLayoutKey,
         eventCopyKey,
         copySignature,
-        left: selected.left,
-        top: selected.top,
-        width: selected.width,
-        height: selected.height,
+        ...selectedInTableLocal,
         compact: selected.compact,
         message: selected.message,
         supporting: selected.supporting,
@@ -4113,9 +4191,6 @@ function PublicCardAnnouncement({
     const onResize = schedule;
     schedule();
     window.addEventListener("resize", onResize);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", onResize);
-    viewport?.addEventListener("scroll", onResize);
     resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
     const table = display.closest<HTMLElement>(".play-table");
     const playerBoard = document.querySelector<HTMLElement>(".player-board");
@@ -4160,8 +4235,6 @@ function PublicCardAnnouncement({
       if (placementGeneration === placementGenerationRef.current) placementGenerationRef.current += 1;
       if (schedulePlacementRef.current === schedule) schedulePlacementRef.current = null;
       window.removeEventListener("resize", onResize);
-      viewport?.removeEventListener("resize", onResize);
-      viewport?.removeEventListener("scroll", onResize);
       if (placementFailureTimer !== null) window.clearTimeout(placementFailureTimer);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
@@ -4967,6 +5040,7 @@ function AttackDodgeCardJourney({
     let previousLayoutSignature = "";
     let stableLayoutFrames = 0;
     let sampledLayoutFrames = 0;
+    let committedGeometrySignature = "";
     const observedAnchors = new WeakSet<Element>();
     const observePlayerAnchors = () => {
       const announcements = isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
@@ -5019,7 +5093,29 @@ function AttackDodgeCardJourney({
       journeyRef.current = next;
       setJourney(next);
     };
-    const scheduleReposition = () => {
+    const readGeometrySignature = () => {
+      const table = document.querySelector<HTMLElement>(".play-table");
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      const anchors = [
+        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+        ...(isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
+          ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+          : []),
+      ];
+      return [table?.clientWidth ?? 0, table?.clientHeight ?? 0,
+        ...anchors.flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          const local = coordinates ? publicStageRectToTableLocal(rect, coordinates) : null;
+          const geometry = local ?? rect;
+          return [element.dataset.playerAnchor ?? "", element.className,
+            geometry.left, geometry.top, geometry.right, geometry.bottom];
+        })].map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value).join(":");
+    };
+    committedGeometrySignature = readGeometrySignature();
+    const scheduleReposition = (force = false) => {
+      const requestedSignature = readGeometrySignature();
+      if (!force && requestedSignature === committedGeometrySignature) return;
+      committedGeometrySignature = requestedSignature;
       window.cancelAnimationFrame(reflowFrame);
       const current = journeyRef.current;
       if (current.scopeKey === scopeKey && !current.layoutPending) {
@@ -5039,19 +5135,7 @@ function AttackDodgeCardJourney({
       stableLayoutFrames = 0;
       sampledLayoutFrames = 0;
       const repositionAfterLayoutSettles = () => {
-        const table = document.querySelector<HTMLElement>(".play-table");
-        const anchors = [
-          ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
-          ...(isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
-            ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
-            : []),
-        ];
-        const signature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
-          ...(table ? [table] : []), ...anchors].flatMap((elementOrValue) => {
-          if (typeof elementOrValue === "number") return [elementOrValue];
-          const rect = elementOrValue.getBoundingClientRect();
-          return [rect.left, rect.top, rect.width, rect.height];
-        }).map((value) => Math.round(value * 2) / 2).join(":");
+        const signature = readGeometrySignature();
         stableLayoutFrames = signature === previousLayoutSignature ? stableLayoutFrames + 1 : 0;
         previousLayoutSignature = signature;
         sampledLayoutFrames += 1;
@@ -5060,15 +5144,12 @@ function AttackDodgeCardJourney({
           return;
         }
         reflowFrame = 0;
+        committedGeometrySignature = signature;
         reposition();
       };
       reflowFrame = window.requestAnimationFrame(repositionAfterLayoutSettles);
     };
-    window.addEventListener("resize", scheduleReposition);
-    window.addEventListener("scroll", scheduleReposition, true);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", scheduleReposition);
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleReposition);
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleReposition());
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (shell) observer?.observe(shell);
     observePlayerAnchors();
@@ -5098,11 +5179,8 @@ function AttackDodgeCardJourney({
       attributeFilter: ["data-player-anchor", "style", "data-public-card-announcement-positioned",
         "data-public-card-announcement-fixed-upper", "data-public-card-announcement-lines"],
     });
-    scheduleReposition();
+    scheduleReposition(true);
     return () => {
-      window.removeEventListener("resize", scheduleReposition);
-      window.removeEventListener("scroll", scheduleReposition, true);
-      viewport?.removeEventListener("resize", scheduleReposition);
       observer?.disconnect();
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(reflowFrame);
@@ -6101,21 +6179,22 @@ function SingleTargetCardJourney({
         ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
       ...parkingSelectors().flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]),
     ].filter((element): element is HTMLElement => Boolean(element)))];
-    const readLayoutSignature = () => [
-      window.innerWidth,
-      window.innerHeight,
-      window.visualViewport?.width ?? 0,
-      window.visualViewport?.height ?? 0,
-      window.visualViewport?.offsetLeft ?? 0,
-      window.visualViewport?.offsetTop ?? 0,
-      window.visualViewport?.scale ?? 1,
-      ...layoutElements().flatMap((element) => {
-        const rect = element.getBoundingClientRect();
-        return [element.dataset.playerAnchor ?? "", element.className, element.dataset.sideColumn ?? "",
-          rect.left, rect.top, rect.width, rect.height]
-          .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
-      }),
-    ].join(":");
+    const readLayoutSignature = () => {
+      const table = document.querySelector<HTMLElement>(".play-table");
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      return [
+        table?.clientWidth ?? 0,
+        table?.clientHeight ?? 0,
+        ...layoutElements().flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          const local = coordinates ? publicStageRectToTableLocal(rect, coordinates) : null;
+          const geometry = local ?? rect;
+          return [element.dataset.playerAnchor ?? "", element.className, element.dataset.sideColumn ?? "",
+            geometry.left, geometry.top, geometry.right - geometry.left, geometry.bottom - geometry.top]
+            .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
+        }),
+      ].join(":");
+    };
     committedLayoutSignature = readLayoutSignature();
     const observeLayout = () => { for (const element of layoutElements()) layoutObserver?.observe(element); };
     const reflow = (force = false) => {
@@ -6361,12 +6440,7 @@ function SingleTargetCardJourney({
         announcementObserver.observe(announcement, { attributes: true, attributeFilter: ["style"] });
       }
     }
-    const onViewportResize = () => reflow();
-    window.addEventListener("resize", onViewportResize);
-    window.visualViewport?.addEventListener("resize", onViewportResize);
     return () => {
-      window.removeEventListener("resize", onViewportResize);
-      window.visualViewport?.removeEventListener("resize", onViewportResize);
       layoutObserver?.disconnect();
       mutationObserver?.disconnect();
       announcementObserver?.disconnect();
@@ -6965,13 +7039,11 @@ function DuelCardJourney({
         if (element === display) break;
       }
       const rect = copy.getBoundingClientRect();
-      const viewport = window.visualViewport;
-      const left = viewport?.offsetLeft ?? 0;
-      const top = viewport?.offsetTop ?? 0;
-      const right = left + (viewport?.width ?? window.innerWidth);
-      const bottom = top + (viewport?.height ?? window.innerHeight);
-      return rect.width > 0 && rect.height > 0 && rect.right > left && rect.left < right
-        && rect.bottom > top && rect.top < bottom;
+      const table = display.closest<HTMLElement>(".play-table");
+      const tableRect = table?.getBoundingClientRect();
+      return Boolean(tableRect && rect.width > 0 && rect.height > 0
+        && rect.right > tableRect.left && rect.left < tableRect.right
+        && rect.bottom > tableRect.top && rect.top < tableRect.bottom);
     };
     const recordFirstPaint = () => {
       if (paintedLustSettlementRef.current?.eventId === settlement.eventId || !copyIsPaintedVisible()) return;
@@ -7001,15 +7073,10 @@ function DuelCardJourney({
     schedulePaintCheck();
     document.addEventListener("visibilitychange", schedulePaintCheck);
     window.addEventListener("resize", schedulePaintCheck);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", schedulePaintCheck);
-    viewport?.addEventListener("scroll", schedulePaintCheck);
     return () => {
       observer.disconnect();
       document.removeEventListener("visibilitychange", schedulePaintCheck);
       window.removeEventListener("resize", schedulePaintCheck);
-      viewport?.removeEventListener("resize", schedulePaintCheck);
-      viewport?.removeEventListener("scroll", schedulePaintCheck);
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
     };
@@ -7360,6 +7427,7 @@ function DuelCardJourney({
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
     const observedElements = new WeakSet<Element>();
+    let committedLayoutSignature = "";
     const readLayoutSignature = () => {
       const elements = [
         document.querySelector<HTMLElement>(".play-table"),
@@ -7367,13 +7435,19 @@ function DuelCardJourney({
         document.querySelector<HTMLElement>(".local-player-dock"),
         ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
       ].filter((element): element is HTMLElement => Boolean(element));
-      return [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0,
-        window.visualViewport?.height ?? 0, window.visualViewport?.scale ?? 1,
+      const table = elements.find((element) => element.matches(".play-table")) ?? null;
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      return [table?.clientWidth ?? 0, table?.clientHeight ?? 0,
         ...elements.flatMap((element) => {
           const rect = element.getBoundingClientRect();
-          return [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2);
+          const local = coordinates ? publicStageRectToTableLocal(rect, coordinates) : null;
+          const geometry = local ?? rect;
+          return [element.dataset.playerAnchor ?? "", element.className,
+            geometry.left, geometry.top, geometry.right, geometry.bottom]
+            .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
         })].join(":");
     };
+    committedLayoutSignature = readLayoutSignature();
     const observeLayout = () => {
       const elements = [
         document.querySelector<HTMLElement>(".play-table"),
@@ -7401,6 +7475,9 @@ function DuelCardJourney({
       return next;
     });
     const repositionAfterLayoutSettles = () => {
+      const requestedSignature = readLayoutSignature();
+      if (requestedSignature === committedLayoutSignature) return;
+      committedLayoutSignature = requestedSignature;
       const currentLayoutRun = ++layoutRun;
       window.cancelAnimationFrame(resizeFrame);
       sampledFrames = 0;
@@ -7418,6 +7495,7 @@ function DuelCardJourney({
           return;
         }
         resizeFrame = 0;
+        committedLayoutSignature = signature;
         const currentAction = actionRef.current;
         const currentMotion = currentAction.motion;
         const events = duelJourneyEvents(currentAction, sourceNameRef.current);
@@ -7475,14 +7553,7 @@ function DuelCardJourney({
       repositionAfterLayoutSettles();
     });
     if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
-    window.addEventListener("resize", repositionAfterLayoutSettles);
-    window.addEventListener("scroll", repositionAfterLayoutSettles, true);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", repositionAfterLayoutSettles);
     return () => {
-      window.removeEventListener("resize", repositionAfterLayoutSettles);
-      window.removeEventListener("scroll", repositionAfterLayoutSettles, true);
-      viewport?.removeEventListener("resize", repositionAfterLayoutSettles);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(resizeFrame);
