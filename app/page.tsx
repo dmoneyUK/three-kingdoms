@@ -63,7 +63,7 @@ import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
-import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate, selectPublicCardActionAtCursor } from "../game/public-announcement";
+import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate, selectPublicCardActionForCursor } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementReplacementOwnsActiveTimer, publicJudgementReplacementRevealCompletion, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
@@ -10883,36 +10883,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     };
   })();
   const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
-  const cursorOwnedDiscardEffectFrameAction = selectPublicCardActionAtCursor(publicH4PresentationCursor?.id, [
-    stauchnessCostFrameAction,
-    rockCleavingAxeCostFrameAction,
-  ]);
-  const latestHeroActionIsCursorBoundDiscardCost = Boolean(latestHeroPublicCardEffectFrameAction
-    && [stauchnessCostFrameAction?.rootEventId, rockCleavingAxeCostFrameAction?.rootEventId]
-      .some((eventId) => eventId === latestHeroPublicCardEffectFrameAction.rootEventId));
-  const livePublicCardAction = cursorOwnedDiscardEffectFrameAction ?? selectPublicAnnouncementCandidate([
-    ...(nonHeroLivePublicCardAction ? [{
-      value: nonHeroLivePublicCardAction,
-      rootEventId: nonHeroLivePublicCardAction.rootEventId,
-      checkpointEventId: publicCardActionCheckpointEventId(nonHeroLivePublicCardAction),
-      priority: 2,
-    }] : []),
-    ...(latestHeroPublicCardEffectFrameAction && !latestHeroActionIsCursorBoundDiscardCost ? [{
-      value: latestHeroPublicCardEffectFrameAction,
-      rootEventId: latestHeroPublicCardEffectFrameAction.rootEventId,
-      checkpointEventId: publicCardActionCheckpointEventId(latestHeroPublicCardEffectFrameAction),
-      priority: kirinBowDamageFrameAction ? 3 : 1,
-      // Retiring the public copy must not remove its proof-backed physical
-      // CardFace; suppressAnnouncement is handled by the shared renderer.
-      supersedeOnNewerPublicPlay: true,
-    }] : []),
-    ...(canonicalDiscardFallbackAction ? [{
-      value: canonicalDiscardFallbackAction,
-      rootEventId: canonicalDiscardFallbackAction.rootEventId,
-      checkpointEventId: publicCardActionCheckpointEventId(canonicalDiscardFallbackAction),
-      priority: 3,
-    }] : []),
-  ], publicAnnouncementTimelineEventIds, laterPublicCardPlayEventIds);
+  const publicCardActionCursorSelection = selectPublicCardActionForCursor({
+    cursorEvent: publicH4PresentationCursor,
+    cursorActions: [stauchnessCostFrameAction, rockCleavingAxeCostFrameAction],
+    nonHeroAction: nonHeroLivePublicCardAction,
+    latestHeroAction: latestHeroPublicCardEffectFrameAction,
+    canonicalDiscardAction: canonicalDiscardFallbackAction,
+    checkpointEventId: publicCardActionCheckpointEventId,
+    timelineEventIds: publicAnnouncementTimelineEventIds,
+    laterPublicPlayEventIds: laterPublicCardPlayEventIds,
+    latestHeroPriority: kirinBowDamageFrameAction ? 3 : 1,
+  });
+  const cursorOwnedDiscardEffectFrameAction = publicCardActionCursorSelection.cursorOwnedAction;
+  const livePublicCardAction = publicCardActionCursorSelection.latestAction;
   const heldAttackDodgeReadAction = visibleActiveAttackDodgeSettlement
     && visibleActiveAttackDodgeSettlement.phase !== "complete"
     && visibleActiveAttackDodgeSettlement.action.settlement?.eventId === visibleActiveAttackDodgeSettlement.eventId

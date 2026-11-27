@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createPublicCardEffectFrameView } from "../app/public-card-display.tsx";
 import { verifiedRockCleavingAxeCostFrameForEvent, verifiedStauchnessCostFrameForEvent } from "../app/page.tsx";
-import { selectPublicCardActionAtCursor } from "../game/public-announcement.ts";
+import { selectPublicCardActionAtCursor, selectPublicCardActionForCursor } from "../game/public-announcement.ts";
 
 const axeOwner = { id: "axe-owner", name: "Axe Owner" };
 const xiahou = { id: "xiahou", name: "Xiahou Dun", hero: "xiahou-dun" };
@@ -33,6 +33,25 @@ test("only a unique cost-frame action for the current committed event owns the c
   assert.equal(selectPublicCardActionAtCursor("cost-event", [dueCost, { rootEventId: "cost-event" }]), null,
     "ambiguous duplicate owners fail closed");
   assert.equal(selectPublicCardActionAtCursor(null, [dueCost]), null);
+});
+
+test("stale cursor-bound cost frames cannot re-enter through the latest hero fallback", () => {
+  const costAction = { rootEventId: "cost-event", checkpointEventId: "cost-event" };
+  const unrelatedHeroAction = { rootEventId: "hero-event", checkpointEventId: "hero-event" };
+  const select = (cursorEventId, latestHeroAction) => selectPublicCardActionForCursor({
+    cursorEvent: cursorEventId ? { id: cursorEventId } : null,
+    cursorActions: [costAction],
+    latestHeroAction,
+    checkpointEventId: (action) => action.checkpointEventId,
+    timelineEventIds: ["cost-event", "hero-event"],
+  });
+
+  assert.equal(select("cost-event", costAction).cursorOwnedAction, costAction,
+    "the exact committed cost event owns its presentation cursor");
+  assert.equal(select("older-event", costAction).latestAction, null,
+    "an old cost frame cannot be resurrected after the cursor advances");
+  assert.equal(select("older-event", unrelatedHeroAction).latestAction, unrelatedHeroAction,
+    "ordinary latest hero announcements keep their existing fallback");
 });
 
 test("Stauchness cost proof retains both real Hand faces and names both in H4", () => {

@@ -1,15 +1,15 @@
 # HANDOVER
 
-## Latest verified delivery
+## Latest relevant delivery
 
-§10.81-B visible-hold correction is pushed at `52e72c55afc8643e3147946c5ef8d52359ab9c00`. Exact-SHA Actions `46046788125` passed Lint/fast, API, browser startup/H4 smoke, D1 migrations, Worker deployment and production smoke; Worker `13d843b6-c874-40ed-bf9b-bfc6491b555e`. Focused non-UI tests 65/65; targeted ESLint 0 errors (15 existing warnings); no local UI/browser/device tests. Owner final iPhone acceptance pending.
-
-Status check: §10.90 implementation is present in `01f95d52` + follow-up `5fbac17f`; exact-SHA Actions `46023545687` passed on the follow-up. Owner says final acceptance is pending. §10.89 was deployed at `7f539e9eff706ca851236bcdcb9dea931b773f93`, Actions `46041180195` passed, Worker `80187227-177a-437c-b9d7-1f5eacf0d8cf`; owner review pending. Do not reimplement either while awaiting review.
+§10.81-B is deployed at `52e72c55afc8643e3147946c5ef8d52359ab9c00`; exact-SHA Actions `46046788125` passed and Worker `13d843b6-c874-40ed-bf9b-bfc6491b555e` is live. Owner iPhone acceptance remains pending.
 
 ## Current task — §10.82-A/B UNIVERSAL-PUBLIC-DISCARD-SETTLEMENT-01
 
-Owner/AI manager's explicit sequence authorizes this combined P1 correction after §10.81-B: fix missing Rock Cleaving Axe cost H4/two-face Frame and Stauchness committed discard faces/H4/skill-frame presentation. Preserve accepted Stauchness H4 details, Burning Bridges, ordinary discard, Kirin Bow, §10.87 rules, Frost closure, real card identity/ownership, privacy and existing lifecycle. The End-turn residual belongs to §10.78 and is outside this correction. Use one implementation commit covering A/B together, with the task IDs in its subject; do not split. Focused API/unit validation only; zero local UI/browser/device tests. After push, verify exact-SHA CI, D1, deployment and production smoke. Owner iPhone review stays pending.
+Implement the Axe and Stauchness true-discard faces/H4 through the existing public Frame. Preserve card identity, ownership, event order and privacy. End-turn behavior remains outside scope under §10.78. Latest design reviewed: `docs/UX2-refine.md` at `baf0ac3711b4fe19b4702ca6d072f88aab9e13fc` (unchanged §10.82).
 
-Latest design reviewed: `docs/UX2-refine.md` at `origin/ux-v2` `baf0ac3711b4fe19b4702ca6d072f88aab9e13fc`; this editorial change only removed retired §10.64-B history and leaves §10.82 unchanged.
+Initial task commit `cc685d600a886e997a510c93db155dae332dd391` is pushed. Exact-SHA Actions `46052204542`: API tests and browser startup/H4 smoke passed; lint failed in `react-hooks/rules-of-hooks` at `app/page.tsx:5094` with `RangeError: Maximum call stack size exceeded`; fast tests/build and deployment were skipped. No production deployment occurred.
 
-Implementation checkpoint: both proof-backed cost Frames now bind to their exact current event cursor and retain H4 names/ranks/suits for both physical cards. Pure tests passed 32/32 plus the focused existing Axe assertion 1/1; targeted ESLint passed for shared helper/tests. ESLint on `app/page.tsx` crashed in `react-hooks/rules-of-hooks` at line 5094 with a call-stack overflow; no browser/UI/device tests were run. `git diff --check` passed. No commit or current-task CI/deployment yet. §10.78 owns the separate End-turn residual; unchanged here.
+Current correction isolates cursor-owned versus timeline-fallback selection in `game/public-announcement.ts`; it keeps an exact current cost event eligible and prevents that cost action returning through the stale hero fallback. Focused tests pass 34/34; helper/test ESLint and `git diff --check` pass. Local lint of `app/page.tsx` also overflows on the pre-task baseline, so exact CI must determine whether this correction resolves the added complexity. No local UI/browser/device tests. Do not start §10.83 until §10.82 CI, deployment and production smoke are verified.
+
+**Next action:** commit and push this §10.82 correction, verify exact-SHA Actions and deployment/smoke, then reconcile the latest design and proceed to §10.83 at the next safe task boundary. Owner iPhone review remains pending.

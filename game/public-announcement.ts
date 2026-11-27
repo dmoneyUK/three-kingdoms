@@ -18,6 +18,55 @@ export function selectPublicCardActionAtCursor<T extends { rootEventId: string }
 }
 
 /**
+ * Selects a committed card presentation at the active event cursor, then
+ * falls back to the existing timeline-ranked public announcement candidates.
+ * Cursor-bound cost frames cannot re-enter through the older hero fallback.
+ */
+export function selectPublicCardActionForCursor<T extends { rootEventId: string }>(input: {
+  cursorEvent?: { id: string } | null;
+  cursorActions: readonly (T | null | undefined)[];
+  nonHeroAction?: T | null;
+  latestHeroAction?: T | null;
+  canonicalDiscardAction?: T | null;
+  checkpointEventId: (action: T) => string;
+  timelineEventIds: readonly string[];
+  laterPublicPlayEventIds?: readonly string[];
+  latestHeroPriority?: number;
+}): { cursorOwnedAction: T | null; latestAction: T | null } {
+  const cursorOwnedAction = selectPublicCardActionAtCursor(input.cursorEvent?.id, input.cursorActions);
+  if (cursorOwnedAction) return { cursorOwnedAction, latestAction: cursorOwnedAction };
+
+  const cursorBoundEventIds = new Set(input.cursorActions
+    .filter((action): action is T => Boolean(action))
+    .map((action) => action.rootEventId));
+  const candidates: PublicAnnouncementCandidate<T>[] = [];
+  if (input.nonHeroAction) candidates.push({
+    value: input.nonHeroAction,
+    rootEventId: input.nonHeroAction.rootEventId,
+    checkpointEventId: input.checkpointEventId(input.nonHeroAction),
+    priority: 2,
+  });
+  if (input.latestHeroAction && !cursorBoundEventIds.has(input.latestHeroAction.rootEventId)) candidates.push({
+    value: input.latestHeroAction,
+    rootEventId: input.latestHeroAction.rootEventId,
+    checkpointEventId: input.checkpointEventId(input.latestHeroAction),
+    priority: input.latestHeroPriority ?? 1,
+    supersedeOnNewerPublicPlay: true,
+  });
+  if (input.canonicalDiscardAction) candidates.push({
+    value: input.canonicalDiscardAction,
+    rootEventId: input.canonicalDiscardAction.rootEventId,
+    checkpointEventId: input.checkpointEventId(input.canonicalDiscardAction),
+    priority: 3,
+  });
+
+  return {
+    cursorOwnedAction: null,
+    latestAction: selectPublicAnnouncementCandidate(candidates, input.timelineEventIds, input.laterPublicPlayEventIds),
+  };
+}
+
+/**
  * Select one already proof-built public announcement candidate. Both its
  * physical root and semantic checkpoint must occur exactly once in the
  * committed timeline. Newer checkpoints win; priority only resolves ties.
