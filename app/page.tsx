@@ -5756,7 +5756,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     eventQueue: queuedEventsBlockActions,
     selfTargetWindowClosing,
     turnNotice: Boolean(turnNotice),
-    privateDrawCards: privateDrawVisible,
+    privateDrawCards: privateDrawCards.length > 0,
     hasUnseenPresentations,
   };
   const presentationBusy = Object.values(presentationBusyCauses).some(Boolean);
