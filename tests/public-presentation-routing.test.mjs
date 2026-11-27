@@ -402,7 +402,7 @@ test("equipment and later discard transitions for one physical card have separat
   };
   const equip = routePublicPresentation(equipInput);
   assert.equal(equip.kind, "zone-transition");
-  assert.equal(equip.claimedBy, "PublicPhysicalCardTransition");
+  assert.equal(equip.claimedBy, "PublicCardDisplay");
   assert.deepEqual(equip.shadowComparison, { status: "mismatch", currentOwners: ["PriorRenderer"] });
 
   const discardIdentity = { interactionId: "discard-interaction", rootFrameId: "discard-frame", checkpointId: "discard-checkpoint", presentationRevision: 1 };

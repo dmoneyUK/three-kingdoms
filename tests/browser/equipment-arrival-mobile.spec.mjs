@@ -17,6 +17,25 @@ async function commitPublicEquip(page, ownerId, card = testCard, currentEventId 
     const room = window.__browserRoom;
     const owner = room.players.find((player) => player.id === ownerId);
     if (!owner) throw new Error(`Missing equipment owner ${ownerId}`);
+    const snapshot = room.presentationSnapshot;
+    const scene = snapshot?.interaction;
+    if (!scene?.interactionId || !scene?.rootFrameId) throw new Error("The fixture needs a public interaction identity for a committed Equipment result.");
+    const publicSequence = Math.max(0, ...room.timeline.map((item) => item.publicSequence ?? 0)) + 1;
+    const equipmentName = ({
+      KirinBow: "Kirin Bow", FrostSword: "Frost Sword", BlueSteelSword: "Blue Steel Sword",
+      ZhugeCrossbow: "Zhuge Crossbow", NioShield: "Nio Shield", Shadowrunner: "Shadowrunner", RedHare: "Red Hare",
+    })[card.kind] ?? card.kind;
+    const publicFact = {
+      semantics: "PROVEN", visibility: "PUBLIC",
+      identity: {
+        interactionId: scene.interactionId, rootFrameId: scene.rootFrameId,
+        checkpointId: snapshot.identity?.checkpointId ?? scene.checkpointId,
+        presentationRevision: snapshot.identity?.presentationRevision ?? scene.presentationRevision,
+      },
+      eventId, order: publicSequence, frameId: scene.rootFrameId, rootEventId: eventId,
+      category: "CARD_EQUIPPED", actorId: ownerId, affectedPlayerIds: [ownerId],
+      label: equipmentName, effect: { kind: "equipment_play", label: equipmentName },
+    };
     const event = {
       id: eventId,
       type: "card",
@@ -25,46 +44,72 @@ async function commitPublicEquip(page, ownerId, card = testCard, currentEventId 
       player: owner.name,
       target: owner.name,
       card,
+      publicSequence,
+      publicFact: {
+        ...publicFact,
+        interactionId: scene.interactionId,
+        committedIdentity: { interactionId: scene.interactionId, rootFrameId: scene.rootFrameId },
+      },
       resolutionId: "browser-e1f-kirin-bow-resolution",
       importance: "essential",
       presentation: true,
     };
+    const slotByKind = {
+      KirinBow: "weapon", FrostSword: "weapon", BlueSteelSword: "weapon", ZhugeCrossbow: "weapon",
+      NioShield: "armor", Shadowrunner: "defensiveHorse", RedHare: "offensiveHorse",
+    };
+    const targetSlot = slotByKind[card.kind];
     window.__updateBrowserRoom({
       ...room,
       timeline: [...room.timeline, event],
+      presentationSnapshot: {
+        ...snapshot,
+        publicEventFacts: [...(snapshot.publicEventFacts ?? []), publicFact],
+      },
       players: room.players.map((player) => player.id === ownerId
-        ? { ...player, equipmentCards: [...player.equipmentCards.filter((item) => item.id !== card.id), card] }
+        ? { ...player, equipmentCards: [
+          ...player.equipmentCards.filter((item) => item.id !== card.id && slotByKind[item.kind] !== targetSlot),
+          card,
+        ] }
         : player),
     });
   }, { ownerId, card, eventId: currentEventId });
 }
 
-async function assertArrivalAnimationTargetsPhysicalSlot(page, ownerId, targetSlot = "weapon", targetEventId = eventId) {
-  const animation = page.locator(`.active-table-reveal[data-settlement-event-id="${targetEventId}"]`);
+async function assertArrivalAnimationTargetsPhysicalSlot(page, ownerId, targetSlot = "weapon", targetEventId = eventId, targetCardId = testCard.id) {
+  const cardId = targetCardId;
+  const animation = page.locator(`.public-card-journey-card[data-public-zone-transition-event-id="${targetEventId}"][data-public-zone-transition-card-id="${cardId}"]`);
   const slot = page.locator(`[data-player-equipment-slot-owner="${ownerId}"][data-slot="${targetSlot}"]`).first();
   await expect(animation).toBeVisible();
   await expect(slot).toBeVisible();
-  await expect(animation).toHaveClass(/equipment-flight/);
+  await expect(animation).toHaveAttribute("data-public-zone-transition-destination", "EQUIPMENT");
+  await expect(animation).toHaveAttribute("data-public-zone-transition-owner-id", ownerId);
+  await expect(animation).toHaveAttribute("data-public-zone-transition-slot", targetSlot);
+  await expect(animation).toHaveAttribute("data-public-card-journey-card-id", cardId);
   const measured = await page.evaluate(({ ownerId, eventId, targetSlot }) => {
-    const table = document.querySelector(".play-table");
-    const reveal = document.querySelector(`.active-table-reveal[data-settlement-event-id="${eventId}"]`);
+    const journey = document.querySelector(`.public-card-journey-card[data-public-zone-transition-event-id="${eventId}"]`);
     const slot = [...document.querySelectorAll("[data-player-equipment-slot-owner][data-slot]")]
       .find((element) => element.dataset.playerEquipmentSlotOwner === ownerId && element.dataset.slot === targetSlot);
-    if (!table || !reveal || !slot) return null;
-    const tableRect = table.getBoundingClientRect();
+    if (!journey || !slot) return null;
     const slotRect = slot.getBoundingClientRect();
     return {
-      x: Number.parseFloat(reveal.style.getPropertyValue("--equipment-x")),
-      y: Number.parseFloat(reveal.style.getPropertyValue("--equipment-y")),
-      expectedX: slotRect.left + slotRect.width / 2 - tableRect.left,
-      expectedY: slotRect.top + slotRect.height / 2 - tableRect.top,
+      left: Number.parseFloat(journey.dataset.publicCardJourneyTargetLeft),
+      top: Number.parseFloat(journey.dataset.publicCardJourneyTargetTop),
+      width: Number.parseFloat(journey.dataset.publicCardJourneyTargetWidth),
+      height: Number.parseFloat(journey.dataset.publicCardJourneyTargetHeight),
+      expectedLeft: slotRect.left,
+      expectedTop: slotRect.top,
+      expectedWidth: slotRect.width,
+      expectedHeight: slotRect.height,
       slot: { x: slotRect.x, y: slotRect.y, width: slotRect.width, height: slotRect.height },
       viewport: { width: window.innerWidth, height: window.innerHeight },
     };
   }, { ownerId, eventId: targetEventId, targetSlot });
   expect(measured).not.toBeNull();
-  expect(Math.abs(measured.x - measured.expectedX)).toBeLessThan(1);
-  expect(Math.abs(measured.y - measured.expectedY)).toBeLessThan(1);
+  expect(Math.abs(measured.left - measured.expectedLeft)).toBeLessThan(1);
+  expect(Math.abs(measured.top - measured.expectedTop)).toBeLessThan(1);
+  expect(Math.abs(measured.width - measured.expectedWidth)).toBeLessThan(1);
+  expect(Math.abs(measured.height - measured.expectedHeight)).toBeLessThan(1);
   return { animation, measured };
 }
 
@@ -79,7 +124,7 @@ test("local Kirin Bow miniature stays hidden until its genuine CardFace reaches 
     const miniature = page.locator(`.local-zone-card[data-equipment-id="${testCard.id}"]`);
     await expect(miniature).toHaveAttribute("data-equipment-arrival-pending", "true");
     expect(await miniature.locator(".played-card").evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
-    await expect(animation.locator(`[data-settlement-card-id="${testCard.id}"]`)).toHaveCount(1);
+    await expect(animation).toHaveCount(1);
     await expect(page.locator('.decision-status[data-console-presentation-busy]')).toHaveAttribute("data-console-presentation-busy", "false");
     const endTurn = page.getByRole("button", { name: "End", exact: true });
     await expect(endTurn).toBeEnabled();
@@ -97,7 +142,7 @@ test("local Kirin Bow miniature stays hidden until its genuine CardFace reaches 
     await expect(animation).toHaveCount(0, { timeout: 6000 });
     await expect(miniature).not.toHaveAttribute("data-equipment-arrival-pending", "true");
     expect(await miniature.locator(".played-card").evaluate((element) => getComputedStyle(element).visibility)).toBe("visible");
-    await expect(page.locator(`.active-table-reveal [data-settlement-card-id="${testCard.id}"]`)).toHaveCount(0);
+    await expect(page.locator(`.public-card-journey-card[data-public-zone-transition-event-id="${eventId}"]`)).toHaveCount(0);
     await expect(miniature.locator(".played-card")).toHaveCount(1);
     await testInfo.attach("E1-F local owner Kirin Bow arrived at mobile Weapon slot", {
       body: await page.screenshot(),
@@ -116,7 +161,7 @@ test("opponent Kirin Bow targets the real Seat slot while Inspector remains usab
   try {
     await loadMobile(page, viewport);
     await commitPublicEquip(page, "p2");
-    const { animation } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p2");
+    const { animation, measured: inspectedTarget } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p2");
     await page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-hero-target').tap();
     const inspector = page.locator('.opponent-inspection-panel[data-inspect-player-id="p2"]');
     await expect(inspector).toBeVisible();
@@ -125,30 +170,15 @@ test("opponent Kirin Bow targets the real Seat slot while Inspector remains usab
     expect(await inspectedCard.locator(".played-card").evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
     await expect(animation).toBeVisible();
 
-    const inspectedTarget = await page.evaluate(({ ownerId, eventId }) => {
-      const table = document.querySelector(".play-table");
-      const reveal = document.querySelector(`.active-table-reveal[data-settlement-event-id="${eventId}"]`);
-      const slot = [...document.querySelectorAll("[data-player-equipment-slot-owner][data-slot]")]
-        .find((element) => element.dataset.playerEquipmentSlotOwner === ownerId && element.dataset.slot === "weapon");
-      if (!table || !reveal || !slot) return null;
-      const tableRect = table.getBoundingClientRect();
-      const slotRect = slot.getBoundingClientRect();
-      return {
-        x: Number.parseFloat(reveal.style.getPropertyValue("--equipment-x")),
-        y: Number.parseFloat(reveal.style.getPropertyValue("--equipment-y")),
-        expectedX: slotRect.left + slotRect.width / 2 - tableRect.left,
-        expectedY: slotRect.top + slotRect.height / 2 - tableRect.top,
-      };
-    }, { ownerId: "p2", eventId });
     expect(inspectedTarget).not.toBeNull();
-    expect(Math.abs(inspectedTarget.x - inspectedTarget.expectedX)).toBeLessThan(1);
-    expect(Math.abs(inspectedTarget.y - inspectedTarget.expectedY)).toBeLessThan(1);
-    await expect(animation.locator(`[data-settlement-card-id="${testCard.id}"]`)).toHaveCount(1);
+    expect(Math.abs(inspectedTarget.left - inspectedTarget.expectedLeft)).toBeLessThan(1);
+    expect(Math.abs(inspectedTarget.top - inspectedTarget.expectedTop)).toBeLessThan(1);
+    await expect(animation).toHaveCount(1);
 
     await expect(animation).toHaveCount(0, { timeout: 6000 });
     await expect(inspectedCard).not.toHaveAttribute("data-equipment-arrival-pending", "true");
     expect(await inspectedCard.locator(".played-card").evaluate((element) => getComputedStyle(element).visibility)).toBe("visible");
-    await expect(page.locator(`.active-table-reveal [data-settlement-card-id="${testCard.id}"]`)).toHaveCount(0);
+    await expect(page.locator(`.public-card-journey-card[data-public-zone-transition-event-id="${eventId}"]`)).toHaveCount(0);
     await testInfo.attach("E1-F independent viewer Inspector after opponent Kirin Bow arrival", {
       body: await page.screenshot(),
       contentType: "image/png",
@@ -166,11 +196,11 @@ test("reduced motion deterministically releases the miniature on the arrival ani
     await loadMobile(page, viewport, true);
     await commitPublicEquip(page, "p1");
     const miniature = page.locator(`.local-zone-card[data-equipment-id="${testCard.id}"]`);
-    await expect(page.locator(`.active-table-reveal[data-settlement-event-id="${eventId}"]`)).toBeVisible();
+    await expect(page.locator(`.public-card-journey-card[data-public-zone-transition-event-id="${eventId}"]`)).toBeVisible();
     await expect(miniature).toHaveAttribute("data-equipment-arrival-pending", "true");
     await expect(miniature).not.toHaveAttribute("data-equipment-arrival-pending", "true", { timeout: 3000 });
     await expect(miniature.locator(".played-card")).toBeVisible();
-    await expect(page.locator(`.active-table-reveal[data-settlement-event-id="${eventId}"]`)).toHaveCount(0);
+    await expect(page.locator(`.public-card-journey-card[data-public-zone-transition-event-id="${eventId}"]`)).toHaveCount(0);
   } finally {
     await context.close();
   }
@@ -181,40 +211,17 @@ test("Armor and both Horse miniatures wait for their own mobile Equipment slots"
   const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   const page = await context.newPage();
   const cards = [
-    { id: "browser-e1f-nio-shield", kind: "NioShield", suit: "♣", rank: "2", slot: "armor" },
-    { id: "browser-e1f-shadowrunner", kind: "Shadowrunner", suit: "♠", rank: "5", slot: "defensiveHorse" },
-    { id: "browser-e1f-red-hare", kind: "RedHare", suit: "♥", rank: "5", slot: "offensiveHorse" },
+    { card: { id: "browser-e1f-nio-shield", kind: "NioShield", suit: "♣", rank: "2" }, slot: "armor" },
+    { card: { id: "browser-e1f-shadowrunner", kind: "Shadowrunner", suit: "♠", rank: "5" }, slot: "defensiveHorse" },
+    { card: { id: "browser-e1f-red-hare", kind: "RedHare", suit: "♥", rank: "5" }, slot: "offensiveHorse" },
   ];
   try {
     await loadMobile(page, viewport);
-    await page.evaluate(({ cards }) => {
-      const room = window.__browserRoom;
-      const owner = room.players.find((player) => player.id === "p1");
-      const events = cards.map(({ card, eventId }) => ({
-        id: eventId,
-        type: "card",
-        action: "equip",
-        actorId: owner.id,
-        player: owner.name,
-        target: owner.name,
-        card,
-        resolutionId: `resolution-${eventId}`,
-        importance: "essential",
-        presentation: true,
-      }));
-      window.__updateBrowserRoom({
-        ...room,
-        timeline: [...room.timeline, ...events],
-        players: room.players.map((player) => player.id === owner.id
-          ? { ...player, equipmentCards: [...player.equipmentCards, ...cards.map(({ card }) => card)] }
-          : player),
-      });
-    }, { cards: cards.map(({ id, kind, suit, rank }, index) => ({ card: { id, kind, suit, rank }, eventId: `browser-e1f-slot-event-${index}` })) });
-
     for (const [index, item] of cards.entries()) {
       const currentEventId = `browser-e1f-slot-event-${index}`;
-      const { animation } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p1", item.slot, currentEventId);
-      const miniature = page.locator(`.local-zone-card[data-equipment-id="${item.id}"]`);
+      await commitPublicEquip(page, "p1", item.card, currentEventId);
+      const { animation } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p1", item.slot, currentEventId, item.card.id);
+      const miniature = page.locator(`.local-zone-card[data-equipment-id="${item.card.id}"]`);
       await expect(miniature).toHaveAttribute("data-equipment-arrival-pending", "true");
       expect(await miniature.locator(".played-card").evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
       await expect(animation).toHaveCount(0, { timeout: 6000 });
@@ -235,29 +242,8 @@ test("rapid same-slot replacement releases only the current physical card", asyn
   const ids = ["browser-e1f-replaced-event", "browser-e1f-current-event"];
   try {
     await loadMobile(page, viewport);
-    await page.evaluate(({ cards, eventIds }) => {
-      const room = window.__browserRoom;
-      const owner = room.players.find((player) => player.id === "p1");
-      const events = cards.map((card, index) => ({
-        id: eventIds[index],
-        type: "card",
-        action: "equip",
-        actorId: owner.id,
-        player: owner.name,
-        target: owner.name,
-        card,
-        resolutionId: `resolution-${eventIds[index]}`,
-        importance: "essential",
-        presentation: true,
-      }));
-      window.__updateBrowserRoom({
-        ...room,
-        timeline: [...room.timeline, ...events],
-        players: room.players.map((player) => player.id === owner.id ? { ...player, equipmentCards: [cards[1]] } : player),
-      });
-    }, { cards: [oldCard, currentCard], eventIds: ids });
-
-    const { animation: replacedArrival } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p1", "weapon", ids[0]);
+    await commitPublicEquip(page, "p1", oldCard, ids[0]);
+    const { animation: replacedArrival } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p1", "weapon", ids[0], oldCard.id);
     const oldMiniature = page.locator(`.local-zone-card[data-equipment-id="${oldCard.id}"]`);
     const currentMiniature = page.locator(`.local-zone-card[data-equipment-id="${currentCard.id}"]`);
     await expect(oldMiniature).toHaveCount(0);
@@ -266,7 +252,8 @@ test("rapid same-slot replacement releases only the current physical card", asyn
     await expect(replacedArrival).toHaveCount(0, { timeout: 6000 });
     await expect(oldMiniature).toHaveCount(0);
 
-    const { animation: currentArrival } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p1", "weapon", ids[1]);
+    await commitPublicEquip(page, "p1", currentCard, ids[1]);
+    const { animation: currentArrival } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p1", "weapon", ids[1], currentCard.id);
     await expect(currentMiniature).toHaveAttribute("data-equipment-arrival-pending", "true");
     expect(await currentMiniature.locator(".played-card").evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
     await expect(currentArrival).toHaveCount(0, { timeout: 6000 });
@@ -288,7 +275,7 @@ test("mobile equipment arrival anchors remain correct across 4, 6, 8 and 10 seat
       await expect(page.locator(".game-shell")).toBeVisible();
       const thisEventId = `browser-e1f-topology-${count}`;
       await commitPublicEquip(page, "p2", { ...testCard, id: `browser-e1f-bow-${count}` }, thisEventId);
-      const { measured } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p2", "weapon", thisEventId);
+      const { measured } = await assertArrivalAnimationTargetsPhysicalSlot(page, "p2", "weapon", thisEventId, `browser-e1f-bow-${count}`);
       expect(measured.slot.width).toBeGreaterThan(0);
       expect(measured.slot.height).toBeGreaterThan(0);
       await page.locator('.opponent-player-card[data-player-anchor="p2"] .opponent-hero-target').tap();
@@ -356,7 +343,7 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     expect(observerView.timeline.filter((entry) => entry.id === event.id && entry.card?.id === bow.id)).toHaveLength(1);
     expect(observerView.players.find((player) => player.id === owner.id).equipmentCards).toContainEqual(bow);
 
-    const revealSelector = `.active-table-reveal[data-settlement-event-id="${event.id}"]`;
+    const revealSelector = `.public-card-journey-card[data-public-zone-transition-event-id="${event.id}"]`;
     const ownerReveal = ownerPage.locator(revealSelector);
     const observerReveal = observerPage.locator(revealSelector);
     await expect(ownerReveal).toBeVisible({ timeout: 12_000 });
@@ -368,7 +355,7 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     await expect.poll(() => ownerReveal.evaluate((node) => node.getAnimations()[0]?.currentTime ?? 0)).toBeGreaterThan(600);
     const geometry = await ownerPage.evaluate((eventId) => {
       const h4 = document.querySelector('[data-public-card-announcement-fixed-upper="true"]');
-      const card = document.querySelector(`.active-table-reveal[data-settlement-event-id="${eventId}"] .played-card`);
+      const card = document.querySelector(`.public-card-journey-card[data-public-zone-transition-event-id="${eventId}"] .played-card`);
       const seats = [...document.querySelectorAll('.player-board > [data-player-anchor]')].map((seat) => seat.getBoundingClientRect());
       const mini = document.querySelector('.local-player-dock .local-equipment-slot').getBoundingClientRect();
       return { h4: h4?.getBoundingClientRect().toJSON(), card: card?.getBoundingClientRect().toJSON(), upperBottom: Math.max(...seats.map((seat) => seat.bottom)), miniHeight: mini.height };
@@ -379,10 +366,10 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     expect(geometry.card.top).toBeGreaterThanOrEqual(geometry.h4.bottom + 3);
 
     await expect(observerReveal).toHaveAttribute("data-public-zone-transition-event-id", event.id);
-    await expect(ownerPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
-    await expect(observerPage.locator(`.active-table-reveal[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
+    await expect(ownerPage.locator(`.public-card-journey-card[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
+    await expect(observerPage.locator(`.public-card-journey-card[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(1);
     const ownerMini = ownerPage.locator(`.local-zone-card[data-equipment-id="${bow.id}"]`);
-    const ownerCardFace = ownerReveal.locator(`[data-settlement-card-id="${bow.id}"]`);
+    const ownerCardFace = ownerReveal.locator(".played-card");
     await expect(ownerMini).toHaveAttribute("data-equipment-arrival-pending", "true");
     await expect(ownerMini.locator(".played-card")).toHaveCSS("visibility", "hidden");
     await expect(ownerCardFace).toHaveCount(1);
@@ -393,7 +380,7 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     await expect(inspector).toBeVisible();
     await expect(observerMini).toHaveAttribute("data-equipment-arrival-pending", "true");
     await expect(observerMini.locator(".played-card")).toHaveCSS("visibility", "hidden");
-    await expect(observerReveal.locator(`[data-settlement-card-id="${bow.id}"]`)).toHaveCount(1);
+    await expect(observerReveal.locator(".played-card")).toHaveCount(1);
 
     const endTurn = ownerPage.getByRole("button", { name: "End", exact: true });
     await expect(endTurn).toBeEnabled();
@@ -403,7 +390,7 @@ test("real Worker/D1 equip publishes one actor-bound arrival to the owner and an
     await expect(observerMini).not.toHaveAttribute("data-equipment-arrival-pending", "true");
     await expect(ownerMini.locator(".played-card")).toBeVisible();
     await expect(observerMini.locator(".played-card")).toBeVisible();
-    await expect(ownerPage.locator(`.active-table-reveal [data-settlement-card-id="${bow.id}"]`)).toHaveCount(0);
+    await expect(ownerPage.locator(`.public-card-journey-card[data-public-zone-transition-card-id="${bow.id}"]`)).toHaveCount(0);
 
     await observerPage.reload();
     await expect(observerPage.locator(".game-shell")).toBeVisible();

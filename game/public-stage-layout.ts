@@ -166,7 +166,7 @@ export function publicStageBandClearance(surface: PublicStageStationarySurface =
 
 /** Preferred top for a complete passive Effect Frame centered in the fixed
  * H4-to-PAC display lane. The inputs are nominal reserves, never live copy. */
-export function publicEffectFrameLanePreferredTop(
+export function publicStationaryLanePreferredTop(
   h4Reserve: PublicStageRect,
   pacReserve: PublicStageRect,
   frameHeight: number,

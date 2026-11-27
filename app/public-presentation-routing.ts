@@ -29,8 +29,8 @@ export const PUBLIC_PRESENTATION_EVENT_COVERAGE = [
   { id: "E08", family: "Group/AOE root and proven recipient effects", producer: "public group root and committed responses", currentOwner: "PublicCardDisplay group journey", route: "journey", zone: "HAND → PUBLIC_PLAY → each response author's history" },
   { id: "E09", family: "Bumper Harvest root/pool/current pick", producer: "committed Harvest root, public pool and server-proven participant progress", currentOwner: "PublicCardDisplay Harvest journey and public pool", route: "journey", zone: "HAND → PUBLIC_PLAY; revealed pool cards are public until claimed" },
   { id: "E10", family: "Peach/Oath/Draw Two and other original roots", producer: "committed public card-play event", currentOwner: "specialized journey or generic proof-backed physical-card journey", route: "journey", zone: "HAND → PUBLIC_PLAY → actual author history" },
-  { id: "E11", family: "Equipment play to actual slot", producer: "committed equip event plus public zone/slot proof", currentOwner: "PublicEquipmentCardTransition; Step B H4 is separate", route: "zone-transition", zone: "HAND → actual EQUIPMENT slot" },
-  { id: "E12", family: "Equipment replacement/loss and private refusal transfer", producer: "committed equipment discard or recipient-only refusal receipt", currentOwner: "PublicEquipmentCardTransition; recipient-only R7", route: "zone-transition", zone: "EQUIPMENT → DISCARD; private refusal → recipient HAND" },
+  { id: "E11", family: "Equipment play to actual slot", producer: "committed equip event plus public zone/slot proof", currentOwner: "PublicCardDisplay equipment journey with matching H4", route: "zone-transition", zone: "HAND → actual EQUIPMENT slot" },
+  { id: "E12", family: "Equipment replacement/loss and private refusal transfer", producer: "committed equipment discard or recipient-only refusal receipt", currentOwner: "PublicDiscardCardTransition; recipient-only R7", route: "zone-transition", zone: "EQUIPMENT → DISCARD; private refusal → recipient HAND" },
   { id: "E13", family: "delayed Stratagem attachment", producer: "committed play plus public Judgement-zone proof", currentOwner: "PublicJudgementCardTransition", route: "zone-transition", zone: "HAND → JUDGEMENT" },
   { id: "E14", family: "later Judgement reveal/outcome/removal", producer: "later public Judgement reveal and result event", currentOwner: "PublicJudgementCardTransition", route: "zone-transition", zone: "JUDGEMENT → public reveal / DISCARD only when proven" },
   { id: "E15", family: "committed public card to Discard", producer: "committed discard event with exact public source and destination", currentOwner: "PublicDiscardCardTransition", route: "zone-transition", zone: "proven HAND/EQUIPMENT/JUDGEMENT → DISCARD" },
@@ -98,7 +98,7 @@ export type PublicPresentationCandidate =
   })
   | (CandidateBase & {
     kind: "zone-transition";
-    mode: CandidateMode["mode"];
+    mode: CandidateMode["mode"] | "committed";
     rootEventId: string;
     transitionId: string;
     eventId: string;
@@ -131,7 +131,7 @@ export type PublicPresentationRoute =
   }
   | {
     kind: "zone-transition";
-    claimedBy: "PublicPhysicalCardTransition";
+    claimedBy: "PublicCardDisplay" | "PublicPhysicalCardTransition";
     claimId: string;
     scope: { roomCode: string; viewerId: string; generation: string };
     eventId: string;
@@ -192,6 +192,8 @@ export type PublicPresentationRouterInput = {
   candidate: PublicPresentationCandidate | null;
   existingOwners?: readonly PublicPresentationExistingOwner[];
   expectedScopeGeneration?: string;
+  /** Exact immutable public fact captured when a committed event entered the presentation queue. */
+  committedPublicFacts?: readonly PublicPresentationEvent[];
 };
 
 function blocked(reason: RouteBlockReason): PublicPresentationRoute {
@@ -415,17 +417,31 @@ export function selectPublicH4AnnouncementOwner(input: {
   return skillEvent ? { eventId: skillEvent.eventId, owner: "PublicSkillEventAnnouncementLayer" } : null;
 }
 
-export function publicFactsForEvent(snapshot: AuditSnapshot, eventId: string): PublicPresentationEvent[] {
-  const rows = allPublicFacts(snapshot).filter((fact) => fact.eventId === eventId);
-  const uniqueRows = rows.filter((fact, index) => rows.findIndex((other) => other.identity.interactionId === fact.identity.interactionId
-    && other.identity.rootFrameId === fact.identity.rootFrameId && other.identity.checkpointId === fact.identity.checkpointId
-    && other.identity.presentationRevision === fact.identity.presentationRevision && other.order === fact.order
-    && other.rootEventId === fact.rootEventId && other.category === fact.category && other.actorId === fact.actorId) === index);
-  return uniqueRows;
+export function publicFactsForEvent(snapshot: AuditSnapshot, eventId: string, committedPublicFacts: readonly PublicPresentationEvent[] = []): PublicPresentationEvent[] {
+  const rows = [...allPublicFacts(snapshot), ...committedPublicFacts].filter((fact) => fact.eventId === eventId);
+  const semanticSignature = (fact: PublicPresentationEvent) => {
+    const { identity, committedOutcome, ...semantics } = fact;
+    return JSON.stringify({
+      ...semantics,
+      identity: { interactionId: identity.interactionId, rootFrameId: identity.rootFrameId },
+      committedOutcome: committedOutcome ? (({ identity: outcomeIdentity, ...outcome }) => ({
+        ...outcome,
+        identity: { interactionId: outcomeIdentity.interactionId, rootFrameId: outcomeIdentity.rootFrameId },
+      }))(committedOutcome) : undefined,
+    });
+  };
+  if (!rows.length) return [];
+  const signature = semanticSignature(rows[0]);
+  if (rows.some((fact) => semanticSignature(fact) !== signature)) return rows;
+  const queuedFact = committedPublicFacts.find((fact) => fact.eventId === eventId);
+  // Prefer the immutable queue identity while still rejecting conflicting
+  // public semantics from the live/retained snapshot.
+  return [queuedFact ?? rows[0]];
 }
 
-function currentScopeMatches(input: PublicPresentationRouterInput, candidate: CandidateBase, mode: "active" | "parked"): boolean {
+function currentScopeMatches(input: PublicPresentationRouterInput, candidate: CandidateBase, mode: "active" | "parked" | "committed"): boolean {
   const { snapshot, clientView } = input;
+  if (mode === "committed") return true;
   if (clientView.hasInteraction) {
     return Boolean(snapshot.identity && snapshot.interaction?.semantics === "PROVEN"
       && snapshot.identity.interactionId === clientView.interactionId
@@ -450,8 +466,9 @@ type PublicEventProofResult =
   | { ok: true; fact: PublicPresentationEvent; event: PublicTimelineEventReference }
   | { ok: false; error: RouteBlockReason };
 
-function publicFactFor(input: PublicPresentationRouterInput, candidate: CandidateBase & { eventId: string; rootEventId: string }, requireCardPlay = false): PublicEventProofResult {
-  const facts = publicFactsForEvent(input.snapshot, candidate.eventId);
+function publicFactFor(input: PublicPresentationRouterInput, candidate: CandidateBase & { eventId: string; rootEventId: string; mode?: "active" | "parked" | "committed" }, requireCardPlay = false, allowQueuedCommittedFact = false): PublicEventProofResult {
+  const facts = publicFactsForEvent(input.snapshot, candidate.eventId,
+    allowQueuedCommittedFact ? input.committedPublicFacts : []);
   if (facts.length === 0) return { ok: false, error: "missing-public-fact" };
   if (facts.length !== 1) return { ok: false, error: "conflicting-public-facts" };
   const fact = facts[0];
@@ -460,14 +477,15 @@ function publicFactFor(input: PublicPresentationRouterInput, candidate: Candidat
     || fact.identity.rootFrameId !== candidate.rootFrameId
     || fact.rootEventId !== candidate.rootEventId
     || requireCardPlay && fact.category !== "CARD_PLAYED") return { ok: false, error: "timeline-proof-mismatch" };
-  if (input.clientView.hasInteraction) {
+  if (allowQueuedCommittedFact && candidate.mode !== "committed") return { ok: false, error: "timeline-proof-mismatch" };
+  if (!allowQueuedCommittedFact && input.clientView.hasInteraction) {
     const current = input.snapshot.identity;
     if (!current || fact.identity.interactionId !== current.interactionId
       || fact.identity.presentationRevision > current.presentationRevision
       || fact.identity.presentationRevision === current.presentationRevision && fact.identity.checkpointId !== current.checkpointId) {
       return { ok: false, error: "timeline-proof-mismatch" };
     }
-  } else {
+  } else if (!allowQueuedCommittedFact) {
     const retained = input.snapshot.retainedPublicEvent;
     if (!retained || retained.identity.interactionId !== fact.identity.interactionId
       || retained.identity.rootFrameId !== fact.identity.rootFrameId
@@ -604,7 +622,7 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
 
   if (candidate.kind === "zone-transition") {
     if (!currentScopeMatches(input, candidate, candidate.mode)) return blocked("active-interaction-mismatch");
-    const proof = publicFactFor(input, candidate);
+    const proof = publicFactFor(input, candidate, false, candidate.mode === "committed");
     if (!proof.ok) return blocked(proof.error);
     if (!proof.event.physicalCardIds?.includes(candidate.physicalCardId) || proof.event.actorId !== proof.fact.actorId) return blocked("timeline-proof-mismatch");
     if (candidate.destination === "PUBLIC_PLAY") return blocked("zone-proof-mismatch");
@@ -623,9 +641,10 @@ export function routePublicPresentation(input: PublicPresentationRouterInput): P
       || zone.from.ownerId !== candidate.from.ownerId || zone.from.slot !== candidate.from.slot)) return blocked("zone-proof-mismatch");
     const claimId = transitionClaimId(input.scope.roomCode, candidate.transitionId);
     if ((input.replay.retiredTransitionIds ?? []).includes(candidate.transitionId)) return { kind: "no-public-card-action", reason: "replayed-transition" };
-    const shadowComparison = compareOwners("PublicPhysicalCardTransition", [{ eventId: candidate.eventId, physicalCardIds: [candidate.physicalCardId] }], input.existingOwners);
+    const claimedBy = candidate.destination === "EQUIPMENT" ? "PublicCardDisplay" : "PublicPhysicalCardTransition";
+    const shadowComparison = compareOwners(claimedBy, [{ eventId: candidate.eventId, physicalCardIds: [candidate.physicalCardId] }], input.existingOwners);
     return {
-      kind: "zone-transition", claimedBy: "PublicPhysicalCardTransition", claimId, scope: scope(input),
+      kind: "zone-transition", claimedBy, claimId, scope: scope(input),
       eventId: candidate.eventId, physicalCardId: candidate.physicalCardId, ownerId: candidate.ownerId,
       destination: candidate.destination, ...(candidate.sourceEventId ? { sourceEventId: candidate.sourceEventId } : {}), ...(candidate.slot ? { slot: candidate.slot } : {}),
       ...(candidate.from ? { from: candidate.from } : {}), shadowComparison,

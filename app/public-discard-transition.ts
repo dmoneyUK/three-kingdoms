@@ -1,5 +1,5 @@
 import { publicH4CardFaceReference, publicH4CardSourceReference, publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
-import type { PublicPhysicalZoneTransition, PublicZoneEndpoint } from "../game/presentation-semantics";
+import type { CommittedPublicOutcome, PublicPhysicalZoneTransition, PublicPresentationEventFactDraft, PublicZoneEndpoint } from "../game/presentation-semantics";
 import { cardDefinition } from "../game/cards";
 import type { CardKind, CardRank, CardSuit } from "../game/model";
 
@@ -18,6 +18,8 @@ export type PublicDiscardTimelineEvent = {
   publicDismantleSettlement?: unknown;
   publicCardEffects?: readonly unknown[];
   publicZoneTransitions?: readonly PublicPhysicalZoneTransition[];
+  publicZoneTransition?: PublicPhysicalZoneTransition;
+  publicFact?: PublicPresentationEventFactDraft;
 };
 
 export type PublicDiscardTransitionRoute = {
@@ -88,6 +90,64 @@ function isDiscardEndpoint(value: unknown): value is { zone: "DISCARD"; ownerId:
   return endpoint.zone === "DISCARD" && endpoint.ownerId === null && endpoint.slot === undefined;
 }
 
+function sameCommittedIdentity(
+  left: PublicPresentationEventFactDraft["committedIdentity"],
+  right: PublicPresentationEventFactDraft["committedIdentity"],
+) {
+  return Boolean(left && right && left.interactionId === right.interactionId
+    && left.rootFrameId === right.rootFrameId && left.checkpointId === right.checkpointId
+    && left.presentationRevision === right.presentationRevision);
+}
+
+function isEquipmentReplacementPair(
+  event: PublicDiscardTimelineEvent,
+  replacementEquip: PublicDiscardTimelineEvent | null,
+): boolean {
+  const transition = event.publicZoneTransition;
+  const discardFact = event.publicFact;
+  const equipFact = replacementEquip?.publicFact;
+  const discardOutcome = discardFact?.committedOutcome as CommittedPublicOutcome | undefined;
+  const equipOutcome = equipFact?.committedOutcome as CommittedPublicOutcome | undefined;
+  const oldCard = event.card;
+  const newCard = replacementEquip?.card;
+  if (!transition || !discardFact || !equipFact || !discardOutcome || !equipOutcome || !oldCard || !newCard
+    || !replacementEquip || !event.actorId || replacementEquip.actorId !== event.actorId) return false;
+  const oldEquipmentName = cardDefinition(oldCard.kind as CardKind).name;
+  const newEquipmentName = cardDefinition(newCard.kind as CardKind).name;
+  const expectedSlot = cardDefinition(oldCard.kind as CardKind).equipmentSlot;
+  const discardChanges = discardOutcome.changes;
+  const equipChanges = equipOutcome.changes;
+  return Boolean(expectedSlot && transition.semantics === "PROVEN" && transition.visibility === "PUBLIC"
+    && transition.from.zone === "EQUIPMENT" && transition.from.ownerId === event.actorId && transition.from.slot === expectedSlot
+    && transition.to.zone === "DISCARD" && transition.to.ownerId === null
+    && transition.eventId === event.id && transition.sourceEventId === event.id
+    && transition.rootEventId === replacementEquip.id && transition.physicalCardId === oldCard.id
+    && discardFact.semantics === "PROVEN" && discardFact.visibility === "PUBLIC"
+    && discardFact.category === "CARD_DISCARDED" && discardFact.rootEventId === replacementEquip.id
+    && discardFact.actorId === event.actorId && JSON.stringify(discardFact.affectedPlayerIds) === JSON.stringify([event.actorId])
+    && discardFact.label === oldEquipmentName && discardFact.effect?.kind === "equipment_replaced"
+    && discardFact.effect.label === oldEquipmentName
+    && sameCommittedIdentity(discardFact.committedIdentity, equipFact.committedIdentity)
+    && discardOutcome.semantics === "PROVEN" && discardOutcome.visibility === "PUBLIC"
+    && discardOutcome.category === "CARD_DISCARDED" && discardOutcome.eventId === event.id
+    && discardOutcome.rootEventId === replacementEquip.id && discardOutcome.actorId === event.actorId
+    && sameCommittedIdentity(discardFact.committedIdentity, discardOutcome.identity)
+    && discardChanges.length === 1 && discardChanges[0]?.kind === "CARD_DISCARDED"
+    && discardChanges[0].playerId === event.actorId && discardChanges[0].amount === 1
+    && discardChanges[0].fromZone === "EQUIPMENT" && discardChanges[0].toZone === "DISCARD"
+    && equipFact.semantics === "PROVEN" && equipFact.visibility === "PUBLIC"
+    && equipFact.category === "CARD_EQUIPPED" && equipFact.rootEventId === replacementEquip.id
+    && equipFact.actorId === event.actorId && JSON.stringify(equipFact.affectedPlayerIds) === JSON.stringify([event.actorId])
+    && equipFact.label === newEquipmentName && equipFact.effect?.kind === "equipment_play"
+    && equipFact.effect.label === newEquipmentName
+    && sameCommittedIdentity(equipFact.committedIdentity, equipOutcome.identity)
+    && equipOutcome.semantics === "PROVEN" && equipOutcome.visibility === "PUBLIC"
+    && equipOutcome.category === "CARD_EQUIPPED" && equipOutcome.eventId === replacementEquip.id
+    && equipOutcome.rootEventId === replacementEquip.id && equipOutcome.actorId === event.actorId
+    && equipChanges.some((change) => change.kind === "CARD_EQUIPPED" && change.playerId === event.actorId
+      && change.amount === 1 && change.fromZone === "HAND" && change.toZone === "EQUIPMENT"));
+}
+
 /**
  * Routes only the server-committed discard event that carries its exact source
  * zone metadata. Dismantle results and R4 material keep their separate owners.
@@ -109,7 +169,9 @@ export function routePublicDiscardTransition(input: {
   if (sameEvent.length !== 1 || sameEvent[0].type !== event.type || sameEvent[0].action !== "discard"
     || sameEvent[0].publicSequence !== event.publicSequence || sameEvent[0].actorId !== event.actorId
     || sameEvent[0].presentation !== event.presentation || sameEvent[0].privateToPlayerId !== event.privateToPlayerId
+    || JSON.stringify(sameEvent[0].publicZoneTransition) !== JSON.stringify(event.publicZoneTransition)
     || JSON.stringify(sameEvent[0].publicZoneTransitions) !== JSON.stringify(event.publicZoneTransitions)
+    || JSON.stringify(sameEvent[0].publicFact) !== JSON.stringify(event.publicFact)
     || JSON.stringify(sameEvent[0].publicDismantleSettlement) !== JSON.stringify(event.publicDismantleSettlement)
     || JSON.stringify(sameEvent[0].publicCardEffects) !== JSON.stringify(event.publicCardEffects)) return null;
 
@@ -119,7 +181,24 @@ export function routePublicDiscardTransition(input: {
   if (!cards.length || cards.some((card) => !card || typeof card.id !== "string" || !card.id || typeof card.kind !== "string")
     || committedCards.some((card) => !card || typeof card.id !== "string" || !card.id || typeof card.kind !== "string")
     || cardIdentity(cards) !== cardIdentity(committedCards)) return null;
-  const transitions = event.publicZoneTransitions;
+  const equipmentReplacement = event.type === "card" && event.card
+    && event.publicFact?.category === "CARD_DISCARDED"
+    && event.publicFact.effect?.kind === "equipment_replaced"
+    && Boolean(event.publicZoneTransition?.rootEventId);
+  const replacementEquipRows = equipmentReplacement
+    ? timeline.filter((candidate) => candidate.id === event.publicZoneTransition?.rootEventId)
+    : [];
+  const replacementEquip = replacementEquipRows.length === 1 ? replacementEquipRows[0] : null;
+  const validReplacementEquip = Boolean(equipmentReplacement && replacementEquip?.type === "card"
+    && replacementEquip.action === "equip" && replacementEquip.actorId === event.actorId
+    && replacementEquip.presentation !== false && !replacementEquip.privateToPlayerId
+    && Number.isSafeInteger(replacementEquip.publicSequence)
+    && (replacementEquip.publicSequence ?? -1) > (event.publicSequence ?? -1)
+    && replacementEquip.card && cardDefinition(replacementEquip.card.kind as CardKind).equipmentSlot === event.publicZoneTransition?.from.slot
+    && isEquipmentReplacementPair(event, replacementEquip));
+  const transitions = equipmentReplacement && validReplacementEquip
+    ? [event.publicZoneTransition!]
+    : event.publicZoneTransitions;
   if (!transitions?.length || transitions.some((transition) => !transition || typeof transition !== "object")
     || new Set(cards.map((card) => card.id)).size !== cards.length
     || transitions.length !== cards.length || new Set(transitions.map((transition) => transition.physicalCardId)).size !== transitions.length) return null;
@@ -129,7 +208,8 @@ export function routePublicDiscardTransition(input: {
     if (!transition || typeof transition !== "object") return null;
     const card = byCardId.get(transition.physicalCardId);
     if (!card || transition.semantics !== "PROVEN" || transition.visibility !== "PUBLIC"
-      || transition.eventId !== event.id || transition.sourceEventId !== event.id || transition.rootEventId !== event.id
+      || transition.eventId !== event.id || transition.sourceEventId !== event.id
+      || transition.rootEventId !== (equipmentReplacement ? replacementEquip?.id : event.id)
       || !isSourceEndpoint(transition.from) || transition.from.ownerId !== event.actorId
       || !isDiscardEndpoint(transition.to)) return null;
     return { physicalCardId: card.id, from: transition.from, to: { zone: "DISCARD" as const, ownerId: null } };

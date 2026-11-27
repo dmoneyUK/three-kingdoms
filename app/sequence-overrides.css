@@ -96,30 +96,20 @@
   visibility: hidden;
 }
 @media (max-width: 700px) {
-  .active-table-reveal.public-hand-transfer .played-card, .active-table-reveal.equipment-flight .played-card {
+  .active-table-reveal.public-hand-transfer .played-card {
     width: var(--public-hand-reveal-width, 90px) !important;
     height: var(--public-hand-reveal-height, 135px) !important;
   }
 }
 @media (max-width: 400px) and (max-height: 740px) {
-  .active-table-reveal.public-hand-transfer .played-card, .active-table-reveal.equipment-flight .played-card {
+  .active-table-reveal.public-hand-transfer .played-card {
     width: var(--public-hand-reveal-width, 72px) !important;
     height: var(--public-hand-reveal-height, 108px) !important;
   }
 }
 
-/* A single visible equipment card flies to the measured rack slot. The rack
-   placeholder retains its dimensions but stays hidden until the reveal ends. */
-.active-table-reveal.equipment-flight {
-  animation: equipmentCardToSlot var(--played-card-display) ease-in-out both !important;
-}
 .active-table-reveal.judgement-flight {
   animation: judgementCardToZone var(--played-card-display) ease-in-out both !important;
-}
-@keyframes equipmentCardToSlot {
-  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 85% { left: var(--public-reveal-x, 50%); top: var(--public-reveal-y, 50%); opacity: 1; transform: scale(1); }
-  100% { left: var(--equipment-x, 50%); top: var(--equipment-y, 50%); opacity: 1; transform: scale(var(--equipment-scale-x, .4), var(--equipment-scale-y, .4)); }
 }
 @keyframes judgementCardToZone {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
@@ -128,10 +118,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .active-table-reveal.equipment-flight {
-    animation-duration: 1ms !important;
-    animation-delay: 0s !important;
-  }
   .active-table-reveal.public-hand-transfer {
     animation-duration: 1ms !important;
     animation-delay: 0s !important;

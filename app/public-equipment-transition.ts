@@ -3,8 +3,11 @@ import type { Card } from "../game/model";
 import { equipmentArrivalIdentity } from "../game/equipment-arrival.js";
 import type { PresentationClientView } from "../game/presentation-client";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PublicPhysicalZoneTransition } from "../game/presentation-semantics";
+import type { PublicPresentationEvent, PublicPhysicalZoneTransition } from "../game/presentation-semantics";
+import type { PublicInteractionNarration } from "../game/public-activity";
+import type { PublicCardDisplayAction } from "./public-card-display";
 import {
+  publicFactsForEvent,
   routePublicPresentation,
   type PublicPresentationExistingOwner,
   type PublicPresentationRoute,
@@ -25,42 +28,18 @@ export type PublicEquipmentEvent = {
   privateToPlayerId?: string;
   publicSequence?: number;
   publicZoneTransition?: PublicPhysicalZoneTransition;
-  publicFact?: {
-    category?: string;
-    effect?: { kind?: string };
-  };
 };
 
-function publicFactsFor(snapshot: PresentationSnapshot, eventId: string) {
-  const facts = [
-    ...snapshot.publicEventFacts,
-    ...(snapshot.retainedPublicEventFacts ?? []),
-    ...(snapshot.retainedPublicEvent ? [snapshot.retainedPublicEvent] : []),
-  ].filter((fact) => fact.eventId === eventId);
-  const unique = new Map(facts.map((fact) => [JSON.stringify([
-    fact.identity.interactionId, fact.identity.rootFrameId, fact.identity.checkpointId,
-    fact.identity.presentationRevision, fact.order, fact.rootEventId, fact.category, fact.actorId,
-  ]), fact]));
-  return [...unique.values()];
-}
-
-function replacementProofMatches(event: PublicEquipmentEvent, players: readonly EquipmentPlayer[]) {
-  const proof = event.publicZoneTransition;
-  const card = event.card;
-  const slot = card ? cardDefinition(card.kind).equipmentSlot : undefined;
-  return Boolean(event.type === "card" && event.action === "discard" && event.presentation !== false
-    && event.publicFact?.category === "CARD_DISCARDED" && event.publicFact.effect?.kind === "equipment_replaced"
-    && !event.privateToPlayerId && card && slot && proof?.semantics === "PROVEN" && proof.visibility === "PUBLIC"
-    && proof.eventId === event.id && proof.physicalCardId === card.id
-    && proof.from.zone === "EQUIPMENT" && proof.from.ownerId === event.actorId && proof.from.slot === slot
-    && proof.to.zone === "DISCARD" && proof.to.ownerId === null
-    && !players.some((player) => player.equipmentCards.some((equipped) => equipped.id === card.id)));
+/** Only an ordinary committed equip owns the canonical public CardFace journey. */
+export function isCommittedPublicEquipmentPlay(event: PublicEquipmentEvent | null | undefined): boolean {
+  return Boolean(event && event.type === "card" && event.action === "equip" && !event.playedAs
+    && event.presentation !== false && !event.privateToPlayerId && event.card?.id && event.actorId);
 }
 
 /**
- * Builds the M2 candidate only from a committed event plus the validated public
- * snapshot and its actual destination proof. Private receipts and unrelated
- * public discards are deliberately left to their existing owners.
+ * Adapts the committed room event and its immutable queued public fact to the
+ * shared PublicCardDisplay owner. A queue claim is bound to its original event
+ * identity and sequence, so a later unrelated snapshot root cannot invalidate it.
  */
 export function routePublicEquipmentTransition(input: {
   event: PublicEquipmentEvent;
@@ -69,93 +48,139 @@ export function routePublicEquipmentTransition(input: {
   clientView: PresentationClientView;
   roomCode: string;
   viewerId: string;
+  committedPublicFact?: PublicPresentationEvent;
   retiredTransitionIds?: readonly string[];
   existingOwners?: readonly PublicPresentationExistingOwner[];
 }): PublicPresentationRoute | null {
-  const { event, players, snapshot, clientView } = input;
-  if (event.type !== "card" || event.presentation === false || event.privateToPlayerId
-    || !event.card || !event.id) return null;
-
-  let destination: PublicZoneProjection["zone"];
-  let ownerId: string | null;
-  let slot: PublicZoneProjection["slot"];
-  let from: PublicZoneProjection["from"] | undefined;
-  let zone: PublicZoneProjection | null = null;
-
-  if (event.action === "equip" && !event.playedAs) {
-    const arrival = equipmentArrivalIdentity(event, players);
-    if (!arrival) return { kind: "blocked-invalid-proof", reason: "missing-zone-proof" };
-    const exactOwners = players.filter((player) => player.equipmentCards.some((card) => card.id === arrival.cardId && card.kind === event.card?.kind));
-    if (exactOwners.length !== 1 || exactOwners[0].id !== arrival.ownerId || arrival.ownerId !== event.actorId) {
-      return { kind: "blocked-invalid-proof", reason: "zone-proof-mismatch" };
-    }
-    destination = "EQUIPMENT";
-    ownerId = arrival.ownerId;
-    slot = arrival.slot as PublicZoneProjection["slot"];
-    zone = { semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, physicalCardId: event.card.id, ownerId, zone: destination, slot };
-  } else if (event.action === "discard" && replacementProofMatches(event, players)) {
-    const proof = event.publicZoneTransition!;
-    destination = "DISCARD";
-    ownerId = null;
-    slot = undefined;
-    from = { zone: "EQUIPMENT", ownerId: proof.from.ownerId, slot: proof.from.slot };
-    zone = { semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, physicalCardId: event.card.id, ownerId, zone: destination, from };
-  } else {
-    return null;
+  const { event, players, snapshot } = input;
+  if (!isCommittedPublicEquipmentPlay(event) || !event.card || !event.actorId) return null;
+  const arrival = equipmentArrivalIdentity(event, players);
+  if (!arrival || arrival.eventId !== event.id || arrival.cardId !== event.card.id || arrival.ownerId !== event.actorId) {
+    return { kind: "blocked-invalid-proof", reason: "missing-zone-proof" };
   }
-
-  const facts = publicFactsFor(snapshot, event.id);
-  if (facts.length !== 1) return { kind: "blocked-invalid-proof", reason: facts.length ? "conflicting-public-facts" : "missing-public-fact" };
-  const fact = facts[0];
-  if (!fact.rootEventId || !fact.actorId || fact.actorId !== event.actorId || !Number.isSafeInteger(event.publicSequence)) {
+  const exactOwners = players.filter((player) => player.equipmentCards.some((card) => card.id === arrival.cardId && card.kind === event.card?.kind));
+  const slot = cardDefinition(event.card.kind).equipmentSlot;
+  if (!slot || exactOwners.length !== 1 || exactOwners[0].id !== arrival.ownerId || arrival.slot !== slot) {
+    return { kind: "blocked-invalid-proof", reason: "zone-proof-mismatch" };
+  }
+  if (!Number.isSafeInteger(event.publicSequence) || (event.publicSequence ?? -1) < 0) {
     return { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" };
   }
-  const expectedCategory = event.action === "equip" ? "CARD_EQUIPPED" : "CARD_DISCARDED";
-  if (fact.category !== expectedCategory) return { kind: "blocked-invalid-proof", reason: "missing-public-fact" };
-  if (destination === "DISCARD" && (fact.effect?.kind !== "equipment_replaced" || fact.rootEventId === event.id)) return null;
+
+  const facts = publicFactsForEvent(snapshot, event.id, input.committedPublicFact ? [input.committedPublicFact] : []);
+  if (facts.length !== 1) return { kind: "blocked-invalid-proof", reason: facts.length ? "conflicting-public-facts" : "missing-public-fact" };
+  const fact = facts[0];
+  if (fact.category !== "CARD_EQUIPPED" || fact.visibility !== "PUBLIC" || fact.semantics !== "PROVEN"
+    || fact.eventId !== event.id || fact.order !== event.publicSequence || fact.rootEventId !== event.id
+    || !fact.identity.interactionId || !fact.identity.rootFrameId
+    || !fact.actorId || fact.actorId !== event.actorId || !fact.affectedPlayerIds.includes(event.actorId)) {
+    return { kind: "blocked-invalid-proof", reason: "timeline-proof-mismatch" };
+  }
+
   const timeline: PublicTimelineEventReference = {
-    semantics: "PROVEN",
-    visibility: "PUBLIC",
-    eventId: event.id,
-    publicSequence: event.publicSequence!,
-    interactionId: fact.identity.interactionId,
-    rootFrameId: fact.identity.rootFrameId,
-    rootEventId: fact.rootEventId,
-    actorId: event.actorId,
-    action: event.action === "equip" ? "equip" : "discard",
-    physicalCardIds: [event.card.id],
-    physicalCardKinds: { [event.card.id]: event.card.kind },
-    destination,
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, publicSequence: event.publicSequence!,
+    interactionId: fact.identity.interactionId, rootFrameId: fact.identity.rootFrameId, rootEventId: fact.rootEventId,
+    actorId: event.actorId, action: "equip", physicalCardIds: [event.card.id],
+    physicalCardKinds: { [event.card.id]: event.card.kind }, destination: "EQUIPMENT",
   };
-  const transitionFrom = from;
-  const candidate = {
-    kind: "zone-transition" as const,
-    mode: clientView.hasInteraction ? "active" as const : "parked" as const,
-    interactionId: fact.identity.interactionId,
-    rootFrameId: fact.identity.rootFrameId,
-    rootEventId: fact.rootEventId,
-    transitionId: event.id,
-    eventId: event.id,
-    physicalCardId: event.card.id,
-    ownerId,
-    destination,
-    ...(slot ? { slot } : {}),
-    ...(transitionFrom ? { from: transitionFrom } : {}),
+  const zone: PublicZoneProjection = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: event.id, physicalCardId: event.card.id,
+    ownerId: arrival.ownerId, zone: "EQUIPMENT", slot,
   };
   return routePublicPresentation({
     scope: { roomCode: input.roomCode, viewerId: input.viewerId, generation: `${input.roomCode}:${input.viewerId}` },
     snapshot,
-    clientView,
+    clientView: input.clientView,
     publicTimeline: [timeline],
-    publicZones: zone ? [zone] : [],
+    publicZones: [zone],
+    committedPublicFacts: [fact],
     replay: { retiredTransitionIds: input.retiredTransitionIds },
-    candidate,
+    candidate: {
+      kind: "zone-transition", mode: "committed", interactionId: fact.identity.interactionId,
+      rootFrameId: fact.identity.rootFrameId, rootEventId: fact.rootEventId,
+      transitionId: event.id, eventId: event.id, physicalCardId: event.card.id,
+      ownerId: arrival.ownerId, destination: "EQUIPMENT", slot,
+    },
     existingOwners: input.existingOwners,
     expectedScopeGeneration: `${input.roomCode}:${input.viewerId}`,
   });
 }
 
-export function isM2EquipmentTransitionEvent(event: PublicEquipmentEvent | null | undefined): boolean {
-  return Boolean(event && event.type === "card"
-    && (event.action === "equip" && !event.playedAs || event.publicZoneTransition !== undefined));
+/** Builds the one canonical CardDisplay action from the exact public equip fact and route. */
+export function publicEquipmentCardDisplayAction(input: {
+  event: PublicEquipmentEvent;
+  route: PublicPresentationRoute | null | undefined;
+  fact: PublicPresentationEvent | null | undefined;
+  narration: PublicInteractionNarration | null | undefined;
+  roomCode: string;
+  viewerId: string;
+  seenEventIds: ReadonlySet<string>;
+}): PublicCardDisplayAction | null {
+  const { event, route, fact, narration } = input;
+  if (!isCommittedPublicEquipmentPlay(event) || !event.card || !event.actorId
+    || route?.kind !== "zone-transition" || route.claimedBy !== "PublicCardDisplay"
+    || route.scope.roomCode !== input.roomCode || route.scope.viewerId !== input.viewerId
+    || route.eventId !== event.id || route.physicalCardId !== event.card.id
+    || route.ownerId !== event.actorId || route.destination !== "EQUIPMENT" || !route.slot
+    || !fact || fact.semantics !== "PROVEN" || fact.visibility !== "PUBLIC"
+    || fact.eventId !== event.id || fact.rootEventId !== event.id || fact.category !== "CARD_EQUIPPED"
+    || fact.actorId !== event.actorId || fact.order !== event.publicSequence
+    || !fact.identity.interactionId || !fact.identity.rootFrameId
+    || !narration || narration.eventId !== event.id || narration.rootEventId !== event.id
+    || narration.interactionId !== fact.identity.interactionId || narration.rootFrameId !== fact.identity.rootFrameId
+    || narration.actorId !== event.actorId) return null;
+
+  const slot = route.slot;
+  const claim = {
+    claimId: route.claimId,
+    eventId: event.id,
+    physicalCardId: event.card.id,
+    ownerId: event.actorId,
+    slot,
+    h4EventId: event.id,
+  } as const;
+  return {
+    key: [input.roomCode, "equipment", route.claimId].join(":"),
+    rootEventId: event.id,
+    interactionId: fact.identity.interactionId,
+    rootFrameId: fact.identity.rootFrameId,
+    checkpointId: fact.identity.checkpointId,
+    presentationRevision: fact.identity.presentationRevision,
+    sourceId: event.actorId,
+    targetId: null,
+    cardFace: event.card,
+    cardKind: event.card.kind,
+    cardLabel: cardDefinition(event.card.kind).name.toUpperCase(),
+    ariaLabel: narration.accessibleLabel,
+    publicNotice: narration.headline,
+    publicNoticeSegments: narration.headlineSegments,
+    publicNoticeCompact: narration.compactHeadline,
+    publicNoticeEventId: event.id,
+    publicInteractionNarration: narration,
+    motion: {
+      type: "zone-transition",
+      scopeKey: route.claimId,
+      freshEventIds: input.seenEventIds.has(event.id) ? [] : [event.id],
+    },
+    revealCompletionPolicy: "visible-hold",
+    zoneTransition: claim,
+  };
+}
+
+/** Reject stale or duplicate parked callbacks; the route revalidates live slot ownership. */
+export function publicEquipmentArrivalCompletionMatches(input: {
+  route: PublicPresentationRoute | null | undefined;
+  claim: NonNullable<PublicCardDisplayAction["zoneTransition"]>;
+  roomCode: string;
+  viewerId: string;
+  presentedEventIds?: ReadonlySet<string>;
+}): boolean {
+  const route = input.route;
+  return Boolean(route?.kind === "zone-transition" && route.claimedBy === "PublicCardDisplay"
+    && route.scope.roomCode === input.roomCode && route.scope.viewerId === input.viewerId
+    && route.claimId === input.claim.claimId && route.eventId === input.claim.eventId
+    && route.physicalCardId === input.claim.physicalCardId && route.ownerId === input.claim.ownerId
+    && route.destination === "EQUIPMENT" && route.slot === input.claim.slot
+    && input.claim.h4EventId === input.claim.eventId
+    && !input.presentedEventIds?.has(input.claim.eventId));
 }

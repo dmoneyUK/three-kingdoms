@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, checkpointPublicStageVisibleHold, positionLabeledCardAboveBand, publicEffectFrameLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMayExcludeStauchnessChoiceWrapper, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard, publicStageStaticAnnouncementMatchesReveal, publicStageVisibleHoldCanComplete } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, checkpointPublicStageVisibleHold, positionLabeledCardAboveBand, publicStationaryLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMayExcludeStauchnessChoiceWrapper, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard, publicStageStaticAnnouncementMatchesReveal, publicStageVisibleHoldCanComplete } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -806,14 +806,14 @@ test("fixed reveal keeps its canonical position through actual H4 and PAC overla
 test("full Effect Frame top centers in nominal H4-to-PAC lane without using live copy height", () => {
   const h4Reserve = { left: 50, top: 150, right: 390, bottom: 216 };
   const pacReserve = { left: 50, top: 412, right: 390, bottom: 456 };
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 202), 213,
-    "the observed complete frame is centered between fixed band edges");
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 202, 8), 221,
-    "the Frost-only preference shifts the shared lane anchor down by eight CSS pixels");
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 220), 204,
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 202), 213,
+    "the observed stationary card is centered between fixed band edges");
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 202, 8), 221,
+    "an existing approved effect offset remains unchanged");
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 220), 204,
     "a different full frame footprint changes only its centered top");
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 0), null);
-  assert.equal(publicEffectFrameLanePreferredTop({ ...h4Reserve, bottom: Number.NaN }, pacReserve, 202), null);
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 0), null);
+  assert.equal(publicStationaryLanePreferredTop({ ...h4Reserve, bottom: Number.NaN }, pacReserve, 202), null);
 });
 
 test("the upper-H4 fallback keeps the canonical Effect Frame position despite reserve overlap", () => {

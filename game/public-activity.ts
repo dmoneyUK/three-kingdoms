@@ -649,6 +649,8 @@ export function derivePublicInteractionNarration(input: {
   rootFrameId: string;
   /** Selects the exact active public event instead of a later same-root result. */
   eventId?: string;
+  /** Validated immutable public facts retained with an ordered presentation event. */
+  committedPublicFacts?: readonly PresentationSnapshot["publicEventFacts"][number][];
   /** Exact live Kirin Bow frame whose own committed discard and Attack hit may share H4. */
   liveKirinBowEffectEventId?: string;
 }): PublicInteractionNarration | null {
@@ -658,10 +660,31 @@ export function derivePublicInteractionNarration(input: {
   if (!snapshot || !input.rootEventId) return null;
   let latest: PresentationSnapshot["publicEventFacts"][number] | undefined;
   const publicFactsByEventId = new Map<string, PresentationSnapshot["publicEventFacts"][number]>();
-  for (const fact of [...(snapshot.retainedPublicEventFacts ?? []), ...snapshot.publicEventFacts]) {
+  const factSignature = (fact: PresentationSnapshot["publicEventFacts"][number]) => {
+    const { identity, committedOutcome, ...semanticFact } = fact;
+    return JSON.stringify({
+      ...semanticFact,
+      identity: { interactionId: identity.interactionId, rootFrameId: identity.rootFrameId },
+      committedOutcome: committedOutcome ? (({ identity: outcomeIdentity, ...outcome }) => ({
+        ...outcome,
+        identity: { interactionId: outcomeIdentity.interactionId, rootFrameId: outcomeIdentity.rootFrameId },
+      }))(committedOutcome) : undefined,
+    });
+  };
+  for (const fact of [
+    ...(snapshot.retainedPublicEventFacts ?? []),
+    ...snapshot.publicEventFacts,
+    ...(input.committedPublicFacts ?? []),
+  ]) {
     if (fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId
-      && fact.identity.rootFrameId === input.rootFrameId) publicFactsByEventId.set(fact.eventId, fact);
+      && fact.identity.rootFrameId === input.rootFrameId) {
+      const prior = publicFactsByEventId.get(fact.eventId);
+      if (prior && factSignature(prior) !== factSignature(fact)) return null;
+      // Queue facts are appended last and keep the committed checkpoint/revision
+      // that was validated when the event entered the viewer's presentation queue.
+      publicFactsByEventId.set(fact.eventId, fact);
+    }
   }
   const verifiedFacts = [...publicFactsByEventId.values()].sort((left, right) => left.order - right.order);
   const verifiedRootOrder = verifiedFacts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;

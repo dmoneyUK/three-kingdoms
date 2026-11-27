@@ -60,12 +60,11 @@ import { VerifiedPlayerCopy } from "./verified-player-copy";
 import { PublicStageLayoutProvider } from "./public-stage-layout-context";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
-import { equipmentArrivalIdentity, pendingEquipmentArrivalIdentities as derivePendingEquipmentArrivalIdentities } from "../game/equipment-arrival.js";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
 import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate, selectPublicCardActionForCursor } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
-import { isM2EquipmentTransitionEvent, routePublicEquipmentTransition } from "./public-equipment-transition";
+import { isCommittedPublicEquipmentPlay, publicEquipmentArrivalCompletionMatches, publicEquipmentCardDisplayAction, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementReplacementOwnsActiveTimer, publicJudgementReplacementRevealCompletion, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
@@ -2331,6 +2330,7 @@ function publicInteractionNarrationForStage(
   players: readonly Player[],
   liveKirinBowEffectEventId?: string,
   retaliationSettlementOwnsCurrentFact = false,
+  committedPublicFacts: readonly PublicPresentationEvent[] = [],
 ): PublicInteractionNarration | null {
   if (retaliation) return retaliation;
   if (fanjian) return fanjian;
@@ -2342,6 +2342,7 @@ function publicInteractionNarrationForStage(
     interactionId: currentFact.identity.interactionId,
     rootFrameId: currentFact.identity.rootFrameId,
     eventId: currentFact.eventId,
+    committedPublicFacts,
     ...(liveKirinBowEffectEventId ? { liveKirinBowEffectEventId } : {}),
   });
 }
@@ -5801,11 +5802,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : activeSkillOption && activeSkillStateIsCurrent
       ? { providerId: activeSkillOption.effectId, ...(activeSkillTargetSelection && activeSkillTargetMax > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) }
       : null;
-  const activeEquipmentArrival = activeEvent?.type === "card"
-    ? equipmentArrivalIdentity(activeEvent, room.players)
-    : null;
   const activeEquipmentTransitionRoute = useMemo(() => {
-    if (!activeEvent || !isM2EquipmentTransitionEvent(activeEvent)) return null;
+    if (!activeEvent || !isCommittedPublicEquipmentPlay(activeEvent)) return null;
     if (!room.presentationSnapshot) return { kind: "blocked-invalid-proof", reason: "missing-public-fact" } as const;
     return routePublicEquipmentTransition({
       event: activeEvent,
@@ -5814,9 +5812,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       clientView: clientPresentation,
       roomCode: room.code,
       viewerId: room.meId,
+      committedPublicFact: queuedPublicH4Facts.get(activeEvent.id),
       retiredTransitionIds: [...presentedEventIds],
     });
-  }, [activeEvent, room.players, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds]);
+  }, [activeEvent, room.players, room.presentationSnapshot, clientPresentation, room.code, room.meId, presentedEventIds, queuedPublicH4Facts]);
   const activeEquipmentZoneTransition = activeEquipmentTransitionRoute?.kind === "zone-transition"
     ? activeEquipmentTransitionRoute
     : null;
@@ -5954,9 +5953,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeEquipmentArrivalEventId = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
     ? activeEquipmentZoneTransition.eventId
     : null;
-  const activeEquipmentArrivalKey = activeEquipmentArrival && activeEquipmentArrivalEventId === activeEquipmentArrival.eventId
-    ? `${activeEquipmentArrival.eventId}|${activeEquipmentArrival.cardId}|${activeEquipmentArrival.ownerId}|${activeEquipmentArrival.slot}`
-    : "";
+  const activeEquipmentJourneyClaimId = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
+    ? activeEquipmentZoneTransition.claimId : "";
   const activeEventTimerEventId = activeEvent?.id ?? "";
   const activeEventTimerKind = activeEvent?.type === "card"
     ? `card:${activeEvent.action}:${activeEvent.card.kind}`
@@ -6965,34 +6963,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const currentPublicEventPresentation = activeEvent ?? optimisticPlay;
   const processedEventIds = new Set(processedTimelineKey.split("|"));
   const pendingPresentationEvents = [optimisticPlay, activeEvent, ...eventQueue, ...room.timeline.filter((event) => !processedEventIds.has(event.id))].filter((event): event is GameEvent => Boolean(event));
-  const pendingEquipmentArrivals = derivePendingEquipmentArrivalIdentities(pendingPresentationEvents, room.players, presentedEventIds);
-  const pendingEquipmentArrivalCardIds = new Set(pendingEquipmentArrivals.map((identity) => identity.cardId));
-  const markPublicEquipmentTransitionPresented = useCallback((transition: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => {
-    if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
-      || !activeEvent || activeEvent.id !== transition.eventId || activeEvent.type !== "card"
-      || activeEvent.card.id !== transition.physicalCardId) return;
-    const refreshed = room.presentationSnapshot ? routePublicEquipmentTransition({
-      event: activeEvent,
-      players: room.players,
-      snapshot: room.presentationSnapshot,
-      clientView: clientPresentation,
-      roomCode: room.code,
-      viewerId: room.meId,
-      retiredTransitionIds: [...presentedEventIds],
-    }) : null;
-    if (refreshed?.kind !== "zone-transition" || refreshed.claimId !== transition.claimId
-      || refreshed.destination !== transition.destination || refreshed.ownerId !== transition.ownerId
-      || refreshed.slot !== transition.slot || refreshed.from?.zone !== transition.from?.zone
-      || refreshed.from?.ownerId !== transition.from?.ownerId || refreshed.from?.slot !== transition.from?.slot) return;
-    if (transition.destination === "EQUIPMENT") {
-      const proof = equipmentArrivalIdentity(activeEvent, room.players);
-      if (!proof || proof.eventId !== transition.eventId || proof.cardId !== transition.physicalCardId
-        || proof.ownerId !== transition.ownerId || proof.slot !== transition.slot) return;
-    } else if (activeEvent.publicZoneTransition?.eventId !== transition.eventId
-      || activeEvent.publicZoneTransition.physicalCardId !== transition.physicalCardId) return;
-    setPresentedEventIds((ids) => ids.has(transition.eventId) ? ids : new Set([...ids, transition.eventId]));
-    setActiveEvent((currentEvent) => currentEvent?.id === transition.eventId ? null : currentEvent);
-  }, [activeEvent, clientPresentation, presentedEventIds, room.code, room.meId, room.players, room.presentationSnapshot]);
+  const pendingEquipmentArrivalClaims = room.presentationSnapshot
+    ? [...new Map(pendingPresentationEvents.flatMap((event) => {
+      if (!isCommittedPublicEquipmentPlay(event) || presentedEventIds.has(event.id)) return [];
+      const route = routePublicEquipmentTransition({
+        event, players: room.players, snapshot: room.presentationSnapshot, clientView: clientPresentation,
+        roomCode: room.code, viewerId: room.meId, committedPublicFact: queuedPublicH4Facts.get(event.id),
+        retiredTransitionIds: [...presentedEventIds],
+      });
+      return route?.kind === "zone-transition" && route.destination === "EQUIPMENT" ? [[route.eventId, route] as const] : [];
+    })).values()]
+    : [];
+  const pendingEquipmentArrivalCardIds = new Set(pendingEquipmentArrivalClaims.map((claim) => claim.physicalCardId));
   const markPublicJudgementTransitionPresented = useCallback((transition: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => {
     if (transition.scope.roomCode !== room.code || transition.scope.viewerId !== room.meId
       || !activeEvent || activeEvent.id !== transition.eventId || !isM3JudgementTransitionEvent(activeEvent)) return;
@@ -7463,12 +7445,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       eventKind: activeEventTimerKind,
       stableIdentity: activeEventTimerIdentity,
       durationMs: activeEventDisplayDuration,
-      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : activeJudgementReplacementKey ? "judgement-replacement" : activeJudgementTransitionKey || activePublicDiscardTransitionKey || activePublicHandRevealTransitionKey ? "zone-transition" : "timed-reveal",
-      equipmentArrivalIdentity: activeEquipmentArrivalKey || undefined,
+      timerMode: activeEquipmentJourneyClaimId ? "equipment-arrival" : activeJudgementReplacementKey ? "judgement-replacement" : activeJudgementTransitionKey || activePublicDiscardTransitionKey || activePublicHandRevealTransitionKey ? "zone-transition" : "timed-reveal",
+      equipmentJourneyClaimId: activeEquipmentJourneyClaimId || undefined,
       judgementReplacementIdentity: activeJudgementReplacementKey || undefined,
       ...timerContext,
     });
-    if (activeEquipmentArrivalKey) {
+    if (activeEquipmentJourneyClaimId) {
       traceTimer("equipment-arrival-exempt");
       return;
     }
@@ -7506,7 +7488,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       clearTimeout(timer);
       if (!fired) traceTimer("cancelled");
     };
-  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey, activeJudgementReplacementKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
+  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentJourneyClaimId, activeJudgementReplacementKey, activeJudgementTransitionKey, activePublicDiscardTransitionKey, activePublicHandRevealTransitionKey]);
   useEffect(() => {
     const pendingIds = new Set([activeEvent, ...eventQueue].flatMap((event) => event ? [event.id] : []));
     setQueuedPublicH4Facts((current) => {
@@ -11069,6 +11051,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     room.players,
     freshKirinBowEffectEventId(selectedPublicCardAction),
     publicRetaliationSettlementOwnsEvent(currentInteractionFact?.eventId, cardAcquisitionSettlements),
+    [...queuedPublicH4Facts.values()],
   );
   const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
     && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId
@@ -11395,7 +11378,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && currentPublicJudgementPresentation?.eventId === cursorOwnedJudgementReplacementAction.rootEventId);
   const sharedContributionAction = sharedContributionDisplayAction(room, domainPublicCardDisplayAction, currentInteractionFact,
     publicCardJourneySeenEventIds, publicInteractionNarration, dueJudgementReplacementOwnsCursor);
-  const publicCardDisplayAction = sharedContributionAction ?? domainPublicCardDisplayAction;
+  const activeEquipmentFact = activeEquipmentZoneTransition
+    ? queuedPublicH4Facts.get(activeEquipmentZoneTransition.eventId)
+      ?? (currentFactAtPresentationCursor?.eventId === activeEquipmentZoneTransition.eventId ? currentFactAtPresentationCursor : null)
+    : null;
+  const activeEquipmentJourneyAction = activeEquipmentZoneTransition?.destination === "EQUIPMENT"
+    && activeEvent?.type === "card" && activeEvent.id === activeEquipmentZoneTransition.eventId
+    ? publicEquipmentCardDisplayAction({
+      event: activeEvent,
+      route: activeEquipmentZoneTransition,
+      fact: activeEquipmentFact,
+      narration: publicInteractionNarration?.eventId === activeEquipmentZoneTransition.eventId ? publicInteractionNarration : null,
+      roomCode: room.code,
+      viewerId: room.meId,
+      seenEventIds: publicCardJourneySeenEventIds,
+    })
+    : null;
+  const publicCardDisplayAction = activeEquipmentJourneyAction ?? sharedContributionAction ?? domainPublicCardDisplayAction;
   const publicCardDisplayOwnershipIdentity = publicCardDisplayAction
     ? publicCardJourneyOwnershipIdentity(publicCardDisplayAction, room.code)
     : "";
@@ -11405,14 +11404,37 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   expectedPublicCardOwnershipRef.current = publicCardDisplayOwnershipIdentity
     ? { roomCode: room.code, viewerId: room.meId, actionKey: publicCardDisplayOwnershipIdentity, scopeGeneration: publicCardDisplayOwnershipScopeGeneration }
     : { roomCode: room.code, viewerId: room.meId, actionKey: "", scopeGeneration: "" };
-  const markPublicCardDisplayEventParked = useCallback((eventId: string) => {
+  const markPublicCardDisplayEventParked = useCallback((eventId: string, equipmentClaim?: NonNullable<PublicCardDisplayAction["zoneTransition"]>) => {
     markPublicCardJourneyEventParked(eventId);
+    const transition = activeEquipmentZoneTransition;
+    if (transition?.destination === "EQUIPMENT" && transition.eventId === eventId && equipmentClaim
+      && transition.scope.roomCode === room.code && transition.scope.viewerId === room.meId
+      && activeEvent?.type === "card" && activeEvent.id === eventId
+      && activeEvent.card.id === transition.physicalCardId && activeEvent.actorId === transition.ownerId
+      && publicCardDisplayAction?.zoneTransition?.claimId === transition.claimId) {
+      const refreshed = room.presentationSnapshot ? routePublicEquipmentTransition({
+        event: activeEvent, players: room.players, snapshot: room.presentationSnapshot, clientView: clientPresentation,
+        roomCode: room.code, viewerId: room.meId, committedPublicFact: queuedPublicH4Facts.get(eventId),
+        retiredTransitionIds: [...presentedEventIds],
+      }) : null;
+      if (publicEquipmentArrivalCompletionMatches({
+        route: refreshed,
+        claim: equipmentClaim,
+        roomCode: room.code,
+        viewerId: room.meId,
+        presentedEventIds,
+      })) {
+        setPresentedEventIds((ids) => ids.has(eventId) ? ids : new Set([...ids, eventId]));
+        setActiveEvent((currentEvent) => currentEvent?.id === eventId ? null : currentEvent);
+      }
+    }
     if (publicCardDisplayAction?.publicCardEffectFrame?.effectId === "hua_tuo_prodigal_healer"
       && publicCardDisplayAction.rootEventId === eventId) {
       markProdigalHealerFrameRead(eventId);
     }
   }, [markProdigalHealerFrameRead, markPublicCardJourneyEventParked,
-    publicCardDisplayAction?.publicCardEffectFrame?.effectId, publicCardDisplayAction?.rootEventId]);
+    activeEquipmentZoneTransition, activeEvent, clientPresentation, presentedEventIds, publicCardDisplayAction,
+    queuedPublicH4Facts, room.code, room.meId, room.players, room.presentationSnapshot]);
   const rootActionSource = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.sourceId) : null;
   const rootActionTarget = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.targetId) : null;
   const compactPublicPlayerNamesById = Object.fromEntries(room.players.flatMap((player) => player.hero
@@ -11644,7 +11666,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [activeStealSettlement?.eventId, activeStealSettlement?.journeySettled, activeStealSettlementMustHide,
     publicH4Owner?.owner, retaliationSettlementH4Active, stealSettlementCandidate?.action.eventId,
     stealSettlementCandidate?.action.acquisitionKind]);
-  const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
+  const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "zone-transition"
+    ? [publicCardDisplayAction.rootEventId]
+    : publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
@@ -12474,7 +12498,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootFrameId: publicCardDisplayAction?.rootFrameId ?? null,
       checkpointId: publicCardDisplayAction?.checkpointId ?? null,
       presentationRevision: publicCardDisplayAction?.presentationRevision ?? null,
-      candidateRendererKind: publicCardDisplayAction?.motion?.type === "attack-dodge" ? "attack-dodge-journey"
+      candidateRendererKind: publicCardDisplayAction?.motion?.type === "zone-transition" ? "public-card-display-zone-transition"
+        : publicCardDisplayAction?.motion?.type === "attack-dodge" ? "attack-dodge-journey"
         : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root" || publicCardDisplayAction?.motion?.type === "lust-cost" ? "single-target-journey"
           : publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel" ? "duel-journey"
             : "no-public-card-renderer",
@@ -13370,7 +13395,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onCardDetails={(card, trigger) => openCardDetails(card, "private-deck-reorder", trigger)} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
       {activeJudgementRevealRoute && activeEvent?.type === "card" && <PublicJudgementOriginalReveal event={activeEvent} route={activeJudgementRevealRoute} />}
-      {activeEquipmentZoneTransition && activeEvent?.type === "card" && <PublicEquipmentCardTransition event={activeEvent} route={activeEquipmentZoneTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicEquipmentTransitionPresented} />}
       {activeJudgementZoneTransition && activeJudgementTransitionCard && activeEvent && <PublicJudgementCardTransition event={activeEvent} card={activeJudgementTransitionCard} route={activeJudgementZoneTransition} players={room.players} myTableIndex={myTableIndex} skipCentralRevealAfterPriorRead={Boolean(completedPriorJudgementPlayReveal)} onPresented={markPublicJudgementTransitionPresented} />}
       {activePublicDiscardTransition && activeEvent && <PublicDiscardCardTransition event={activeEvent} route={activePublicDiscardTransition} players={room.players} myTableIndex={myTableIndex} onPresented={markPublicDiscardTransitionPresented} />}
       {dismantleSettlementCandidate?.journeySettled && dismantleSettlementCandidate.action.affectedCardFace && <PublicSettlementCardResult key={`${dismantleSettlementCandidate.action.eventId}:public`} result={{
@@ -13699,7 +13723,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               data-console-ordinary-turn-play-authorized={ordinaryTurnPlayAuthorized ? "true" : "false"}
               data-console-active-event-id={activeEventTimerEventId || undefined}
               data-console-active-event-kind={activeEventTimerKind || undefined}
-              data-console-active-event-timer-mode={activeEventTimerEventId ? activeEquipmentArrivalKey ? "equipment-arrival" : "timed-reveal" : "idle"}
+              data-console-active-event-timer-mode={activeEventTimerEventId ? activeEquipmentJourneyClaimId ? "equipment-arrival" : "timed-reveal" : "idle"}
               data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"}
               data-console-network-busy={busy ? "true" : "false"}
               data-lust-local-selection={lustLocalSelectionActive ? "true" : undefined}
@@ -14681,80 +14705,6 @@ function findAnchor(root: ParentNode, attribute: string, value: string): HTMLEle
 function findEquipmentSlotAnchor(root: ParentNode, ownerId: string, slot: string): HTMLElement | null {
   return Array.from(root.querySelectorAll<HTMLElement>("[data-player-equipment-slot-owner][data-slot]"))
     .find((element) => element.dataset.playerEquipmentSlotOwner === ownerId && element.dataset.slot === slot) ?? null;
-}
-
-function PublicEquipmentCardTransition({ event, route, players, myTableIndex, onPresented }: {
-  event: CardEvent & { type: "card" };
-  route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>;
-  players: Player[];
-  myTableIndex: number;
-  onPresented: (route: Extract<PublicPresentationRoute, { kind: "zone-transition" }>) => void;
-}) {
-  const revealRef = useRef<HTMLDivElement>(null);
-  const toEquipment = route.destination === "EQUIPMENT";
-  const sourceOwnerId = toEquipment ? event.actorId ?? route.ownerId ?? "" : route.from?.ownerId ?? "";
-  const sourceSlot = toEquipment ? "" : route.from?.slot ?? "";
-  useLayoutEffect(() => {
-    const reveal = revealRef.current;
-    const table = reveal?.closest<HTMLElement>(".play-table");
-    const shell = table?.closest<HTMLElement>(".game-shell");
-    if (!reveal || !table || !shell) return;
-    const localPlayerId = players[myTableIndex]?.id;
-    const source = !toEquipment && sourceOwnerId && sourceSlot
-      ? findEquipmentSlotAnchor(shell, sourceOwnerId, sourceSlot)
-      : sourceOwnerId === localPlayerId
-        ? findAnchor(shell, "data-card-origin-anchor", sourceOwnerId) ?? findAnchor(shell, "data-player-anchor", sourceOwnerId)
-        : sourceOwnerId ? findAnchor(shell, "data-player-anchor", sourceOwnerId) : null;
-    const destination = toEquipment && route.ownerId && route.slot
-      ? findEquipmentSlotAnchor(shell, route.ownerId, route.slot)
-      : !toEquipment ? findAnchor(shell, "data-discard-anchor", "true") : null;
-    const face = reveal.querySelector<HTMLElement>(".played-card");
-    if (!face) return;
-    const measure = () => {
-      const origin = source ? centerRelativeToTable(table, source) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-      reveal.style.setProperty("--origin-x", origin.x + "px");
-      reveal.style.setProperty("--origin-y", origin.y + "px");
-      if (toEquipment) {
-        const upper = fixedUpperHistoryAnnouncementAnchor(table);
-        const h4 = table.querySelector<HTMLElement>("[data-public-card-announcement]");
-        if (upper && h4) {
-          const tableRect = table.getBoundingClientRect();
-          const cardTop = upper.top + publicH4ReservedHeight(h4) + 4;
-          reveal.style.setProperty("--public-reveal-x", `${table.clientWidth / 2}px`);
-          reveal.style.setProperty("--public-reveal-y", `${cardTop + face.offsetHeight / 2 - tableRect.top}px`);
-        }
-        const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-        reveal.style.setProperty("--equipment-x", point.x + "px");
-        reveal.style.setProperty("--equipment-y", point.y + "px");
-        if (destination) {
-          const rect = destination.getBoundingClientRect();
-          reveal.style.setProperty("--equipment-scale-x", String(rect.width / face.offsetWidth));
-          reveal.style.setProperty("--equipment-scale-y", String(rect.height / face.offsetHeight));
-        }
-      } else {
-        const point = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-        reveal.style.setProperty("--discard-x", point.x + "px");
-        reveal.style.setProperty("--discard-y", point.y + "px");
-      }
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(table);
-    if (source) observer.observe(source);
-    if (destination) observer.observe(destination);
-    return () => observer.disconnect();
-  }, [event.id, myTableIndex, players, route.destination, route.ownerId, route.slot, sourceOwnerId, sourceSlot, toEquipment]);
-
-  const expectedAnimation = toEquipment ? "equipmentCardToSlot" : "revealedCardsToDiscard";
-  return <div className="table-resolution-layer public-zone-transition-layer" role="status">
-    <div ref={revealRef} className={`active-table-reveal ${toEquipment ? "equipment-flight" : "direct-discard"}`}
-      data-settlement-event-id={event.id} data-public-zone-transition-event-id={route.eventId}
-      data-public-zone-transition-card-id={route.physicalCardId} data-public-zone-transition-destination={route.destination}
-      key={route.claimId} onAnimationEnd={(animation) => {
-        if (animation.target !== animation.currentTarget || animation.animationName !== expectedAnimation) return;
-        onPresented(route);
-      }}><div><CardFace card={event.card} settlementCardId={event.card.id} /></div></div>
-  </div>;
 }
 
 function JudgementCardFace({ card }: { card: Card }) {
