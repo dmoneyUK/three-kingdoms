@@ -2015,6 +2015,35 @@ function publicJudgementReplacementTimerIdentity(input: {
     : "";
 }
 
+function publicJudgementReplacementRuntimeForGameRoom(input: {
+  room: Room;
+  cursorEvent: GameEvent | null;
+  activeEventId: string;
+  seenCardJourneyEventIds: ReadonlySet<string>;
+}) {
+  const frame = publicNecromancyJudgementFrameForGameRoom(input);
+  return {
+    frame,
+    revealContext: {
+      roomCode: input.room.code,
+      viewerId: input.room.meId,
+      timeline: input.room.timeline,
+      replacementReveal: publicJudgementReplacementRevealIdentity({
+        candidate: frame.candidate,
+        action: frame.action,
+        cursorEventId: input.cursorEvent?.id,
+      }),
+    },
+    activeTimerIdentity: publicJudgementReplacementTimerIdentity({
+      activeEventId: input.activeEventId,
+      candidate: frame.candidate,
+      action: frame.action,
+      roomCode: input.room.code,
+      viewerId: input.room.meId,
+    }),
+  };
+}
+
 function completePublicCardRevealAndRetireReplacement(input: {
   context: {
     roomCode: string;
@@ -2492,6 +2521,74 @@ function appendUniqueEvents(current: GameEvent[], incoming: GameEvent[]) {
   return incoming.reduce((events, event) => events.some((existing) => existing.id === event.id) ? events : [...events, event], current);
 }
 function eventImportance(event: GameEvent) { return event.importance ?? "informational"; }
+
+function applyLinkedPublicPresentationQueue(input: {
+  activeEvent: GameEvent | null;
+  eventQueue: GameEvent[];
+  visible: GameEvent[];
+  immediatelyPresented: Set<string>;
+  judgements: readonly PublicJudgementPresentation[];
+  queuedPublicH4Facts: ReadonlyMap<string, PublicPresentationEvent>;
+  projectedPublicH4FactsById: ReadonlyMap<string, PublicPresentationEvent>;
+  optimisticPlay: boolean;
+  selfTargetWindowRevision: { current: number };
+  setQueuedPublicH4Facts: Dispatch<SetStateAction<Map<string, PublicPresentationEvent>>>;
+  setPresentedEventIds: Dispatch<SetStateAction<Set<string>>>;
+  setSelfTargetWindowClosing: Dispatch<SetStateAction<boolean>>;
+  setActiveEvent: Dispatch<SetStateAction<GameEvent | null>>;
+  setEventQueue: Dispatch<SetStateAction<GameEvent[]>>;
+  setSelfTargetWindowEvents: Dispatch<SetStateAction<GameEvent[]>>;
+}) {
+  const linkedJudgementActivations = input.judgements.flatMap((presentation) =>
+    presentation.activationEventId ? [{ activationEventId: presentation.activationEventId, originalEventId: presentation.judgementId }] : []);
+  const resolutionQueue = coalescePresentationQueue(input.eventQueue, input.visible, new Set([
+    ...input.queuedPublicH4Facts.keys(), ...input.projectedPublicH4FactsById.keys(),
+  ]));
+  const coalescedJudgementQueue = coalesceLinkedJudgementActivationQueue(
+    input.activeEvent, resolutionQueue, input.visible, linkedJudgementActivations,
+  );
+  const newlyQueuedFacts = coalescedJudgementQueue.incoming.flatMap((event) => {
+    const fact = input.projectedPublicH4FactsById.get(event.id);
+    return fact ? [[event.id, fact] as const] : [];
+  });
+  if (newlyQueuedFacts.length) input.setQueuedPublicH4Facts((current) => {
+    const next = new Map(current);
+    newlyQueuedFacts.forEach(([eventId, fact]) => next.set(eventId, fact));
+    return next;
+  });
+  const retiredIds = coalescedJudgementQueue.retiredActivationEventIds;
+  if (input.immediatelyPresented.size || retiredIds.length) {
+    input.setPresentedEventIds((ids) => new Set([...ids, ...input.immediatelyPresented, ...retiredIds]));
+  }
+  if (retiredIds.length) {
+    const retiredActivationIds = new Set(retiredIds);
+    input.setQueuedPublicH4Facts((current) => {
+      if (![...retiredActivationIds].some((eventId) => current.has(eventId))) return current;
+      const next = new Map(current);
+      retiredActivationIds.forEach((eventId) => next.delete(eventId));
+      return next;
+    });
+  }
+  if (!input.visible.length && !retiredIds.length) return;
+  if (input.visible.length) {
+    input.setSelfTargetWindowClosing(false);
+    const cardsArrived = input.visible.some((event) => eventCards(event).length > 0);
+    if (cardsArrived) input.selfTargetWindowRevision.current += 1;
+  }
+  const latestResolutionId = input.visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
+  const clearStaleActiveEvent = Boolean(input.visible.length && latestResolutionId && input.activeEvent?.resolutionId
+    && input.activeEvent.resolutionId !== latestResolutionId && eventImportance(input.activeEvent) === "informational"
+    && !input.queuedPublicH4Facts.has(input.activeEvent.id));
+  if (clearStaleActiveEvent) input.setActiveEvent(null);
+  const nextQueue = [...coalescedJudgementQueue.queue];
+  let nextActiveEvent = clearStaleActiveEvent ? null : coalescedJudgementQueue.activeEvent;
+  if (!input.optimisticPlay && !nextActiveEvent && nextQueue.length) nextActiveEvent = nextQueue.shift() ?? null;
+  if (clearStaleActiveEvent || nextActiveEvent?.id !== input.activeEvent?.id) input.setActiveEvent(nextActiveEvent);
+  if (nextActiveEvent && nextActiveEvent.id !== input.activeEvent?.id && retainsAtPlayer(nextActiveEvent)) {
+    input.setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [nextActiveEvent!]));
+  }
+  input.setEventQueue(nextQueue);
+}
 
 const UI_TIMING = {
   roomPoll: 8000,
@@ -4759,20 +4856,20 @@ type LocalPlayerDockProps = {
   attackResponsePrompt?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), equipmentArrivalPendingIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false }: LocalPlayerDockProps) {
+type LocalPlayerDockLayout = {
+  dockRef: React.RefObject<HTMLElement | null>;
+  judgementRailRef: React.RefObject<HTMLDivElement | null>;
+  judgementCardWidth: number;
+  judgementCardLayout: { step: number; measured: boolean };
+};
+
+function useLocalPlayerDockLayout(input: { playerId?: string; preserveGuidanceHeight: boolean; judgementCardCount: number }): LocalPlayerDockLayout {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
-  const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
+  const preserveGuidanceHeightRef = useRef(input.preserveGuidanceHeight);
   const judgementRailRef = useRef<HTMLDivElement | null>(null);
   const [judgementRailWidth, setJudgementRailWidth] = useState(0);
   const [judgementCardWidth, setJudgementCardWidth] = useState(34);
-  const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
-  for (const equipment of player?.equipmentCards ?? []) {
-    const slot = cardDefinition(equipment.kind).equipmentSlot;
-    if (slot) equipmentBySlot.set(slot, equipment);
-  }
-  const slotLabel = (slot: LocalEquipmentSlot) => LOCAL_EQUIPMENT_SLOTS.find((entry) => entry.key === slot)?.label ?? slot;
-  const judgementCards = player?.judgementCards ?? [];
   useLayoutEffect(() => {
     const rail = judgementRailRef.current;
     if (!rail) return;
@@ -4789,15 +4886,15 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
     const observer = new ResizeObserver(updateWidth);
     observer.observe(rail);
     return () => observer.disconnect();
-  }, [player?.id]);
+  }, [input.playerId]);
   useLayoutEffect(() => {
-    preserveGuidanceHeightRef.current = preserveGuidanceHeight;
+    preserveGuidanceHeightRef.current = input.preserveGuidanceHeight;
     const guidanceNode = dockRef.current?.querySelector<HTMLElement>(".console-guidance");
     if (!guidanceNode) return;
     const height = guidanceHeightRef.current;
-    if (preserveGuidanceHeight && height !== null) guidanceNode.style.minHeight = `${height}px`;
+    if (input.preserveGuidanceHeight && height !== null) guidanceNode.style.minHeight = `${height}px`;
     else guidanceNode.style.removeProperty("min-height");
-  }, [preserveGuidanceHeight]);
+  }, [input.preserveGuidanceHeight]);
   useLayoutEffect(() => {
     const guidanceNode = dockRef.current?.querySelector<HTMLElement>(".console-guidance");
     if (!guidanceNode) return;
@@ -4810,14 +4907,35 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
     const observer = new ResizeObserver(measure);
     observer.observe(guidanceNode);
     return () => observer.disconnect();
-  }, [player?.id]);
+  }, [input.playerId]);
   const judgementCardLayout = useMemo(() => {
     const cardWidth = judgementCardWidth;
-    const count = judgementCards.length;
+    const count = input.judgementCardCount;
     if (count <= 1) return { step: cardWidth, measured: judgementRailWidth > 0 };
     const naturalStep = (judgementRailWidth - cardWidth) / (count - 1);
     return { step: naturalStep >= cardWidth ? naturalStep : Math.max(12, naturalStep), measured: judgementRailWidth > 0 };
-  }, [judgementCardWidth, judgementCards.length, judgementRailWidth]);
+  }, [input.judgementCardCount, judgementCardWidth, judgementRailWidth]);
+  return { dockRef, judgementRailRef, judgementCardWidth, judgementCardLayout };
+}
+
+export function LocalPlayerDock(props: LocalPlayerDockProps) {
+  const layout = useLocalPlayerDockLayout({
+    playerId: props.player?.id,
+    preserveGuidanceHeight: props.preserveGuidanceHeight ?? false,
+    judgementCardCount: props.player?.judgementCards?.length ?? 0,
+  });
+  return <LocalPlayerDockView {...props} layout={layout} />;
+}
+
+function LocalPlayerDockView({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), equipmentArrivalPendingIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false, layout }: LocalPlayerDockProps & { layout: LocalPlayerDockLayout }) {
+  const { dockRef, judgementRailRef, judgementCardWidth, judgementCardLayout } = layout;
+  const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
+  for (const equipment of player?.equipmentCards ?? []) {
+    const slot = cardDefinition(equipment.kind).equipmentSlot;
+    if (slot) equipmentBySlot.set(slot, equipment);
+  }
+  const slotLabel = (slot: LocalEquipmentSlot) => LOCAL_EQUIPMENT_SLOTS.find((entry) => entry.key === slot)?.label ?? slot;
+  const judgementCards = player?.judgementCards ?? [];
   const fallbackSkills = hero?.skills?.length ? hero.skills : hero ? [{ name: hero.skill ?? "Hero Skill", description: hero.ability }] : [];
   const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
   const interactionRoleClasses = [
@@ -5837,31 +5955,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeJudgementTransitionKey = activeJudgementZoneTransition?.claimId ?? "";
   const activePublicDiscardTransitionKey = activePublicDiscardTransition?.claimId ?? "";
   const activePublicHandRevealTransitionKey = activePublicHandRevealTransition?.claimId ?? "";
-  const publicJudgementReplacementCursorEvent = activeEvent ?? eventQueue[0] ?? null;
-  const necromancyJudgementFrame = publicNecromancyJudgementFrameForGameRoom({
+  const {
+    frame: necromancyJudgementFrame,
+    revealContext: publicCardRevealContext,
+    activeTimerIdentity: activeJudgementReplacementKey,
+  } = publicJudgementReplacementRuntimeForGameRoom({
     room,
-    cursorEvent: publicJudgementReplacementCursorEvent,
+    cursorEvent: activeEvent ?? eventQueue[0] ?? null,
+    activeEventId: activeEventTimerEventId,
     seenCardJourneyEventIds: publicCardJourneySeenEventIds,
   });
-  const necromancyJudgementFrameCandidate = necromancyJudgementFrame.candidate;
-  const necromancyJudgementFrameAction = necromancyJudgementFrame.action;
-  publicCardRevealContextRef.current = {
-    roomCode: room.code,
-    viewerId: room.meId,
-    timeline: room.timeline,
-    replacementReveal: publicJudgementReplacementRevealIdentity({
-      candidate: necromancyJudgementFrameCandidate,
-      action: necromancyJudgementFrameAction,
-      cursorEventId: publicJudgementReplacementCursorEvent?.id,
-    }),
-  };
-  const activeJudgementReplacementKey = publicJudgementReplacementTimerIdentity({
-    activeEventId: activeEventTimerEventId,
-    candidate: necromancyJudgementFrameCandidate,
-    action: necromancyJudgementFrameAction,
-    roomCode: room.code,
-    viewerId: room.meId,
-  });
+  publicCardRevealContextRef.current = publicCardRevealContext;
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
@@ -7279,55 +7383,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       return true;
     });
-    const linkedJudgementActivations = (room.presentationSnapshot?.publicJudgementPresentations ?? []).flatMap((presentation) =>
-      presentation.activationEventId ? [{ activationEventId: presentation.activationEventId, originalEventId: presentation.judgementId }] : []);
-    const resolutionQueue = coalescePresentationQueue(eventQueue, visible, new Set([
-      ...queuedPublicH4Facts.keys(), ...projectedPublicH4FactsById.keys(),
-    ]));
-    const coalescedJudgementQueue = coalesceLinkedJudgementActivationQueue(
-      activeEvent, resolutionQueue, visible, linkedJudgementActivations,
-    );
-    const visibleForQueue = coalescedJudgementQueue.incoming;
-    const newlyQueuedFacts = visibleForQueue.flatMap((event) => {
-      const fact = projectedPublicH4FactsById.get(event.id);
-      return fact ? [[event.id, fact] as const] : [];
+    applyLinkedPublicPresentationQueue({
+      activeEvent,
+      eventQueue,
+      visible,
+      immediatelyPresented,
+      judgements: room.presentationSnapshot?.publicJudgementPresentations ?? [],
+      queuedPublicH4Facts,
+      projectedPublicH4FactsById,
+      optimisticPlay: Boolean(optimisticPlay),
+      selfTargetWindowRevision,
+      setQueuedPublicH4Facts,
+      setPresentedEventIds,
+      setSelfTargetWindowClosing,
+      setActiveEvent,
+      setEventQueue,
+      setSelfTargetWindowEvents,
     });
-    if (newlyQueuedFacts.length) setQueuedPublicH4Facts((current) => {
-      const next = new Map(current);
-      newlyQueuedFacts.forEach(([eventId, fact]) => next.set(eventId, fact));
-      return next;
-    });
-    if (immediatelyPresented.size || coalescedJudgementQueue.retiredActivationEventIds.length) {
-      setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented, ...coalescedJudgementQueue.retiredActivationEventIds]));
-    }
-    if (coalescedJudgementQueue.retiredActivationEventIds.length) {
-      const retiredActivationIds = new Set(coalescedJudgementQueue.retiredActivationEventIds);
-      setQueuedPublicH4Facts((current) => {
-        if (![...retiredActivationIds].some((eventId) => current.has(eventId))) return current;
-        const next = new Map(current);
-        retiredActivationIds.forEach((eventId) => next.delete(eventId));
-        return next;
-      });
-    }
-    if (visible.length || coalescedJudgementQueue.retiredActivationEventIds.length) {
-      if (visible.length) {
-        setSelfTargetWindowClosing(false);
-        const cardsArrived = visible.some((event) => eventCards(event).length > 0);
-        if (cardsArrived) selfTargetWindowRevision.current += 1;
-      }
-      const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
-      const clearStaleActiveEvent = Boolean(visible.length && latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId
-        && eventImportance(activeEvent) === "informational" && !queuedPublicH4Facts.has(activeEvent.id));
-      if (clearStaleActiveEvent) setActiveEvent(null);
-      const nextQueue = [...coalescedJudgementQueue.queue];
-      let nextActiveEvent = clearStaleActiveEvent ? null : coalescedJudgementQueue.activeEvent;
-      if (!optimisticPlay && !nextActiveEvent && nextQueue.length) nextActiveEvent = nextQueue.shift() ?? null;
-      if (clearStaleActiveEvent || nextActiveEvent?.id !== activeEvent?.id) setActiveEvent(nextActiveEvent);
-      if (nextActiveEvent && nextActiveEvent.id !== activeEvent?.id && retainsAtPlayer(nextActiveEvent)) {
-        setSelfTargetWindowEvents((events) => appendUniqueEvents(events, [nextActiveEvent!]));
-      }
-      setEventQueue(nextQueue);
-    }
     setProcessedTimelineKey(timelineKey);
   }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.actionRevision, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, room.presentationSnapshot?.publicEventFacts, room.presentationSnapshot?.retainedPublicEventFacts, room.presentationSnapshot?.publicJudgementPresentations, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue, skillEffectSettlements, dismantleSettlements, stealSettlements, cardAcquisitionSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.rootAction?.rootEventId, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements, validatedJudgementTransitionSourceEventIds, latestDismantleSettlementPublicSequence]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
@@ -10233,7 +10305,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const latestHeroPublicCardEffectFrameAction = [
     prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction,
     dauntlessEquipmentEffectFrameAction, betrothmentCostFrameAction,
-    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrameAction,
+    equilibriumCostFrameAction, firstAidConversionFrameAction, necromancyJudgementFrame.action,
     stauchnessCostFrameAction, rockCleavingAxeCostFrameAction, kirinBowDamageFrameAction ?? kirinBowEffectFrameAction,
     frostSwordEffectFrameAction,
     yinYangSwordsEffectFrameAction,
@@ -10830,8 +10902,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const cursorOwnedJudgementReplacementAction = publicJudgementReplacementFrameOwnsCursor({
     cursorEventId: publicH4PresentationCursor?.id,
     presentation: currentPublicJudgementPresentation,
-    action: necromancyJudgementFrameAction,
-  }) ? necromancyJudgementFrameAction : null;
+    action: necromancyJudgementFrame.action,
+  }) ? necromancyJudgementFrame.action : null;
   const selectedPublicCardActionBase: PublicCardDisplayAction | null = selectJudgementAwarePublicCardAction({
     dueReplacement: cursorOwnedJudgementReplacementAction,
     retainedNegation: heldPublicNegationReadAction,
