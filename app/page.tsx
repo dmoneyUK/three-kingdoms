@@ -19,7 +19,7 @@ import { normalizeHandChoiceKeys, projectEligibleHandChoices, toggleHandChoiceKe
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
-import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
 import { MAX_AVAILABLE_CLASSIC_PLAYERS, roomAvailabilityLimit } from "../game/room-availability";
@@ -1985,6 +1985,85 @@ function publicNecromancyJudgementFrameForGameRoom(input: {
     cursorEventId: input.cursorEvent?.id,
     seenCardJourneyEventIds: input.seenCardJourneyEventIds,
   });
+}
+
+function publicJudgementReplacementRevealIdentity(input: {
+  candidate: PublicNecromancyJudgementFrameCandidate | null;
+  action: PublicCardDisplayAction | null;
+  cursorEventId?: string | null;
+}) {
+  const candidate = input.candidate;
+  if (!candidate || !input.action || input.cursorEventId !== candidate.replacementEvent.id) return null;
+  return { eventId: candidate.replacementEvent.id, physicalCardId: candidate.replacementCard.id };
+}
+
+function publicJudgementReplacementTimerIdentity(input: {
+  activeEventId: string;
+  candidate: PublicNecromancyJudgementFrameCandidate | null;
+  action: PublicCardDisplayAction | null;
+  roomCode: string;
+  viewerId: string;
+}) {
+  const ownsTimer = publicJudgementReplacementOwnsActiveTimer({
+    activeEventId: input.activeEventId,
+    replacementEventId: input.candidate?.replacementEvent.id,
+    selectedActionEventId: input.action?.rootEventId,
+    hasVerifiedCandidate: Boolean(input.candidate && input.action),
+  });
+  return ownsTimer && input.candidate
+    ? `${input.activeEventId}|${input.candidate.replacementCard.id}|${input.roomCode}|${input.viewerId}`
+    : "";
+}
+
+function completePublicCardRevealAndRetireReplacement(input: {
+  context: {
+    roomCode: string;
+    viewerId: string;
+    timeline: readonly GameEvent[];
+    replacementReveal: { eventId: string; physicalCardId: string } | null;
+  };
+  sourceEventId: string;
+  physicalCardId: string;
+  setCompletedPublicCardReveals: Dispatch<SetStateAction<PublicCardRevealCompletion[]>>;
+  setQueuedPublicH4Facts: Dispatch<SetStateAction<Map<string, PublicPresentationEvent>>>;
+  setPresentedEventIds: Dispatch<SetStateAction<Set<string>>>;
+  setActiveEvent: Dispatch<SetStateAction<GameEvent | null>>;
+  setEventQueue: Dispatch<SetStateAction<GameEvent[]>>;
+}) {
+  const { context, sourceEventId, physicalCardId } = input;
+  const proof = publicCardRevealCompletionFromCommittedEvent({
+    roomCode: context.roomCode,
+    viewerId: context.viewerId,
+    sourceEventId,
+    physicalCardId,
+    timeline: context.timeline,
+  });
+  if (!proof) return;
+  input.setCompletedPublicCardReveals((current) => {
+    if (current.some((item) => item.roomCode === proof.roomCode && item.viewerId === proof.viewerId
+      && item.sourceEventId === proof.sourceEventId && item.physicalCardId === proof.physicalCardId)) return current;
+    return [...current, proof].slice(-500);
+  });
+  const replacement = context.replacementReveal;
+  const replacementCompletion = replacement && publicJudgementReplacementRevealCompletion({
+    completions: [proof],
+    roomCode: context.roomCode,
+    viewerId: context.viewerId,
+    eventId: replacement.eventId,
+    physicalCardId: replacement.physicalCardId,
+  });
+  if (!replacementCompletion) return;
+  const eventId = replacementCompletion.sourceEventId;
+  input.setQueuedPublicH4Facts((current) => {
+    if (!current.has(eventId)) return current;
+    const next = new Map(current);
+    next.delete(eventId);
+    return next;
+  });
+  input.setPresentedEventIds((current) => current.has(eventId) ? current : new Set([...current, eventId]));
+  input.setActiveEvent((current) => current?.id === eventId ? null : current);
+  input.setEventQueue((current) => current.some((event) => event.id === eventId)
+    ? current.filter((event) => event.id !== eventId) : current);
 }
 
 function publicJudgementPresentationForGameRoom(room: Room, cursor: { id: string } | null | undefined) {
@@ -5286,7 +5365,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     timeline: readonly GameEvent[];
     replacementReveal: { eventId: string; physicalCardId: string } | null;
   }>({ roomCode: room.code, viewerId: room.meId, timeline: room.timeline, replacementReveal: null });
-  publicCardRevealContextRef.current = { roomCode: room.code, viewerId: room.meId, timeline: room.timeline, replacementReveal: null };
   const [retiredProdigalHealerFrame, setRetiredProdigalHealerFrame] = useState<{
     roomCode: string;
     viewerId: string;
@@ -5317,40 +5395,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
   }, [room.code, room.timeline]);
   const markPublicCardJourneyRevealCompleted = useCallback((sourceEventId: string, physicalCardId: string) => {
-    const context = publicCardRevealContextRef.current;
-    const proof = publicCardRevealCompletionFromCommittedEvent({
-      roomCode: context.roomCode,
-      viewerId: context.viewerId,
+    completePublicCardRevealAndRetireReplacement({
+      context: publicCardRevealContextRef.current,
       sourceEventId,
       physicalCardId,
-      timeline: context.timeline,
+      setCompletedPublicCardReveals,
+      setQueuedPublicH4Facts,
+      setPresentedEventIds,
+      setActiveEvent,
+      setEventQueue,
     });
-    if (!proof) return;
-    setCompletedPublicCardReveals((current) => {
-      if (current.some((item) => item.roomCode === proof.roomCode && item.viewerId === proof.viewerId
-        && item.sourceEventId === proof.sourceEventId && item.physicalCardId === proof.physicalCardId)) return current;
-      return [...current, proof].slice(-500);
-    });
-    const replacement = context.replacementReveal;
-    const replacementCompletion = replacement && publicJudgementReplacementRevealCompletion({
-      completions: [proof],
-      roomCode: context.roomCode,
-      viewerId: context.viewerId,
-      eventId: replacement.eventId,
-      physicalCardId: replacement.physicalCardId,
-    });
-    if (!replacementCompletion) return;
-    const eventId = replacementCompletion.sourceEventId;
-    setQueuedPublicH4Facts((current) => {
-      if (!current.has(eventId)) return current;
-      const next = new Map(current);
-      next.delete(eventId);
-      return next;
-    });
-    setPresentedEventIds((current) => current.has(eventId) ? current : new Set([...current, eventId]));
-    setActiveEvent((current) => current?.id === eventId ? null : current);
-    setEventQueue((current) => current.some((event) => event.id === eventId)
-      ? current.filter((event) => event.id !== eventId) : current);
   }, []);
   const [publicCardJourneyOwnership, setPublicCardJourneyOwnership] = useState<{
     roomCode: string;
@@ -5791,22 +5845,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   });
   const necromancyJudgementFrameCandidate = necromancyJudgementFrame.candidate;
   const necromancyJudgementFrameAction = necromancyJudgementFrame.action;
-  publicCardRevealContextRef.current.replacementReveal = necromancyJudgementFrameCandidate
-    && necromancyJudgementFrameAction
-    && publicJudgementReplacementCursorEvent?.id === necromancyJudgementFrameCandidate.replacementEvent.id
-    ? {
-      eventId: necromancyJudgementFrameCandidate.replacementEvent.id,
-      physicalCardId: necromancyJudgementFrameCandidate.replacementCard.id,
-    }
-    : null;
-  const activeJudgementReplacementKey = publicJudgementReplacementOwnsActiveTimer({
+  publicCardRevealContextRef.current = {
+    roomCode: room.code,
+    viewerId: room.meId,
+    timeline: room.timeline,
+    replacementReveal: publicJudgementReplacementRevealIdentity({
+      candidate: necromancyJudgementFrameCandidate,
+      action: necromancyJudgementFrameAction,
+      cursorEventId: publicJudgementReplacementCursorEvent?.id,
+    }),
+  };
+  const activeJudgementReplacementKey = publicJudgementReplacementTimerIdentity({
     activeEventId: activeEventTimerEventId,
-    replacementEventId: necromancyJudgementFrameCandidate?.replacementEvent.id,
-    selectedActionEventId: necromancyJudgementFrameAction?.rootEventId,
-    hasVerifiedCandidate: Boolean(necromancyJudgementFrameCandidate && necromancyJudgementFrameAction),
-  })
-    ? `${activeEventTimerEventId}|${necromancyJudgementFrameCandidate?.replacementCard.id ?? ""}|${room.code}|${room.meId}`
-    : "";
+    candidate: necromancyJudgementFrameCandidate,
+    action: necromancyJudgementFrameAction,
+    roomCode: room.code,
+    viewerId: room.meId,
+  });
   const activeEventDisplayDuration = activeJudgementZoneTransition ? UI_TIMING.judgementCard
     : activeEvent?.type === "card" || activeEvent?.type === "cards"
     ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
