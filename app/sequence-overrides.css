@@ -97,14 +97,14 @@
 }
 @media (max-width: 700px) {
   .active-table-reveal.public-hand-transfer .played-card {
-    width: var(--public-hand-reveal-width, 90px) !important;
-    height: var(--public-hand-reveal-height, 135px) !important;
+    width: 90px !important;
+    height: 135px !important;
   }
 }
 @media (max-width: 400px) and (max-height: 740px) {
   .active-table-reveal.public-hand-transfer .played-card {
-    width: var(--public-hand-reveal-width, 72px) !important;
-    height: var(--public-hand-reveal-height, 108px) !important;
+    width: 72px !important;
+    height: 108px !important;
   }
 }
 
@@ -5013,7 +5013,7 @@
   inset: auto 0 auto;
   top: 50%;
   bottom: auto;
-  z-index: 25;
+  z-index: 42;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -6361,11 +6361,18 @@
    without a modal backdrop. Only the panel accepts input; switching seats,
    inspecting opponents, and the dock remain reachable around it. */
 .game-shell .play-table > .card-pool-target-stage {
-  z-index: 26;
+  z-index: 42;
 }
 
 .game-shell .play-table > .fanjian-combined-stage {
-  z-index: 26;
+  z-index: 42;
+}
+
+/* Passive public reveals may overlap real choices at their fixed nominal
+   centre. Keep every actionable stage above that non-intercepting card layer. */
+.game-shell .play-table > .harvest-choice-stage,
+.game-shell .play-table > .end-turn-confirmation-stage {
+  z-index: 42;
 }
 
 .game-shell .fanjian-combined-stage .fanjian-combined-controls {
@@ -6973,7 +6980,7 @@
     /* The approved compact-phone fallback may cover only the proved root
        card. Keep its text in the picker heading and lift the touch-through
        stage above the root so selection controls remain usable. */
-    z-index: 35;
+    z-index: 42;
   }
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel,
   .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--target-readonly.harvest-choice-panel {

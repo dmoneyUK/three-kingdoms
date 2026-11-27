@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicDismantleCardFaceH4, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
+import { publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicDismantleCardFaceH4, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -94,6 +94,21 @@ test("H4 candidate measurement confines text DOM changes to its marked copy", ()
   assert.match(source.slice(measurementHelperStart, h4RendererStart), /measurementCopy\.dataset\.h4MeasurementCopy = "true"/);
   assert.match(h4Renderer, /measureAnnouncementCopy\(/);
   assert.doesNotMatch(h4Renderer, /(?:\.replaceChildren\(|(?:textElement|supportElement)\.textContent\s*=)/);
+});
+
+test("passive REVEAL H4 keeps its own anchor above passive card faces", () => {
+  const source = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const start = source.indexOf("function PublicCardAnnouncement(");
+  const end = source.indexOf("export function PublicSkillEventAnnouncementLayer(", start);
+  const renderer = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(renderer, /const passiveStationaryReveal = phase === "reveal";/);
+  assert.match(renderer, /protectFirstParkedMiniature && !passiveStationaryReveal/,
+    "parked passive CardFaces do not enter the reveal H4 obstacle set");
+  assert.match(renderer, /if \(!passiveStationaryReveal\) for \(const slot of upperHistoryAnchor\?\.slots \?\? \[\]\)/,
+    "passive card slots remain H4 anchors but are not collision obstacles");
+  assert.match(renderer, /const centerCardStillOccupiesStage = !passiveStationaryReveal && keepCenterAnchorClear/,
+    "a stationary revealed CardFace or Frame cannot push or hide H4");
 });
 
 test("PublicCardDisplay fails closed instead of falling back to a static card", () => {
@@ -194,34 +209,6 @@ test("Steal/Dismantle PAC lower edge follows the table while the measured timer 
   assert.equal(fixedLowerActivityEdge(474, 450), 442);
   assert.equal(fixedLowerActivityEdge(474, 894, 492), 492);
   assert.equal(fixedLowerActivityEdge(474, 450, 492), 450);
-});
-
-test("Steal/Dismantle genuine reveal is centred inside measured Seat-to-PAC battlefield bounds", () => {
-  const reveal = centerRevealCardInSafeBattlefield({
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
-    size: { width: 90, height: 135 },
-    topSeatBottom: 125,
-    lowerBoundary: 425,
-  });
-  assert.deepEqual(reveal, { left: 175, top: 207.5, width: 90, height: 135 });
-  const constrained = centerRevealCardInSafeBattlefield({
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
-    size: { width: 90, height: 135 },
-    topSeatBottom: 125,
-    leftSideSeatRights: [100],
-    rightSideSeatLefts: [340],
-    lowerBoundary: 425,
-  });
-  assert.deepEqual(constrained, { left: 175, top: 207.5, width: 90, height: 135 });
-  assert.equal(centerRevealCardInSafeBattlefield({
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
-    size: { width: 90, height: 135 },
-    topSeatBottom: 300,
-    lowerBoundary: 425,
-  }), null, "insufficient usable battlefield fails closed");
 });
 
 const action = (overrides = {}) => ({

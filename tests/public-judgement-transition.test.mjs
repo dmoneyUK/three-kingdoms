@@ -160,15 +160,15 @@ test("a Deck-to-Discard judgement movement reuses the original reveal owner; del
   assert.equal(publicJudgementTransitionUsesExistingRevealOwner(delayedRoute), false);
 });
 
-test("static Judgement and its zone-flight hold share the measured H4-safe centre", () => {
+test("static Judgement and its zone-flight hold share the canonical stationary lane centre", () => {
   const pageSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
   const transitionSource = pageSource.slice(
     pageSource.indexOf("function PublicJudgementCardTransition"),
-    pageSource.indexOf("const PUBLIC_RESULT_PROTECTED_SELECTORS"),
+    pageSource.indexOf("function PublicDiscardCardTransition"),
   );
 
-  assert.match(pageSource, /function measurePublicJudgementSafeCentre\(table: HTMLElement, reveal: HTMLElement\)[\s\S]*?h4SafeBattlefieldCardRect\(\{ width: face\.offsetWidth, height: face\.offsetHeight \}\)/);
+  assert.match(pageSource, /function measurePublicJudgementSafeCentre\(table: HTMLElement, reveal: HTMLElement\)[\s\S]*?stationaryBattlefieldCardRect\(\{ width: face\.offsetWidth, height: face\.offsetHeight \}\)/);
   assert.match(pageSource, /function PublicJudgementOriginalReveal[\s\S]*?observePublicJudgementSafeCentre\(table, reveal\)/);
   assert.match(transitionSource, /arrivingInJudgement\s*\?\s*observePublicJudgementSafeCentre\(table, reveal\)/);
   assert.match(sequenceStyleSource, /\.active-table-reveal\.public-judgement-original-reveal\s*\{\s*left: var\(--judgement-center-x, 50%\);\s*top: var\(--judgement-center-y, 50%\);/);

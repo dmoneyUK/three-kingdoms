@@ -50,14 +50,14 @@ import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitD
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus, derivePublicInteractionNarration, derivePublicNegationNarration, isPublicInteractionOutcomeFact, type PublicInteractionNarration } from "../game/public-activity";
 import { CardFace, CardRankSuit } from "./card-face";
-import { publicH4ReservedHeight } from "./public-upper-anchor";
+import { fixedPublicStationaryLane, publicStationaryCardPlacement } from "./public-upper-anchor";
 import { CardPoolDecisionFooter, CardPoolMiniFace, CardPoolPanel, useHorizontalOverflow, type CardPoolPanelProps, type PublicCardPoolChoice, type PublicTargetPoolView, type TargetCardPoolChoice, type TargetCardPoolZone } from "./card-pool-panel";
 import { BattlefieldChoiceStage, useBattlefieldChoicePlacement } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, h4SafeBattlefieldCardRect, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicDiscardAnnouncementLayer, PublicInteractionAnnouncementLayer, PublicSkillEventAnnouncementLayer, createPublicCardEffectFrameView, stationaryBattlefieldCardRect, publicCardActionKey, publicCardJourneyOwnershipIdentity, publicCardMotionForCommittedCard, type PublicCardDisplayAction, type PublicCardEffectFrameView, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { VerifiedPlayerCopy } from "./verified-player-copy";
-import { PublicStageLayoutProvider } from "./public-stage-layout-context";
+import { PublicStageLayoutProvider, publicStageCoordinateSpaceForTable } from "./public-stage-layout-context";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, hasAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
@@ -69,7 +69,7 @@ import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEv
 import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials } from "./public-discard-settlement";
-import { layoutPublicResultCards, type PublicResultObstacle } from "./public-result-layout";
+import { layoutPublicResultCards } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
 import { shouldAcceptPublicPresentationTurn, type PublicPresentationTurnScope, type PublicPresentationTurnViewer } from "../game/public-presentation-turn";
@@ -14617,7 +14617,7 @@ function measurePublicJudgementSafeCentre(table: HTMLElement, reveal: HTMLElemen
     reveal.dataset.publicRevealGeometrySafe = "false";
     return false;
   }
-  const safe = h4SafeBattlefieldCardRect({ width: face.offsetWidth, height: face.offsetHeight });
+  const safe = stationaryBattlefieldCardRect({ width: face.offsetWidth, height: face.offsetHeight });
   if (!safe) {
     reveal.dataset.publicRevealGeometrySafe = "false";
     return false;
@@ -14855,27 +14855,10 @@ function PublicJudgementCardTransition({ event, card, route, players, myTableInd
   </div>;
 }
 
-const PUBLIC_RESULT_PROTECTED_SELECTORS = [
-  ".opponent-player-card", ".player-card[data-player-anchor]", "[data-player-anchor]", ".player-square", ".player-square-target", ".play-seat",
-  ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip",
-  ".public-card-display-journey-copy", ".public-card-journey-card", ".harvest-choice-stage", ".card-pool-target-stage",
-  ".opponent-inspection-floating-shell", ".local-player-dock", ".local-hand-rail", ".console-guidance", ".turn-controls", ".turn-notice",
-].join(",");
-
-function publicResultObstacles(table: HTMLElement): PublicResultObstacle[] {
-  const tableRect = table.getBoundingClientRect();
-  return Array.from(document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)).flatMap((element) => {
-    if (element.closest(".public-result-card-layer")) return [];
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
-    return [{
-      left: rect.left - tableRect.left,
-      top: rect.top - tableRect.top,
-      right: rect.right - tableRect.left,
-      bottom: rect.bottom - tableRect.top,
-    }];
-  });
+function publicResultNominalCenter(table: HTMLElement) {
+  const coordinates = publicStageCoordinateSpaceForTable(table);
+  const lane = coordinates ? fixedPublicStationaryLane(table, coordinates) : null;
+  return lane ? { centerX: lane.centerX, centerY: lane.centerY } : null;
 }
 
 function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPresented }: {
@@ -14945,7 +14928,9 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
         : findAnchor(shell, "data-player-anchor", transition.from.ownerId);
     });
     const measure = () => {
-      const layout = layoutPublicResultCards(items.length, { width: table.clientWidth, height: table.clientHeight }, publicResultObstacles(table));
+      const preferredCenter = publicResultNominalCenter(table);
+      const layout = preferredCenter
+        ? layoutPublicResultCards(items.length, { width: table.clientWidth, height: table.clientHeight }, preferredCenter) : null;
       if (groupRef.current) groupRef.current.dataset.publicDiscardLayout = layout ? `${layout.rows}-rows` : "blocked";
       items.forEach(({ card }, itemIndex) => {
         const reveal = revealRefs.current.get(card.id);
@@ -14976,22 +14961,12 @@ function PublicDiscardCardTransition({ event, route, players, myTableIndex, onPr
       }
     });
     const resizeObserver = new ResizeObserver(measure);
-    const mutationObserver = new MutationObserver(measure);
-    const treeObserver = new MutationObserver(measure);
     resizeObserver.observe(table);
     if (discard) resizeObserver.observe(discard);
     sources.forEach((source) => { if (source) resizeObserver.observe(source); });
-    for (const element of document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)) {
-      if (element.closest(".public-result-card-layer")) continue;
-      resizeObserver.observe(element);
-      mutationObserver.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-public-activity-layout"] });
-    }
-    treeObserver.observe(table, { childList: true, subtree: true });
     window.addEventListener("resize", measure);
     return () => {
       resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      treeObserver.disconnect();
       window.removeEventListener("resize", measure);
       window.cancelAnimationFrame(blockedFallback);
     };
@@ -15098,10 +15073,13 @@ function PublicSettlementCardResult({ result }: { result: PublicSettlementCardRe
     const table = cardElement?.closest<HTMLElement>(".play-table");
     if (!cardElement || !table) return;
     const measure = () => {
-      const layout = layoutPublicResultCards(1, { width: table.clientWidth, height: table.clientHeight }, publicResultObstacles(table), {
-        maxCardWidth: 90,
-        minCardWidth: 42,
-      });
+      const preferredCenter = publicResultNominalCenter(table);
+      const layout = preferredCenter
+        ? layoutPublicResultCards(1, { width: table.clientWidth, height: table.clientHeight }, preferredCenter, {
+          maxCardWidth: 90,
+          minCardWidth: 42,
+        })
+        : null;
       const placement = layout?.placements[0];
       cardElement.dataset.publicResultLayout = layout ? "placed" : "blocked";
       cardElement.style.visibility = layout && placement ? "visible" : "hidden";
@@ -15113,20 +15091,10 @@ function PublicSettlementCardResult({ result }: { result: PublicSettlementCardRe
     };
     measure();
     const resizeObserver = new ResizeObserver(measure);
-    const mutationObserver = new MutationObserver(measure);
-    const treeObserver = new MutationObserver(measure);
     resizeObserver.observe(table);
-    for (const element of document.querySelectorAll<HTMLElement>(PUBLIC_RESULT_PROTECTED_SELECTORS)) {
-      if (element.closest(".public-result-card-layer")) continue;
-      resizeObserver.observe(element);
-      mutationObserver.observe(element, { attributes: true, attributeFilter: ["class", "style", "data-public-activity-layout"] });
-    }
-    treeObserver.observe(table, { childList: true, subtree: true });
     window.addEventListener("resize", measure);
     return () => {
       resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      treeObserver.disconnect();
       window.removeEventListener("resize", measure);
     };
   }, [result.eventId, result.rootEventId]);
@@ -15213,46 +15181,21 @@ function PublicHandRevealCardTransition({ event, route, players, myTableIndex, c
       const target = destination ? centerRelativeToTable(table, destination) : { x: table.clientWidth / 2, y: table.clientHeight / 2 };
       const revealCard = reveal.querySelector<HTMLElement>(".played-card");
       const revealCardStyle = revealCard ? window.getComputedStyle(revealCard) : null;
-      let cardWidth = Number.parseFloat(revealCardStyle?.width ?? "") || 108;
-      let cardHeight = Number.parseFloat(revealCardStyle?.height ?? "") || 156;
-      const tableRect = table.getBoundingClientRect();
-      const upperH4 = table.querySelector<HTMLElement>("[data-public-card-announcement-fixed-upper='true'][data-public-card-announcement-positioned='true']");
-      const h4Rect = upperH4?.getBoundingClientRect();
-      const pac = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
-      const pacStyle = pac ? window.getComputedStyle(pac) : null;
-      const pacRect = pac?.getBoundingClientRect();
-      let revealCenter = { x: table.clientWidth / 2, y: table.clientHeight / 2 };
-      if (h4Rect && h4Rect.width > 0 && h4Rect.height > 0) {
-        const fixedTop = Number(upperH4?.dataset.publicCardAnnouncementFixedUpperTop);
-        const plannedH4Top = Number.isFinite(fixedTop) ? fixedTop : h4Rect.top;
-        const plannedH4Bottom = plannedH4Top + publicH4ReservedHeight(upperH4!);
-        const requestedCardTop = plannedH4Bottom + 4;
-        const safeBottom = Math.min(tableRect.bottom - 8,
-          pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden" && pacRect.width > 0 && pacRect.height > 0
-            ? pacRect.top - 8 : tableRect.bottom - 8);
-        // Fit the complete card proportionally into the measured corridor;
-        // never move its top back across the H4 boundary to make it fit.
-        const availableHeight = safeBottom - requestedCardTop;
-        if (availableHeight > 0 && availableHeight < cardHeight) {
-          const scale = availableHeight / cardHeight;
-          cardWidth *= scale;
-          cardHeight *= scale;
-          reveal.style.setProperty("--public-hand-reveal-width", `${cardWidth}px`);
-          reveal.style.setProperty("--public-hand-reveal-height", `${cardHeight}px`);
-        }
-        if (availableHeight <= 0) {
-          reveal.dataset.publicRevealH4Route = "no-safe-corridor";
-          return false;
-        }
-        const cardTop = requestedCardTop;
-        revealCenter = {
-          x: table.clientWidth / 2,
-          y: cardTop + cardHeight / 2 - tableRect.top,
-        };
-        reveal.dataset.publicRevealFixedH4Top = `${Math.round(h4Rect.top * 2) / 2}`;
-        reveal.dataset.publicRevealH4Gap = `${Math.round((cardTop - h4Rect.bottom) * 2) / 2}`;
-
+      const cardWidth = Number.parseFloat(revealCardStyle?.width ?? "") || 108;
+      const cardHeight = Number.parseFloat(revealCardStyle?.height ?? "") || 156;
+      const coordinates = publicStageCoordinateSpaceForTable(table);
+      const placement = coordinates
+        ? publicStationaryCardPlacement(table, { width: cardWidth, height: cardHeight }, coordinates)
+        : null;
+      if (!placement) {
+        reveal.dataset.publicRevealStationaryPlacement = "unavailable";
+        return false;
       }
+      delete reveal.dataset.publicRevealStationaryPlacement;
+      const revealCenter = {
+        x: (placement.tableLocalRect.left + placement.tableLocalRect.right) / 2,
+        y: (placement.tableLocalRect.top + placement.tableLocalRect.bottom) / 2,
+      };
 
       reveal.style.setProperty("--origin-x", `${origin.x}px`);
       reveal.style.setProperty("--origin-y", `${origin.y}px`);
