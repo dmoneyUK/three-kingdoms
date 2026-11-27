@@ -7316,7 +7316,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     const cleanup = () => {
       cancelled = true;
-      window.cancelAnimationFrame(frame);
+      if (frame && typeof window.cancelAnimationFrame === "function") window.cancelAnimationFrame(frame);
       if (normalDrawTimer) clearTimeout(normalDrawTimer);
       if (genericDrawTimer) clearTimeout(genericDrawTimer);
     };
