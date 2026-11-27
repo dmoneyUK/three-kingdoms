@@ -34,6 +34,10 @@ import {
   publicStageLengthToTableLocal,
   publicStageRevealCanRetire,
   publicStageSceneMatchesCard,
+  checkpointPublicStageVisibleHold,
+  publicStageVisibleHoldCanComplete,
+  publicStageStaticAnnouncementMatchesReveal,
+  type PublicStageRevealIdentity,
   type PublicStageStationarySurface,
 } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
@@ -497,6 +501,7 @@ function PublicJourneyCard({
   lustCostFrame,
   publicCardEffectFrame,
   sharedStageIdentity,
+  allowPendingVerifiedReveal = false,
   parkedEffectLabel,
   onInspectCard,
 }: {
@@ -517,6 +522,7 @@ function PublicJourneyCard({
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   publicCardEffectFrame?: PublicCardEffectFrameView;
   sharedStageIdentity?: { roomId: string; scopeId: string; interactionId?: string | null; viewerId: string };
+  allowPendingVerifiedReveal?: boolean;
   parkedEffectLabel?: string;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
@@ -531,6 +537,25 @@ function PublicJourneyCard({
       phase: card.phase.toUpperCase() as "REVEAL" | "MOVE" | "PARKED",
     }));
   const usesSharedRevealLayout = sharesCurrentStageIdentity && card.phase === "reveal";
+  const pendingVerifiedRevealLayout = Boolean(allowPendingVerifiedReveal && primary && usesSharedRevealLayout
+    && !sharedPublicStage?.revealReady && publicCardEffectFrame
+    && publicCardEffectFrame.effectId === "sima_yi_guicai" && publicCardEffectFrame.effectClass === "JUDGEMENT"
+    && publicCardEffectFrame.eventId === card.eventId
+    && publicCardEffectFrame.materials.length === 1
+    && publicCardEffectFrame.materials[0]?.card.id === card.cardFace.id
+    && publicStageEffectFrameRevealTargetMatches({
+      layout: sharedPublicStage?.layout,
+      roomId: sharedStageIdentity!.roomId,
+      rootEventId: sharedStageIdentity!.scopeId,
+      interactionId: sharedStageIdentity!.interactionId,
+      eventId: card.eventId,
+      cardId: card.cardFace.id,
+      viewerId: sharedStageIdentity!.viewerId,
+      primaryEventId: sharedPublicStage?.primaryEventId ?? "",
+      primaryCardId: sharedPublicStage?.primaryCardId ?? "",
+      announcementEventId: sharedPublicStage?.announcementEventId ?? "",
+      announcementAnchorEventId: sharedPublicStage?.announcementAnchorEventId ?? null,
+    }));
   const journeyLeft = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.left - sharedPublicStage.primaryOffset.left
     : card.rect.left;
@@ -549,7 +574,7 @@ function PublicJourneyCard({
     || !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const sharedRevealReadinessPending = Boolean(primary && card.phase === "reveal" && sharedStageIdentity
     && (!sharesCurrentStageIdentity || !sharedPublicStage?.revealReady));
-  const positionUnavailable = placementUnavailable || sharedRevealReadinessPending
+  const positionUnavailable = placementUnavailable || (sharedRevealReadinessPending && !pendingVerifiedRevealLayout)
     || usesTableLocalPosition && !localCardRect;
   const inspectable = !positionUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !positionUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
@@ -1110,16 +1135,25 @@ function hasPaintedLargePublicEffectFrame(
   identity: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
   element: HTMLElement,
   onFailure?: (reason: string) => void,
+  allowPendingSameEventLayout = false,
 ): boolean {
   const fail = (reason: string) => {
     onFailure?.(reason);
     return false;
   };
+  const paintEnabledThroughAncestors = (node: HTMLElement) => {
+    for (let current: HTMLElement | null = node; current; current = current.parentElement) {
+      const style = window.getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
+        || Number(style.opacity) <= 0 || style.contentVisibility === "hidden") return false;
+    }
+    return node.isConnected && node.getClientRects().length > 0;
+  };
   const table = element.closest<HTMLElement>(".play-table");
   if (!table) return fail("missing-play-table");
   const shared = committedPublicStageLayout(table);
   if (!shared) return fail("missing-shared-layout");
-  if (!shared.revealReady) return fail("shared-reveal-not-ready");
+  if (!shared.revealReady && !allowPendingSameEventLayout) return fail("shared-reveal-not-ready");
   const expectedCardIds = frame.materials.map(({ card }) => card.id).join(",");
   const expectedOwnerIds = frame.materials.map(({ ownerId }) => ownerId ?? "deck").join(",");
   const panels = [...element.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")];
@@ -1176,12 +1210,14 @@ function hasPaintedLargePublicEffectFrame(
     || consoleRect.width <= 0 || consoleRect.height <= 0) return fail("console-boundary-not-paint-enabled");
   const consoleTop = consoleRect.top;
   if (!element.isConnected || element.getClientRects().length === 0
-    || primaryStyle.display === "none" || primaryStyle.visibility === "hidden" || Number(primaryStyle.opacity) <= 0) {
+    || primaryStyle.display === "none" || primaryStyle.visibility === "hidden" || Number(primaryStyle.opacity) <= 0
+    || !paintEnabledThroughAncestors(element) || !paintEnabledThroughAncestors(panel)) {
     return fail("frame-not-paint-enabled");
   }
   if (!announcement.isConnected || announcement.getClientRects().length === 0
     || announcementStyle.display === "none" || announcementStyle.visibility === "hidden"
-    || Number(announcementStyle.opacity) <= 0 || !announcementPaint) return fail("matching-h4-not-paint-enabled");
+    || Number(announcementStyle.opacity) <= 0 || !announcementPaint
+    || !paintEnabledThroughAncestors(announcement)) return fail("matching-h4-not-paint-enabled");
   if (!localPrimaryRect
     || !withinOnePixel(localPrimaryRect.right - localPrimaryRect.left, REVEAL_CARD.width)
     || !withinOnePixel(localPrimaryRect.bottom - localPrimaryRect.top, REVEAL_CARD.height)) {
@@ -1200,7 +1236,7 @@ function hasPaintedLargePublicCard(
   eventId: string,
   size: Pick<CardRect, "width" | "height">,
   effectFrame?: PublicCardEffectFrameView,
-  identity?: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
+  identity?: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string; allowPendingSameEventLayout?: boolean },
   onFailure?: (reason: string) => void,
 ) {
   const elements = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
@@ -1211,7 +1247,7 @@ function hasPaintedLargePublicCard(
   }
   const element = elements[0];
   if (effectFrame || identity) return Boolean(effectFrame && identity
-    && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element, onFailure));
+    && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element, onFailure, identity.allowPendingSameEventLayout === true));
   const face = element?.querySelector<HTMLElement>(".played-card");
   const rect = element?.getBoundingClientRect();
   const table = element?.closest<HTMLElement>(".play-table");
@@ -2926,6 +2962,7 @@ function PublicCardAnnouncement({
   compactSupportingMessage,
   presentationNarration,
   negationNarration,
+  pendingRevealIdentity,
   fallbackCardRect,
   phaseNotice,
   outcome,
@@ -2963,6 +3000,7 @@ function PublicCardAnnouncement({
   compactSupportingMessage?: string;
   presentationNarration?: PublicNegationNarration | PublicInteractionNarration;
   negationNarration?: PublicNegationNarration;
+  pendingRevealIdentity?: PublicStageRevealIdentity | null;
   fallbackCardRect: CardRect | null;
   phaseNotice?: string;
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
@@ -3037,6 +3075,7 @@ function PublicCardAnnouncement({
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
     phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
+    pendingRevealIdentity,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware, protectFirstParkedMiniature,
   };
@@ -3227,6 +3266,7 @@ function PublicCardAnnouncement({
         eventId, eventCopyKey, geometryKey, viewerLayoutKey, phase, message, compactMessage,
         heading,
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
+        pendingRevealIdentity,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
     privateDrawAware, protectFirstParkedMiniature, dismantleCardFace, segments,
@@ -3313,7 +3353,35 @@ function PublicCardAnnouncement({
             copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
           ],
         }));
-      if (sharedStageCandidate && sharedTable && (phase === "reveal" || phase === "move")) {
+      const pendingRevealCardNodes = pendingRevealIdentity && sharedTable
+        ? [...sharedTable.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")].filter((candidate) =>
+          candidate.dataset.publicCardJourneyEventId === pendingRevealIdentity.eventId
+          && candidate.dataset.publicCardJourneyCardId === pendingRevealIdentity.cardId)
+        : [];
+      const pendingRevealCard = pendingRevealCardNodes?.length === 1 ? pendingRevealCardNodes[0] : null;
+      const pendingRevealFrame = pendingRevealCard?.querySelector<HTMLElement>(".public-card-effect-frame-panel") ?? null;
+      const pendingStaticRevealMatches = Boolean(pendingRevealIdentity && pendingRevealFrame
+        && publicStageStaticAnnouncementMatchesReveal({
+          phase,
+          expected: pendingRevealIdentity,
+          actual: {
+            roomId: display.dataset.publicCardRoomId ?? "",
+            rootEventId: display.dataset.publicCardRootEventId ?? "",
+            interactionId: display.dataset.publicCardInteractionId ?? "",
+            eventId: copy.dataset.publicCardAnnouncementEventId ?? "",
+            cardId: pendingRevealCard?.dataset.publicCardJourneyCardId ?? "",
+            viewerId: display.dataset.publicCardViewerId ?? "",
+          },
+        })
+        && display.dataset.publicCardEventId === pendingRevealIdentity.eventId
+        && display.dataset.publicCardViewerId === display.dataset.publicCardLayoutViewerId
+        && pendingRevealCard?.dataset.publicCardJourneyPhase === "reveal"
+        && pendingRevealFrame.dataset.publicCardFrameEffectId === "sima_yi_guicai"
+        && pendingRevealFrame.dataset.publicCardFrameClass === "JUDGEMENT"
+        && pendingRevealFrame.dataset.publicCardFrameCardEventId === pendingRevealIdentity.eventId
+        && pendingRevealFrame.dataset.publicCardFrameMaterialCardIds === pendingRevealIdentity.cardId);
+      const sharedPendingReveal = phase === "reveal" || phase === "move" || pendingStaticRevealMatches;
+      if (sharedStageCandidate && sharedTable && sharedPendingReveal) {
         // Keep the independently anchored factual H4 paint-enabled while the
         // same-event shared card geometry is being measured. Passive card/H4
         // intersections and parked-slot reservations never suppress copy.
@@ -3328,6 +3396,39 @@ function PublicCardAnnouncement({
         setPx("left", left);
         setPx("top", top);
         setPx("width", width);
+        if (pendingStaticRevealMatches) {
+          const rect = copy.getBoundingClientRect();
+          const wrapper = sharedTable.querySelector<HTMLElement>(".battlefield-choice-stage.stauchness-choice-stage[data-stauchness-choice='true']");
+          const panel = wrapper?.querySelector<HTMLElement>(".stauchness-choice-panel") ?? null;
+          const consoleTop = document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableBounds.bottom;
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")]
+            .filter((element) => element !== wrapper);
+          if (panel && !controls.includes(panel)) controls.push(panel);
+          const collides = (element: HTMLElement) => {
+            const style = window.getComputedStyle(element);
+            const other = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+              && other.width > 0 && other.height > 0
+              && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
+          };
+          const safeUpper = Boolean(upper && rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5
+            && rect.top >= tableBounds.top && rect.bottom <= Math.min(tableBounds.bottom, consoleTop)
+            && upper.slots.every(({ rect: slot }) => rect.right <= slot.left || rect.left >= slot.left + slot.width
+              || rect.bottom <= slot.top || rect.top >= slot.top + slot.height)
+            && !controls.some(collides));
+          if (!safeUpper) {
+            if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
+            setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
+            setData("data-public-card-announcement-placement", undefined);
+            setData("data-public-card-announcement-positioned", undefined);
+            setData("data-public-card-announcement-stability", "verified-reveal-awaiting-hard-safe-upper-anchor");
+            reportH4Placement({ geometryEpoch: null, obstacleIds: ["actual-choice-or-control"], decision: "hide",
+              reason: "verified-replacement-upper-anchor-blocked-by-real-control", compact: null,
+              rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, visible: false,
+              text: copy.textContent ?? "" });
+            return;
+          }
+        }
         if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
         setData("data-public-stage-layout-identity", undefined);
         setData("data-public-card-announcement-positioned", "true");
@@ -3361,7 +3462,13 @@ function PublicCardAnnouncement({
           setPx("top", upper.top);
           setPx("width", width);
           const rect = copy.getBoundingClientRect();
-          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")];
+          const wrapper = pendingStaticRevealMatches
+            ? sharedTable.querySelector<HTMLElement>(".battlefield-choice-stage.stauchness-choice-stage[data-stauchness-choice='true']")
+            : null;
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")]
+            .filter((element) => element !== wrapper);
+          const choicePanel = wrapper?.querySelector<HTMLElement>(".stauchness-choice-panel");
+          if (choicePanel && !controls.includes(choicePanel)) controls.push(choicePanel);
           const collision = (element: HTMLElement) => {
             const style = window.getComputedStyle(element);
             const other = element.getBoundingClientRect();
@@ -5895,59 +6002,83 @@ function SingleTargetCardJourney({
           const current = journeyRef.current;
           const completedCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
           if (current.scopeKey !== scopeKey || current.viewerId !== viewerIdRef.current || current.viewerId !== viewerId
-            || !completedCard || completedCard.phase !== "reveal") return;
+            || !completedCard || completedCard.phase !== "reveal"
+            || completedCard.revealStartedAtMs !== card.revealStartedAtMs) return;
           const latestAction = actionRef.current;
           const completesAtVisibleHold = latestAction.revealCompletionPolicy === "visible-hold"
             && latestAction.rootEventId === completedCard.eventId
-            && latestAction.cardFace?.id === completedCard.cardFace.id;
+            && latestAction.cardFace?.id === completedCard.cardFace.id
+            && latestAction.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+            && latestAction.publicCardEffectFrame.effectClass === "JUDGEMENT"
+            && latestAction.publicCardEffectFrame.eventId === completedCard.eventId
+            && latestAction.publicCardEffectFrame.materials.length === 1
+            && latestAction.publicCardEffectFrame.materials[0]?.card.id === completedCard.cardFace.id;
           const expectedFrame = latestAction.publicCardEffectFrame?.eventId === completedCard.eventId
             ? latestAction.publicCardEffectFrame : undefined;
-          const safePainted = expectedFrame
+          const currentPaintEnabled = expectedFrame
             ? hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD, expectedFrame, {
               roomId: roomCode,
               rootEventId: latestAction.rootEventId,
               interactionId: latestAction.interactionId,
               viewerId: current.viewerId,
+              allowPendingSameEventLayout: completesAtVisibleHold,
             })
             : hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD);
+          const safePainted = currentPaintEnabled && document.visibilityState === "visible" && documentVisibleRef.current;
+          const now = performance.now();
+          const visibleHoldComplete = completesAtVisibleHold && publicStageVisibleHoldCanComplete({
+            remainingMs: completedCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+            startedAtMs: completedCard.revealStartedAtMs ?? null,
+            nowMs: now,
+            safePainted,
+          });
           const canRetireReveal = publicStageRevealCanRetire({
             phase: "REVEAL",
-            layoutPending: completedCard.layoutPending === true,
+            layoutPending: completesAtVisibleHold ? false : completedCard.layoutPending === true,
             safePainted,
             viewerId: current.viewerId,
             parkingTargetViewerId: completedCard.parkingTargetViewerId,
             parkingTarget: completedCard.target,
             requireParkingTarget: !completesAtVisibleHold,
           });
-          if (completesAtVisibleHold && canRetireReveal) {
+          if (completesAtVisibleHold && visibleHoldComplete && canRetireReveal) {
             notifyRevealCompletedOnce(completedCard.eventId, completedCard.cardFace.id);
             return;
           }
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
-            if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
-            const now = performance.now();
+            if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal"
+              || currentCard.revealStartedAtMs !== card.revealStartedAtMs) return current;
             const currentCanRetireReveal = publicStageRevealCanRetire({
               phase: "REVEAL",
-              layoutPending: currentCard.layoutPending === true,
+              layoutPending: completesAtVisibleHold ? false : currentCard.layoutPending === true,
               safePainted,
               viewerId: current.viewerId,
               parkingTargetViewerId: currentCard.parkingTargetViewerId,
               parkingTarget: currentCard.target,
               requireParkingTarget: !completesAtVisibleHold,
             });
-            if (!currentCanRetireReveal) {
+            if (!currentCanRetireReveal || completesAtVisibleHold && !visibleHoldComplete) {
+              const visibleHoldCheckpoint = completesAtVisibleHold ? checkpointPublicStageVisibleHold({
+                elapsedMs: currentCard.revealElapsedMs ?? 0,
+                remainingMs: currentCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+                startedAtMs: currentCard.revealStartedAtMs ?? null,
+                nowMs: now,
+              }) : null;
               const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
                 ? {
                   ...candidate,
                   revealStartedAtMs: null,
-                  revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
-                  revealRemainingMs: 0,
+                  revealElapsedMs: visibleHoldCheckpoint?.elapsedMs
+                    ?? (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
+                  revealRemainingMs: visibleHoldCheckpoint?.remainingMs ?? 0,
                   awaitingParkingTarget: !completesAtVisibleHold,
                   layoutPending: candidate.layoutPending || !safePainted
                     || !completesAtVisibleHold && candidate.parkingTargetViewerId !== current.viewerId,
-                  layoutChangeReason: !safePainted ? "reveal-complete-awaiting-safe-effect-frame-paint"
-                    : completesAtVisibleHold ? "reveal-complete-awaiting-safe-visible-paint"
+                  layoutChangeReason: !safePainted ? completesAtVisibleHold
+                    ? "visible-hold-paused-awaiting-matching-frame-and-h4"
+                    : "reveal-complete-awaiting-safe-effect-frame-paint"
+                    : completesAtVisibleHold ? "visible-hold-paused-awaiting-completion-check"
                       : "reveal-complete-awaiting-safe-author-slot",
                 }
                 : candidate);
@@ -6023,23 +6154,129 @@ function SingleTargetCardJourney({
       }
       return [];
     });
+    const initialHoldAction = actionRef.current;
+    const initialHoldCard = initialHoldAction.revealCompletionPolicy === "visible-hold"
+      ? journey.cards.find((card) => card.eventId === initialHoldAction.rootEventId
+        && card.cardFace.id === initialHoldAction.cardFace?.id && card.phase === "reveal")
+      : null;
+    const initialHoldStartedAtMs = initialHoldCard?.revealStartedAtMs ?? null;
+    const holdTable = initialHoldCard ? document.querySelector<HTMLElement>(".play-table") : null;
+    const pauseVisibleHoldIfUnpainted = () => {
+      const latestAction = actionRef.current;
+      if (latestAction.revealCompletionPolicy !== "visible-hold" || !latestAction.publicCardEffectFrame
+        || latestAction.publicCardEffectFrame.effectId !== "sima_yi_guicai"
+        || latestAction.publicCardEffectFrame.effectClass !== "JUDGEMENT"
+        || latestAction.publicCardEffectFrame.eventId !== latestAction.rootEventId
+        || latestAction.publicCardEffectFrame.materials.length !== 1
+        || latestAction.publicCardEffectFrame.materials[0]?.card.id !== latestAction.cardFace?.id) return;
+      const current = journeyRef.current;
+      const card = current.scopeKey === scopeKey ? current.cards.find((candidate) => candidate.eventId === latestAction.rootEventId
+        && candidate.cardFace.id === latestAction.cardFace?.id && candidate.phase === "reveal") : null;
+      if (!card || card.revealStartedAtMs == null || card.revealStartedAtMs !== initialHoldStartedAtMs) return;
+      const painted = hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, latestAction.publicCardEffectFrame, {
+        roomId: roomCode,
+        rootEventId: latestAction.rootEventId,
+        interactionId: latestAction.interactionId,
+        viewerId: current.viewerId,
+        allowPendingSameEventLayout: true,
+      });
+      if (painted && document.visibilityState === "visible" && documentVisibleRef.current) return;
+      const now = performance.now();
+      setJourney((latest) => {
+        const currentCard = latest.scopeKey === scopeKey ? latest.cards.find((candidate) => candidate.eventId === card.eventId
+          && candidate.cardFace.id === card.cardFace.id && candidate.phase === "reveal") : null;
+        if (!currentCard || currentCard.revealStartedAtMs == null
+          || currentCard.revealStartedAtMs !== initialHoldStartedAtMs) return latest;
+        const checkpoint = checkpointPublicStageVisibleHold({
+          elapsedMs: currentCard.revealElapsedMs ?? 0,
+          remainingMs: currentCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+          startedAtMs: currentCard.revealStartedAtMs,
+          nowMs: now,
+        });
+        const next = { ...latest, cards: latest.cards.map((candidate) => candidate.eventId === currentCard.eventId
+          ? { ...candidate, revealStartedAtMs: null, revealElapsedMs: checkpoint.elapsedMs,
+            revealRemainingMs: checkpoint.remainingMs, layoutChangeReason: "visible-hold-paused-until-matching-frame-and-h4-return" }
+          : candidate) };
+        journeyRef.current = next;
+        return next;
+      });
+    };
+    const holdMutationObserver = initialHoldCard && holdTable && typeof MutationObserver !== "undefined"
+      ? new MutationObserver(pauseVisibleHoldIfUnpainted) : null;
+    if (initialHoldCard && holdTable && initialHoldCard.revealStartedAtMs != null) {
+      holdMutationObserver?.observe(holdTable, {
+        attributes: true,
+        attributeFilter: ["style", "class", "data-public-stage-layout-status", "data-public-stage-layout-identity",
+          "data-public-card-announcement-delivery", "data-public-card-announcement-positioned", "data-public-card-journey-layout-pending"],
+        childList: true,
+        subtree: true,
+      });
+    }
+    const holdResizeObserver = initialHoldCard && holdTable && typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(pauseVisibleHoldIfUnpainted) : null;
+    if (initialHoldCard && holdTable && initialHoldCard.revealStartedAtMs != null) {
+      holdResizeObserver?.observe(holdTable);
+      for (const element of holdTable.querySelectorAll<HTMLElement>(`[data-public-card-journey-event-id]`)) {
+        if (element.dataset.publicCardJourneyEventId === initialHoldCard.eventId) holdResizeObserver?.observe(element);
+      }
+      for (const element of holdTable.querySelectorAll<HTMLElement>(`[data-public-card-announcement='true']`)) {
+        if (element.dataset.publicCardAnnouncementEventId === initialHoldCard.eventId) holdResizeObserver?.observe(element);
+      }
+    }
+    if (initialHoldCard?.revealStartedAtMs != null) {
+      document.addEventListener("visibilitychange", pauseVisibleHoldIfUnpainted);
+      window.addEventListener("resize", pauseVisibleHoldIfUnpainted);
+    }
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
-      const shouldPause = !enabledRef.current || !documentVisibleRef.current || document.visibilityState !== "visible";
-      if (!shouldPause) return;
+      holdMutationObserver?.disconnect();
+      holdResizeObserver?.disconnect();
+      if (initialHoldCard?.revealStartedAtMs != null) {
+        document.removeEventListener("visibilitychange", pauseVisibleHoldIfUnpainted);
+        window.removeEventListener("resize", pauseVisibleHoldIfUnpainted);
+      }
+      const latestAction = actionRef.current;
       const current = journeyRef.current;
+      const visibleHoldCard = latestAction.revealCompletionPolicy === "visible-hold"
+        && latestAction.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+        && latestAction.publicCardEffectFrame.effectClass === "JUDGEMENT"
+        && latestAction.publicCardEffectFrame.materials.length === 1
+        && latestAction.publicCardEffectFrame.materials[0]?.card.id === latestAction.cardFace?.id
+        ? current.cards.find((card) => card.eventId === latestAction.rootEventId
+          && card.cardFace.id === latestAction.cardFace?.id && card.phase === "reveal")
+        : null;
+      const visibleHoldPainted = Boolean(visibleHoldCard && latestAction.publicCardEffectFrame?.eventId === visibleHoldCard.eventId
+        && hasPaintedLargePublicCard(visibleHoldCard.eventId, REVEAL_CARD, latestAction.publicCardEffectFrame, {
+          roomId: roomCode,
+          rootEventId: latestAction.rootEventId,
+          interactionId: latestAction.interactionId,
+          viewerId: current.viewerId,
+          allowPendingSameEventLayout: true,
+        }));
+      const shouldPause = !enabledRef.current || !documentVisibleRef.current || document.visibilityState !== "visible"
+        || Boolean(visibleHoldCard && !visibleHoldPainted);
+      if (!shouldPause) return;
       if (current.scopeKey !== scopeKey) return;
       const now = performance.now();
       let changed = false;
       const cards = current.cards.map((card) => {
         if (card.phase === "reveal" && card.revealStartedAtMs != null) {
           changed = true;
+          const isVisibleHold = latestAction.revealCompletionPolicy === "visible-hold"
+            && latestAction.rootEventId === card.eventId && latestAction.cardFace?.id === card.cardFace.id;
+          const checkpoint = isVisibleHold ? checkpointPublicStageVisibleHold({
+            elapsedMs: card.revealElapsedMs ?? 0,
+            remainingMs: card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+            startedAtMs: card.revealStartedAtMs,
+            nowMs: now,
+          }) : null;
           const elapsed = Math.max(0, now - card.revealStartedAtMs);
           return {
             ...card,
             revealStartedAtMs: null,
-            revealElapsedMs: (card.revealElapsedMs ?? 0) + elapsed,
-            revealRemainingMs: Math.max(0, (card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS) - elapsed),
+            revealElapsedMs: checkpoint?.elapsedMs ?? (card.revealElapsedMs ?? 0) + elapsed,
+            revealRemainingMs: checkpoint?.remainingMs ?? Math.max(0, (card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS) - elapsed),
+            layoutChangeReason: isVisibleHold ? "visible-hold-paused-until-matching-frame-and-h4-return" : card.layoutChangeReason,
           };
         }
         if (card.phase === "move") {
@@ -6074,6 +6311,10 @@ function SingleTargetCardJourney({
       const latestAction = actionRef.current;
       const expectedFrame = latestAction.publicCardEffectFrame?.eventId === activeCard.eventId
         ? latestAction.publicCardEffectFrame : undefined;
+      const allowPendingVerifiedReveal = latestAction.revealCompletionPolicy === "visible-hold"
+        && expectedFrame?.effectId === "sima_yi_guicai" && expectedFrame.effectClass === "JUDGEMENT"
+        && expectedFrame.materials.length === 1 && expectedFrame.materials[0]?.card.id === activeCard.cardFace.id
+        && latestAction.rootEventId === activeCard.eventId && latestAction.cardFace?.id === activeCard.cardFace.id;
       let failureReason = "card-face-not-paint-enabled";
       const safePainted = expectedFrame
         ? hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, expectedFrame, {
@@ -6081,6 +6322,7 @@ function SingleTargetCardJourney({
           rootEventId: latestAction.rootEventId,
           interactionId: latestAction.interactionId,
           viewerId: viewerIdRef.current,
+          allowPendingSameEventLayout: allowPendingVerifiedReveal,
         }, (reason) => { failureReason = reason; })
         : hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, undefined, undefined,
           (reason) => { failureReason = reason; });
@@ -6694,6 +6936,7 @@ function SingleTargetCardJourney({
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
     data-public-card-action-key={action.key}
+    data-public-card-room-id={roomCode}
     data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-kind={action.cardKind}
@@ -6764,6 +7007,14 @@ function SingleTargetCardJourney({
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
         publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
           ? action.publicCardEffectFrame : undefined}
+        allowPendingVerifiedReveal={action.revealCompletionPolicy === "visible-hold"
+          && action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+          && action.publicCardEffectFrame.effectClass === "JUDGEMENT"
+          && action.rootEventId === card.eventId && card.phase === "reveal"
+          && action.cardFace?.id === card.cardFace.id
+          && action.publicCardEffectFrame.eventId === card.eventId
+          && action.publicCardEffectFrame.materials.length === 1
+          && action.publicCardEffectFrame.materials[0]?.card.id === card.cardFace.id}
         parkedEffectLabel={card.actorId === viewerId ? card.parkedPublicEffect?.title : undefined}
       />;
     })}
@@ -6780,6 +7031,24 @@ function SingleTargetCardJourney({
       h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
       publicSequenceForEvent={publicSequenceForEvent}
       eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
+      pendingRevealIdentity={action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+        && action.publicCardEffectFrame.effectClass === "JUDGEMENT"
+        && action.publicCardEffectFrame.materials.length === 1
+        && action.publicCardEffectFrame.eventId === activeCard?.eventId
+        && action.publicCardEffectFrame.materials[0]?.card.id === activeCard?.cardFace.id
+        && activeCard?.phase === "reveal"
+        && displayedAnnouncementEventId === activeCard.eventId
+        && action.rootEventId === activeCard.eventId
+        && Boolean(action.interactionId)
+        ? {
+          roomId: roomCode,
+          rootEventId: action.rootEventId,
+          interactionId: action.interactionId!,
+          eventId: activeCard.eventId,
+          cardId: activeCard.cardFace.id,
+          viewerId,
+        }
+        : undefined}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
         displayedAnnouncementEventId,

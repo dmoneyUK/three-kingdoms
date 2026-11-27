@@ -10,6 +10,7 @@ import {
   publicStageFailedRevealMatchesScene,
   publicStageHasVisibleAreaAfterForegroundOverlay,
   publicStageRevealNeedsOwnedRemeasure,
+  publicStageMayExcludeStauchnessChoiceWrapper,
   publicStageRectToTableLocal,
   publicStageSceneMatchesCard,
   type PublicStageLayout,
@@ -440,19 +441,42 @@ export function PublicStageLayoutProvider({
         && primary.dataset.publicCardJourneyEventId === scopeId
         && primary.dataset.publicCardJourneyCardId === cardId
         && (phase === "REVEAL" || phase === "MOVE"));
+      const stauchnessChoiceWrapper = [...table.querySelectorAll<HTMLElement>(".battlefield-choice-stage.stauchness-choice-stage")]
+        .find((element) => element.dataset.stauchnessChoice === "true") ?? null;
+      const stauchnessChoicePanel = stauchnessChoiceWrapper?.querySelector<HTMLElement>(".stauchness-choice-panel") ?? null;
+      const necromancyFrame = primary.querySelector<HTMLElement>(".public-card-effect-frame-panel");
+      const ignoreStauchnessWrapper = Boolean(stauchnessChoiceWrapper && stauchnessChoicePanel && necromancyFrame
+        && publicStageMayExcludeStauchnessChoiceWrapper({
+          phase,
+          eventId,
+          primaryEventId: primary.dataset.publicCardJourneyEventId ?? "",
+          frameEventId: necromancyFrame.dataset.publicCardFrameEventId ?? "",
+          frameCardEventId: necromancyFrame.dataset.publicCardFrameCardEventId ?? "",
+          effectId: necromancyFrame.dataset.publicCardFrameEffectId ?? "",
+          effectClass: necromancyFrame.dataset.publicCardFrameClass ?? "",
+          visibleChoicePanel: visibleObstacle(stauchnessChoicePanel),
+        }));
       const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
         .filter((element) => element !== primary && element !== announcement && element !== chip
           && !(harvestRootPoolOverlap && element === harvestPoolWrapper)
+          && !(ignoreStauchnessWrapper && element === stauchnessChoiceWrapper)
           && !primary.contains(element) && (!announcement || !announcement.contains(element)) && (!chip || !chip.contains(element))
           && visibleObstacle(element))
         .map((element, index) => ({
           id: harvestRootPoolOverlap && element === harvestPoolPanel
             ? "harvest-choice-panel"
+            : ignoreStauchnessWrapper && element === stauchnessChoicePanel
+              ? "stauchness-choice-panel"
             : element.dataset.playerAnchor || element.id || String(element.className).slice(0, 48) + ":" + index,
           rect: rectOf(element),
         }));
       if (harvestRootPoolOverlap && harvestPoolPanel && !obstacles.some(({ id }) => id === "harvest-choice-panel")) {
         obstacles.push({ id: "harvest-choice-panel", rect: rectOf(harvestPoolPanel) });
+      }
+      if (ignoreStauchnessWrapper && stauchnessChoicePanel
+        && visibleObstacle(stauchnessChoicePanel)
+        && !obstacles.some(({ id }) => id === "stauchness-choice-panel")) {
+        obstacles.push({ id: "stauchness-choice-panel", rect: rectOf(stauchnessChoicePanel) });
       }
       const cardSize = { width: visualPrimary.right - visualPrimary.left, height: visualPrimary.bottom - visualPrimary.top };
       const measuredCardRect = { left: visualPrimary.left, top: visualPrimary.top, right: visualPrimary.right, bottom: visualPrimary.bottom };

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicEffectFrameLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, checkpointPublicStageVisibleHold, positionLabeledCardAboveBand, publicEffectFrameLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMayExcludeStauchnessChoiceWrapper, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard, publicStageStaticAnnouncementMatchesReveal, publicStageVisibleHoldCanComplete } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -36,6 +36,47 @@ function h4Geometry(left, top, width, reserveHeight, paintHeight = reserveHeight
     overlapPolicy: "PASSIVE_REVEAL_FOREGROUND",
   };
 }
+
+test("a static replacement H4 may retain the pending reveal anchor only for exact room, event, card and viewer identity", () => {
+  const identity = { roomId: "room-1", rootEventId: "root-1", interactionId: "interaction-1",
+    eventId: "replacement-1", cardId: "replacement-card-1", viewerId: "viewer-1" };
+  assert.equal(publicStageStaticAnnouncementMatchesReveal({ phase: "static", expected: identity, actual: identity }), true);
+  assert.equal(publicStageStaticAnnouncementMatchesReveal({ phase: "reveal", expected: identity, actual: identity }), false,
+    "ordinary moving/revealing copy keeps its existing placement path");
+  for (const key of Object.keys(identity)) {
+    assert.equal(publicStageStaticAnnouncementMatchesReveal({ phase: "static", expected: identity,
+      actual: { ...identity, [key]: `wrong-${key}` } }), false, `${key} mismatch fails closed`);
+  }
+});
+
+test("only the exact visible Necromancy replacement can ignore the full-width choice wrapper", () => {
+  const valid = { phase: "REVEAL", eventId: "replacement-1", primaryEventId: "replacement-1",
+    frameEventId: "replacement-1", frameCardEventId: "replacement-1", effectId: "sima_yi_guicai",
+    effectClass: "JUDGEMENT", visibleChoicePanel: true };
+  assert.equal(publicStageMayExcludeStauchnessChoiceWrapper(valid), true);
+  for (const change of [
+    { phase: "MOVE" }, { eventId: "other" }, { primaryEventId: "other" }, { frameEventId: "other" },
+    { frameCardEventId: "other" }, { effectId: "other-skill" }, { effectClass: "OTHER" }, { visibleChoicePanel: false },
+  ]) assert.equal(publicStageMayExcludeStauchnessChoiceWrapper({ ...valid, ...change }), false);
+});
+
+test("visible-hold checkpoint accrues only the visible segment and resumes the remainder", () => {
+  const pausedAt235 = checkpointPublicStageVisibleHold({ elapsedMs: 0, remainingMs: 4000, startedAtMs: 0, nowMs: 235 });
+  assert.deepEqual(pausedAt235, { elapsedMs: 235, remainingMs: 3765, segmentMs: 235, startedAtMs: null });
+  const recoveredAt4000 = checkpointPublicStageVisibleHold({ elapsedMs: pausedAt235.elapsedMs,
+    remainingMs: pausedAt235.remainingMs, startedAtMs: null, nowMs: 4000 });
+  assert.equal(recoveredAt4000.remainingMs, 3765, "hidden wall time is not charged");
+  const completed = checkpointPublicStageVisibleHold({ elapsedMs: recoveredAt4000.elapsedMs,
+    remainingMs: recoveredAt4000.remainingMs, startedAtMs: 4000, nowMs: 7765 });
+  assert.equal(completed.elapsedMs, 4000);
+  assert.equal(completed.remainingMs, 0);
+  assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
+    startedAtMs: 4000, nowMs: 7764, safePainted: true }), false, "one millisecond before the remainder expires cannot complete");
+  assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
+    startedAtMs: 4000, nowMs: 7765, safePainted: false }), false, "unsafe paint cannot complete at the deadline");
+  assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
+    startedAtMs: 4000, nowMs: 7765, safePainted: true }), true, "the safe remaining visible budget completes once due");
+});
 
 test("table-local H4, PAC and CardFace coordinates stay fixed when the visible viewport changes", () => {
   const stationaryPublicElements = {

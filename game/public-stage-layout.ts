@@ -9,6 +9,77 @@ export type PublicStageTableCoordinateSpace = {
   scaleY: number;
 };
 
+export type PublicStageRevealIdentity = {
+  roomId: string;
+  rootEventId: string;
+  interactionId: string;
+  eventId: string;
+  cardId: string;
+  viewerId: string;
+};
+
+/** A static H4 may use the pending REVEAL anchor only for its exact live card scope. */
+export function publicStageStaticAnnouncementMatchesReveal(input: {
+  phase: "static" | "reveal" | "move" | "parked";
+  expected: PublicStageRevealIdentity | null | undefined;
+  actual: PublicStageRevealIdentity;
+}): boolean {
+  const expected = input.expected;
+  return input.phase === "static" && Boolean(expected)
+    && [expected!.roomId, expected!.rootEventId, expected!.interactionId, expected!.eventId,
+      expected!.cardId, expected!.viewerId].every((value) => value.trim().length > 0)
+    && expected!.roomId === input.actual.roomId
+    && expected!.rootEventId === input.actual.rootEventId
+    && expected!.interactionId === input.actual.interactionId
+    && expected!.eventId === input.actual.eventId
+    && expected!.cardId === input.actual.cardId
+    && expected!.viewerId === input.actual.viewerId;
+}
+
+/** Exclude only the full-width Stauchness wrapper, never its real panel, for the matching Necromancy reveal. */
+export function publicStageMayExcludeStauchnessChoiceWrapper(input: {
+  phase: PublicStagePhase;
+  eventId: string;
+  primaryEventId: string;
+  frameEventId: string;
+  frameCardEventId: string;
+  effectId: string;
+  effectClass: string;
+  visibleChoicePanel: boolean;
+}): boolean {
+  return input.phase === "REVEAL" && input.visibleChoicePanel
+    && input.effectId === "sima_yi_guicai" && input.effectClass === "JUDGEMENT"
+    && input.eventId.length > 0 && input.eventId === input.primaryEventId
+    && input.eventId === input.frameEventId && input.eventId === input.frameCardEventId;
+}
+
+/** Checkpoint only the elapsed visible segment; hidden intervals are not charged. */
+export function checkpointPublicStageVisibleHold(input: {
+  elapsedMs: number;
+  remainingMs: number;
+  startedAtMs: number | null;
+  nowMs: number;
+}) {
+  const segmentMs = input.startedAtMs === null ? 0 : Math.max(0, input.nowMs - input.startedAtMs);
+  return {
+    elapsedMs: Math.max(0, input.elapsedMs) + segmentMs,
+    remainingMs: Math.max(0, input.remainingMs - segmentMs),
+    segmentMs,
+    startedAtMs: null,
+  };
+}
+
+/** A visible hold completes only on its deadline while the current paint is safe. */
+export function publicStageVisibleHoldCanComplete(input: {
+  remainingMs: number;
+  startedAtMs: number | null;
+  nowMs: number;
+  safePainted: boolean;
+}): boolean {
+  return input.safePainted && input.startedAtMs !== null
+    && Math.max(0, input.nowMs - input.startedAtMs) >= Math.max(0, input.remainingMs);
+}
+
 /** Convert one client-space measurement to the .play-table padding-box space. */
 export function publicStageRectToTableLocal(
   rect: PublicStageRect,
