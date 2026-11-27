@@ -156,6 +156,8 @@ export type AttackDodgedTriggerContinuation = CausalFields & {
   resumePhase: string;
   resumePlayerId?: string;
   sequenceStartCardId: string;
+  /** Exact physical materials of the committed original Attack, in source order. */
+  originalAttackCards?: Card[];
   rootEventId?: string;
   origin?: AttackOrigin;
   resolutionId?: string;

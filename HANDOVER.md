@@ -1,11 +1,9 @@
 # HANDOVER
 
-## Current task — §10.78 Frost Frame header visibility correction
+## Current task — §10.87 Rock Cleaving Axe damage provenance
 
-Design reviewed: `docs/UX2-refine.md` at `28150eccf4efa46a562e17703b61761c93548dea`.
+Design reviewed: `docs/UX2-refine.md` at `cbad72b18b4dd335a59c8ef892c801def617edae`. Owner now directed continuing beyond the delivered §10.78 boundary; §10.87 is the next P1 in the current queue.
 
-Implemented in one bounded correction: Frost-only Frame hides the redundant visible material-count row while retaining the two real material identities, accessibility details and data attributes; its title header reservation is reduced from 43px to 28px; the existing shared H4–PAC lane anchor applies one deterministic +8px Frost preference. Card dimensions, H4/PAC, other Frame variants, picker behavior, End Turn and game rules remain unchanged.
+Implementation carries the exact original physical Attack materials through successful Dodge (ordinary/delegated and judgement paths), Axe forced damage, equipment-loss resume, and Dying/Peach continuation. Cao Cao's existing Treachery/Skip eligibility and transfer logic are unchanged. Focused API proofs cover Axe costs including the Axe itself, judgement Dodge, Skip, post-rescue gain of exact Attack identity, observer privacy, and two-card Serpent Spear provenance.
 
-Flicker source check: no specific size-feedback defect established; deferred as `UNVERIFIED` per the non-blocking design instruction. No local browser, UX or phone test run.
-
-Validation: focused layout/render/stage tests passed 42/42; `npm run build` passed; `git diff --check` passed. No local browser/UX/phone test run. Implementation commit `ea9198e3c4d1a269d18239c9bb66c4f86694db8e`; exact-SHA Actions `45922037119` passed all jobs, D1 migration, Worker deployment (`f46bd581-4ed5-44f5-84b3-d188559427d5`) and production `/` + `/api/health` smoke. Flicker remains `UNVERIFIED` and non-blocking as specified. Status: `PENDING OWNER iPHONE REVIEW`; stop here and do not self-accept.
+Validation on the identical implementation patch (`f7a71d351ee46a70f33717380ddca4be6fc3e610`): focused equipment API regressions 3/3, fast tests 509/509, build and `git diff --check` passed. No local UI/browser tests. The same source/test patch is reapplied on the current `cbad72b` base; exact-SHA CI, Worker deployment and production smoke for this delivery are pending. Do not claim Owner acceptance; real-iPhone scenario remains for Owner review.

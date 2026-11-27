@@ -766,14 +766,22 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   const skipped = await requestAndSettle("decline_trigger", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.equal(skipped.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
-  setHand(hostPlayer.id, [card("Attack", "axe-force"), card("Peach", "axe-cost")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "axe-force")], 2); setEquipment(hostPlayer.id, { weapon: card("RockCleavingAxe", "cost") }); setTurn(game.code, hostPlayer.seat);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(alicePlayer.id)}`);
+  setHand(hostPlayer.id, [card("Attack", "axe-force"), card("Peach", "axe-cost")], 4, 5); setHand(alicePlayer.id, [], 2); setEquipment(alicePlayer.id, { armor: card("EightTrigrams", "axe-eight-trigrams") }); setEquipment(hostPlayer.id, { weapon: card("RockCleavingAxe", "cost") }); setDeck(game.code, [{ ...card("Peach", "axe-eight-trigrams-judgement"), suit: "♥", rank: "2" }]); setTurn(game.code, hostPlayer.seat);
   assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-axe-force", targetId: alicePlayer.id })).status, 200);
-  const forcePrompt = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "dodge-axe-force" });
+  const forcePrompt = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
   assert.equal(forcePrompt.data.room.currentAction.kind, "trigger");
+  const savedDodgeContinuation = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(savedDodgeContinuation.continuation.originalAttackCards.map((saved) => saved.id), ["attack-axe-force"], "a successful Eight Trigrams Dodge retains the exact original Attack material");
   const axeTrigger = await state(game.code, host.token);
   assert.equal(axeTrigger.data.currentAction.kind, "trigger"); assert.equal(axeTrigger.data.currentAction.triggerOptions[0].effectId, "rock_cleaving_axe_attack_dodged");
   const forced = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "rock_cleaving_axe_attack_dodged", cardIds: ["peach-axe-cost", "rockcleavingaxe-cost"] });
-  assert.equal(forced.status, 200); assert.equal(forced.data.room.phase, "play-struck"); assert.equal(forced.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
+  assert.equal(forced.status, 200); assert.equal(forced.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
+  const caoDamageView = await state(game.code, alice.token);
+  assert.equal(caoDamageView.data.currentAction.triggerEvent, "damage_suffered", "forced damage opens Cao Cao's ordinary post-damage choice after equipment loss resolves");
+  assert.ok(caoDamageView.data.currentAction.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong"), "the damage-causing Attack is eligible for Treachery after the Axe itself is lost");
+  const resumedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(resumedDamage.continuation.damageCards.map((saved) => saved.id), ["attack-axe-force"], "the equipment-loss resume preserves the original Attack identity");
   assert.equal(forced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards.length, 0, "the Axe itself may be one of the two discarded cards");
   assert.ok(discardIds(game.code).includes("peach-axe-cost")); assert.ok(discardIds(game.code).includes("rockcleavingaxe-cost"));
   const axeCostEvent = forced.data.room.timeline.find((event) => event.type === "cards" && event.message?.includes("Rock Cleaving Axe"));
@@ -801,7 +809,70 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
     eventId: forcedDamage.id,
   });
   assert.equal(forcedNarration?.headline, "Host dealt 1 damage to Alice with Attack.");
+  const skippedTreachery = await requestAndSettle("decline_trigger", { code: game.code, token: alice.token });
+  assert.equal(skippedTreachery.status, 200); assert.equal(skippedTreachery.data.room.phase, "play-struck");
+  assert.ok(discardIds(game.code).includes("attack-axe-force"), "skipping Treachery leaves the original Attack in Discard");
+  assert.equal(skippedTreachery.data.room.myHand.some((held) => held.id === "attack-axe-force"), false, "Skip does not transfer any damage material");
 
+});
+
+test("Rock Cleaving Axe damage lets Cao Cao obtain the original Attack after a physical Dodge", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host"); const cao = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(source && cao);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(cao.id)}`);
+  const attack = card("Attack", "axe-jianxiong-attack"); const dodge = card("Dodge", "axe-jianxiong-dodge");
+  const peach = card("Peach", "axe-jianxiong-rescue"); const costOne = card("Peach", "axe-jianxiong-cost-one"); const costTwo = card("Dodge", "axe-jianxiong-cost-two");
+  setEquipment(source.id, { weapon: card("RockCleavingAxe", "axe-jianxiong-weapon") });
+  setEquipment(cao.id, {}); setHand(source.id, [attack, costOne, costTwo], 4, 4); setHand(cao.id, [dodge, peach], 1, 4); setTurn(game.code, source.seat);
+
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: attack.id, targetId: cao.id });
+  assert.equal(opened.status, 200);
+  const dodged = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: dodge.id });
+  assert.equal(dodged.status, 200); assert.equal(dodged.data.room.currentAction.kind, "trigger");
+  const saved = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(saved.continuation.originalAttackCards.map((held) => held.id), [attack.id], "the persisted Axe decision names the committed Attack, never the Dodge");
+
+  const forced = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "rock_cleaving_axe_attack_dodged", cardIds: [costOne.id, costTwo.id] });
+  assert.equal(forced.status, 200);
+  const dyingView = await state(game.code, alice.token);
+  assert.equal(dyingView.data.currentAction.kind, "dying", "the one-point Axe damage enters the real Peach rescue flow");
+  const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(dyingPending.continuation.dying.resumeTrigger?.damageCards?.map((held) => held.id), [attack.id], "the shared Dying continuation retains the original Attack material");
+  assert.equal((await request("skip_rescue", { code: game.code, token: host.token, windowId: dyingPending.windowId })).status, 200, "the earlier seat passes the shared rescue window");
+  const rescued = await requestAndSettle("give_peach", { code: game.code, token: alice.token, cardId: peach.id, windowId: dyingPending.windowId });
+  assert.equal(rescued.status, 200); assert.equal(rescued.data.room.players.find((player) => player.id === cao.id).hp, 1);
+  const caoView = await state(game.code, alice.token);
+  assert.equal(caoView.data.currentAction.triggerEvent, "damage_suffered", "a surviving Cao Cao resumes the ordinary post-damage choice after Peach rescue");
+  assert.ok(caoView.data.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"));
+  assert.deepEqual(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).continuation.damageCards.map((held) => held.id), [attack.id], "the direct forced-damage path preserves the original Attack material through rescue");
+  const gained = await requestAndSettle("trigger", { code: game.code, token: alice.token, providerId: "cao_cao_jianxiong" });
+  assert.equal(gained.status, 200); assert.equal(gained.data.room.players.find((player) => player.id === cao.id).hp, 1);
+  assert.deepEqual(gained.data.room.myHand.filter((held) => held.id === attack.id).map((held) => held.id), [attack.id], "Treachery gains the actual Attack exactly once");
+  assert.ok(discardIds(game.code).includes(dodge.id)); assert.ok(discardIds(game.code).includes(costOne.id)); assert.ok(discardIds(game.code).includes(costTwo.id));
+  assert.equal(discardIds(game.code).includes(attack.id), false, "the gained Attack leaves Discard exactly once");
+  assert.equal(roomCardCount(game.code, attack.id), 1); assert.equal(roomCardCount(game.code, dodge.id), 1);
+  const observer = (await state(game.code, game.members[2].token)).data;
+  assert.equal(observer.timeline.some((event) => event.privateHandTransfer?.recipientId === cao.id), false, "other viewers do not receive Cao Cao's private Hand transfer");
+});
+
+test("Serpent Spear Attack keeps its two physical materials as Cao Cao's damage cards", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host"); const cao = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(source && cao);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(cao.id)}`);
+  const materialOne = card("Peach", "serpent-jianxiong-material-one"); const materialTwo = card("Dodge", "serpent-jianxiong-material-two");
+  setEquipment(source.id, { weapon: card("SerpentSpear", "serpent-jianxiong-weapon") });
+  setEquipment(cao.id, {}); setHand(source.id, [materialOne, materialTwo], 4, 4); setHand(cao.id, [], 4, 4); setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("serpent_spear_attack", { code: game.code, token: host.token, cardIds: [materialOne.id, materialTwo.id], targetId: cao.id });
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.currentAction.triggerEvent, "damage_suffered");
+  const caoDamageView = await state(game.code, alice.token);
+  assert.ok(caoDamageView.data.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"), "the damage owner receives the viewer-private Treachery option");
+  assert.deepEqual(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).continuation.damageCards.map((held) => held.id), [materialOne.id, materialTwo.id]);
+  const gained = await requestAndSettle("trigger", { code: game.code, token: alice.token, providerId: "cao_cao_jianxiong" });
+  assert.equal(gained.status, 200);
+  assert.deepEqual(gained.data.room.myHand.map((held) => held.id).filter((id) => id === materialOne.id || id === materialTwo.id), [materialOne.id, materialTwo.id], "Treachery obtains the two real conversion materials, with no synthetic Attack card");
+  assert.equal(roomCardCount(game.code, materialOne.id), 1); assert.equal(roomCardCount(game.code, materialTwo.id), 1);
 });
 
 test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dodge responses", { timeout: 30_000 }, async () => {
