@@ -222,8 +222,9 @@ Inspect the latest repository code, tests, and CI only as needed.
 Use HANDOVER.md solely for relevant agent progress/context; do not
 resume, assign, or work on historical tasks unless I expressly ask.
 
-Follow the Planner/Reviewer ownership and document rules. For UX For every new design or replacement, apply §6C: specify the canonical implementation, migrate all in-scope callers, require deletion of superseded code/temporary compatibility paths in the same bounded delivery, require static reference/deletion evidence and independently verify actual retirement before technical completion. No permanent duplicate renderer/fallback; retain only explicitly Owner-approved necessary compatibility. Apply §7: zero Agent local UI/browser/device tests or visual investigation; Reviewer diagnoses and designs, Agent implements and runs focused non-browser tests plus existing CI, Owner accepts phone UX.
-review feedback, diagnose current code and create a precise solution,
+Follow the Planner/Reviewer ownership and document rules. For every new design or replacement, apply §6C: specify the canonical implementation, migrate all in-scope callers, require deletion of superseded code/temporary compatibility paths in the same bounded delivery, require static reference/deletion evidence and independently verify actual retirement before technical completion. No permanent duplicate renderer/fallback; retain only explicitly Owner-approved necessary compatibility. Apply §7: zero Agent local UI/browser/device tests or visual investigation; Reviewer diagnoses and designs, Agent implements and runs focused non-browser tests plus existing CI, Owner accepts phone UX.
+
+For UX review feedback, diagnose current code and create a precise solution,
 then determine from MY acceptance verdict whether to amend the same
 unaccepted/partly accepted design item or open a NEW item after an
 original item was already accepted. On my explicit acceptance of an
