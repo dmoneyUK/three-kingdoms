@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { Countdown, GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
+import { Countdown, GameRoom as GameRoomComponent, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
+import { RoomSessionStore } from "../app/room-session/room-session-store.ts";
 import { gameplayDeclineButtonClassName } from "../app/semantic-action-style.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
@@ -11,6 +12,13 @@ import { buildGroupScopePreview } from "../game/group-scope-preview.ts";
 import { IMPLEMENTED_STANDARD_HEROES } from "../game/heroes.ts";
 
 const card = (id, kind = "Attack", suit = "♠") => ({ id, kind, suit, rank: "A" });
+
+function GameRoom(props) {
+  const roomSessionStore = new RoomSessionStore();
+  roomSessionStore.setSession({ roomCode: props.room.code, viewerId: props.room.meId, epoch: 1, active: true });
+  roomSessionStore.publish(props.room);
+  return React.createElement(GameRoomComponent, { ...props, roomSessionStore });
+}
 
 function installRenderEnvironment() {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;

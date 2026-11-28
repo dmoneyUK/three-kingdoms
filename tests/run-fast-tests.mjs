@@ -18,6 +18,8 @@ const fastTests = [
   "tests/room-safety.test.mjs",
   "tests/room-poll-recovery.test.mjs",
   "tests/room-session-gateway.test.mjs",
+  "tests/room-session-store.test.mjs",
+  "tests/end-turn-confirmation.test.mjs",
   "tests/game-screen-recovery.test.mjs",
   "tests/local-precommit-selection.test.mjs",
   "tests/hand-choice-selection.test.mjs",

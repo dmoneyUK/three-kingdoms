@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroDetailsPreview, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom as GameRoomComponent, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroDetailsPreview, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { RoomSessionStore } from "../app/room-session/room-session-store.ts";
 import { CardPoolDecisionFooter, CardPoolPanel } from "../app/card-pool-panel.tsx";
 import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
@@ -16,6 +17,13 @@ const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url),
 const publicCardDisplaySource = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
+
+function GameRoom(props) {
+  const roomSessionStore = new RoomSessionStore();
+  roomSessionStore.setSession({ roomCode: props.room.code, viewerId: props.room.meId, epoch: 1, active: true });
+  roomSessionStore.publish(props.room);
+  return React.createElement(GameRoomComponent, { ...props, roomSessionStore });
+}
 
 function localDecisionStatusMarkup(html) {
   const start = html.indexOf('<div class="decision-status');

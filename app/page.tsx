@@ -69,6 +69,8 @@ import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDis
 import { resolveCanonicalPublicDiscardPresentation, type CanonicalPublicDiscardEffectFrameSeed } from "./public-discard-presentation-owner";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { RoomCommandGateway, type RoomSessionView } from "./room-session/room-command-gateway";
+import { RoomSessionStore, useRoomSessionSelector } from "./room-session/room-session-store";
+import { endTurnConfirmationScopeFor, useEndTurnConfirmation } from "./interaction/end-turn-confirmation";
 import { layoutPublicResultCards } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
@@ -1896,6 +1898,36 @@ type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Her
 type PrivateStealResult = { semantics: "PRIVATE_PROVEN"; roomCode: string; eventId: string; rootEventId: string; rootResolutionId: string; sourceId: string; targetId: string; sourceZone: "hand"; card: Card };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; serverNow?: number; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; privateStealResult: PrivateStealResult | null; privateStealParticipantResult: PrivateStealParticipantResult | null; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; timelineHistory?: GameEvent[]; publicPresentationTurn?: PublicPresentationTurnScope; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; publicDiscardHandoff?: { eventId: string; actorId: string; cardCount: number } | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
+type RoomSessionDecision = Pick<Room, "code" | "meId" | "status" | "phase" | "turnSeat" | "actionRevision" | "isMyTurn" | "isMyAction" | "currentAction">;
+
+function selectRoomSessionDecision(room: Room | null): RoomSessionDecision | null {
+  if (!room) return null;
+  return Object.freeze({
+    code: room.code,
+    meId: room.meId,
+    status: room.status,
+    phase: room.phase,
+    turnSeat: room.turnSeat,
+    actionRevision: room.actionRevision,
+    isMyTurn: room.isMyTurn,
+    isMyAction: room.isMyAction,
+    currentAction: room.currentAction,
+  });
+}
+
+function sameRoomSessionDecision(previous: RoomSessionDecision | null, next: RoomSessionDecision | null): boolean {
+  return previous === next || Boolean(previous && next
+    && previous.code === next.code
+    && previous.meId === next.meId
+    && previous.status === next.status
+    && previous.phase === next.phase
+    && previous.turnSeat === next.turnSeat
+    && previous.actionRevision === next.actionRevision
+    && previous.isMyTurn === next.isMyTurn
+    && previous.isMyAction === next.isMyAction
+    && JSON.stringify(previous.currentAction) === JSON.stringify(next.currentAction));
+}
+
 function normalDrawDecisionForRoom(room: Room) {
   return normalDrawDecisionIdentity({
     roomCode: room.code,
@@ -2711,7 +2743,8 @@ const NO_ATTACK_HIT_SETTLEMENTS = [] as const;
 export default function Home() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [room, setRoom] = useState<Room | null>(null);
+  const [roomSessionStore] = useState(() => new RoomSessionStore<Room>());
+  const room = useSyncExternalStore(roomSessionStore.subscribe, roomSessionStore.getSnapshot, roomSessionStore.getServerSnapshot);
   const [sessionView, setSessionView] = useState<RoomSessionView>({ roomCode: "", viewerId: null, epoch: 0, active: false });
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -2751,7 +2784,7 @@ export default function Home() {
       onSessionChange: (view) => {
         latestTurnPresentationScope.current = null;
         roomRef.current = null;
-        setRoom(null);
+        roomSessionStore.setSession(view);
         setSessionView(view);
         setCode(view.roomCode);
         setConnectionInterrupted(view.active && pendingTestViewerFocusIdRef.current === view.viewerId);
@@ -2761,10 +2794,10 @@ export default function Home() {
       },
       onRoom: (nextRoom, source) => {
         if (!acceptPublicPresentationTurn(nextRoom)) return false;
+        if (!roomSessionStore.publish(nextRoom)) return false;
         recordPublicGameRoomSnapshot(nextRoom, source);
         if (nextRoom.status === "finished") stopAttackDodgeUxTrace("game-finished");
         roomRef.current = nextRoom;
-        setRoom(nextRoom);
         setCode(nextRoom.code);
         return true;
       },
@@ -2794,7 +2827,7 @@ export default function Home() {
         ) as Record<string, unknown>);
       },
     });
-  }, [gateway, acceptPublicPresentationTurn]);
+  }, [gateway, acceptPublicPresentationTurn, roomSessionStore]);
 
   const fetchRoom = useCallback((options: { viewerId?: string | null; forceFresh?: boolean; reason?: string } = {}) => gateway.refresh(options), [gateway]);
 
@@ -3080,7 +3113,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") {
     const presentationTurnKey = [room.code, room.meId, room.publicPresentationTurn?.epoch ?? 0, room.publicPresentationTurn?.retireAll ? "finished" : "active"].join(":");
-    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onRefreshRoom={() => fetchRoom({ viewerId: sessionView.viewerId ?? room.meId, forceFresh: true, reason: "game-screen-refresh" })} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} roomSessionStore={roomSessionStore} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onRefreshRoom={() => fetchRoom({ viewerId: sessionView.viewerId ?? room.meId, forceFresh: true, reason: "game-screen-refresh" })} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
   }
   if (room?.status === "heroes") return <>{connectionStatus}<HeroSelection room={room} busy={busy || connectionInterrupted} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} /></>;
   if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;
@@ -4986,21 +5019,12 @@ function publicCardDisplayDiscardH4Context(settlement: {
   } : {};
 }
 
-export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onRefreshRoom, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onRefreshRoom: () => Promise<Room | false>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
-  const endTurnConfirmationScope = [
-    room.code,
-    room.meId,
-    room.turnSeat ?? "",
-    room.phase ?? "",
-    room.actionRevision ?? "",
-    room.currentAction?.kind ?? "",
-    room.currentAction?.actorId ?? "",
-    room.currentAction?.legalActions?.join(",") ?? "",
-    room.isMyTurn ? "my-turn" : "not-my-turn",
-    room.isMyAction ? "my-action" : "not-my-action",
-  ].join("\u001f");
-  const [endTurnConfirmationIdentity, setEndTurnConfirmationIdentity] = useState<string | null>(null);
-  const [endTurnConfirmationSubmitting, setEndTurnConfirmationSubmitting] = useState(false);
+export function GameRoom({ room, roomSessionStore, presentationView, busy, busyAction = null, error, onAction, onRefreshRoom, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; roomSessionStore: RoomSessionStore<Room>; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onRefreshRoom: () => Promise<Room | false>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
+  const currentDecision = useRoomSessionSelector(roomSessionStore, selectRoomSessionDecision, sameRoomSessionDecision);
+  const endTurnConfirmationScope = currentDecision ? endTurnConfirmationScopeFor(currentDecision) : "";
+  const endTurnConfirmation = useEndTurnConfirmation(endTurnConfirmationScope);
+  const endTurnConfirmationIdentity = endTurnConfirmation.identity;
+  const endTurnConfirmationSubmitting = endTurnConfirmation.submitting;
   const [expiredSharedWindowIdentity, setExpiredSharedWindowIdentity] = useState("");
   const publicSharedResponseWindow = room.presentationV2?.sharedResponseWindow ?? room.presentationSnapshot?.sharedResponseWindow;
   const sharedWindowIdentity = publicSharedResponseWindow ? `${publicSharedResponseWindow.windowId}|${publicSharedResponseWindow.deadline}` : "";
@@ -5012,11 +5036,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || Date.now() >= publicSharedResponseWindow.deadline
     || expiredSharedWindowIdentity === sharedWindowIdentity
   ));
-  const endTurnConfirmationScopeRef = useRef(endTurnConfirmationScope);
-  const endTurnConfirmationTraceSignatureRef = useRef("");
-  const endTurnConfirmationSubmissionRef = useRef(false);
-  const endTurnConfirmationButtonRef = useRef<HTMLButtonElement | null>(null);
-  const endTurnConfirmationCancelRef = useRef<HTMLButtonElement | null>(null);
+  const endTurnConfirmationTraceSignatureRef = endTurnConfirmation.traceSignatureRef;
+  const endTurnConfirmationButtonRef = endTurnConfirmation.triggerButtonRef;
+  const endTurnConfirmationCancelRef = endTurnConfirmation.cancelButtonRef;
+  const closeEndTurnConfirmation = endTurnConfirmation.close;
   useEffect(() => {
     if (!sharedWindowIdentity || !publicSharedWindowDeadline || publicSharedWindowStage === "SETTLING"
       || Date.now() >= publicSharedWindowDeadline) return;
@@ -5024,21 +5047,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       Math.max(0, publicSharedWindowDeadline - Date.now()));
     return () => clearTimeout(timer);
   }, [sharedWindowIdentity, publicSharedWindowDeadline, publicSharedWindowStage]);
-  useEffect(() => {
-    if (endTurnConfirmationScopeRef.current === endTurnConfirmationScope) return;
-    endTurnConfirmationScopeRef.current = endTurnConfirmationScope;
-    endTurnConfirmationSubmissionRef.current = false;
-    setEndTurnConfirmationSubmitting(false);
-    setEndTurnConfirmationIdentity(null);
-  }, [endTurnConfirmationScope]);
-  const closeEndTurnConfirmation = useCallback((restoreFocus = false) => {
-    if (endTurnConfirmationSubmissionRef.current) return;
-    setEndTurnConfirmationIdentity(null);
-    setEndTurnConfirmationSubmitting(false);
-    if (restoreFocus) window.requestAnimationFrame(() => {
-      if (endTurnConfirmationButtonRef.current?.isConnected) endTurnConfirmationButtonRef.current.focus({ preventScroll: true });
-    });
-  }, []);
   const isPhoneViewport = useSyncExternalStore(subscribeToPhoneViewport, getPhoneViewportSnapshot, () => false);
   const playerBoardRef = useRef<HTMLDivElement | null>(null);
   const [mobileSeatRingMetrics, setMobileSeatRingMetrics] = useState({ topCapacity: 0, boardWidth: 0, boardTopInset: 0, seatWidth: 0, seatHeight: 0, gap: 0, leftInset: 0, topStep: 0 });
@@ -5517,12 +5525,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   } as CSSProperties : undefined;
   const isPlayPhaseForDisplay = room.phase?.startsWith("play") === true && room.status === "playing";
   const ordinaryTurnActionAuthorized = (action: OrdinaryTurnAction) => isOrdinaryTurnActionAuthorized({
-    status: room.status,
-    phase: room.phase,
-    isMyTurn: room.isMyTurn,
-    isMyAction: room.isMyAction,
-    viewerId: room.meId,
-    currentAction: room.currentAction,
+    status: currentDecision?.status ?? "finished",
+    phase: currentDecision?.phase ?? null,
+    isMyTurn: currentDecision?.isMyTurn ?? false,
+    isMyAction: currentDecision?.isMyAction ?? false,
+    viewerId: currentDecision?.meId ?? "",
+    currentAction: currentDecision?.currentAction ?? null,
   }, action);
   const ordinaryTurnPlayAuthorized = ordinaryTurnActionAuthorized("play_card");
   const ordinaryTurnSerpentAuthorized = ordinaryTurnActionAuthorized("serpent_spear_attack");
@@ -12703,7 +12711,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     if (!endTurnConfirmationIsCurrent) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || endTurnConfirmationSubmissionRef.current) return;
+      if (event.key !== "Escape" || endTurnConfirmation.isSubmissionInFlight) return;
       event.preventDefault();
       event.stopPropagation();
       closeEndTurnConfirmation(true);
@@ -12712,26 +12720,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return () => window.removeEventListener("keydown", dismissOnEscape, true);
   }, [closeEndTurnConfirmation, endTurnConfirmationIsCurrent]);
   const confirmEndTurn = async () => {
-    const blockedReason = endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight"
-      : !endTurnConfirmationIsCurrent ? endTurnConfirmationAuthorizationReason ?? "confirmation-scope-stale"
-        : busy ? "gameplay-request-busy"
-          : !ordinaryTurnActionAuthorized("end_turn") ? "end-turn-no-longer-authorized"
-            : null;
-    if (blockedReason) {
-      if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "blocked", reason: blockedReason });
+    const submission = endTurnConfirmation.beginSubmission({
+      scope: endTurnConfirmationScope,
+      isCurrent: endTurnConfirmationIsCurrent,
+      authorizationReason: endTurnConfirmationAuthorizationReason,
+      busy,
+      actionStillAuthorized: ordinaryTurnActionAuthorized("end_turn"),
+    });
+    if (!submission.started) {
+      if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "blocked", reason: submission.reason });
       return;
     }
-    endTurnConfirmationSubmissionRef.current = true;
-    setEndTurnConfirmationSubmitting(true);
     if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-confirm", { result: "submitted", action: "end_turn" });
     const submitted = await onAction("end_turn");
     if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-confirmation-response", { submitted, action: "end_turn" });
-    if (submitted) {
-      setEndTurnConfirmationIdentity(null);
-      return;
-    }
-    endTurnConfirmationSubmissionRef.current = false;
-    setEndTurnConfirmationSubmitting(false);
+    endTurnConfirmation.finishSubmission(submission.submissionId, submitted);
   };
   const consoleSelection: ConsoleSelectionFact | undefined = daqiaoDeflectionSelectionActive
     ? { active: true, hasInput: daqiaoDeflectionCardCount > 0 || daqiaoDeflectionTargetCount > 0, count: daqiaoDeflectionCardCount + daqiaoDeflectionTargetCount, min: 2, max: 2, summary: "" }
@@ -13572,7 +13575,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               onClick={() => {
                 const reason = endTurnConfirmationAuthorizationReason
                   ?? (!ordinaryTurnActionAuthorized("end_turn") ? "end-turn-not-in-authorized-turn" : null)
-                  ?? (endTurnConfirmationSubmissionRef.current ? "submission-already-in-flight" : null);
+                  ?? (endTurnConfirmation.isSubmissionInFlight ? "submission-already-in-flight" : null);
                 if (isAttackDodgeUxTraceActive()) recordAttackDodgeUxTrace("end-turn-button-click", {
                   result: reason ? "blocked" : "confirmation-open-requested",
                   reason: reason ?? "authorized",
@@ -13581,7 +13584,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   actorMatchesViewer: room.currentAction?.actorId === room.meId,
                   actionRevisionPresent: Boolean(room.actionRevision),
                 });
-                if (!reason) setEndTurnConfirmationIdentity(endTurnConfirmationScope);
+                if (!reason) endTurnConfirmation.open();
               }}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>

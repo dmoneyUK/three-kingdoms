@@ -82,8 +82,8 @@ async function readJson<T>(response: Response): Promise<T> {
 
 /**
  * One credential owner and one freshness/arbitration point for a mounted Home.
- * It owns transport and private session metadata, while Home remains the sole
- * rendered Room snapshot owner.
+ * It owns transport and private session metadata; RoomSessionStore is the sole
+ * published Room snapshot path consumed by Home.
  */
 export class RoomCommandGateway<TRoom extends RoomSessionRoom> {
   private readonly fetcher: typeof fetch;

@@ -654,5 +654,6 @@ test("Home delegates transport and sole publication to the Gateway while retaini
   assert.equal(home.includes("fetch(\"/api/rooms\""), false);
   assert.equal(home.includes("localStorage"), false);
   assert.equal(home.includes("new RoomPollRecovery"), false);
-  assert.equal((home.match(/setRoom\(/g) ?? []).length, 2, "only identity retirement and the Gateway publication callback write Home's Room snapshot");
+  assert.equal((home.match(/roomSessionStore\.publish\(/g) ?? []).length, 1, "only the Gateway publication callback writes Home's Room snapshot");
+  assert.doesNotMatch(home, /setRoom\(/, "Home has no parallel useState Room publisher");
 });
