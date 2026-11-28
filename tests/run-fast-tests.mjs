@@ -34,6 +34,7 @@ const fastTests = [
   "tests/presentation-snapshot.test.mjs",
   "tests/presentation-client.test.mjs",
   "tests/presentation-transition-store.test.mjs",
+  "tests/mobile-seat-ring-layout.test.mjs",
   "tests/public-presentation-routing.test.mjs",
   "tests/public-presentation-turn.test.mjs",
   "tests/public-equipment-transition.test.mjs",
