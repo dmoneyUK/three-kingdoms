@@ -3261,7 +3261,11 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.equal(revealView.presentationV2.interactionScene?.decisionActorId, setup.sima.id);
   const revealEventId = revealPending.continuation.judgement.revealedEventId;
   const revealFact = revealView.presentationSnapshot.publicEventFacts.find((fact) => fact.eventId === revealEventId);
-  assert.equal(revealFact?.outcomeLabel, `${setup.guo.name} revealed 7♠ Dodge for Overindulgence.`, "H4 follows the exact committed reveal without claiming the final Judgement result");
+  assert.ok(revealFact, "the original reveal retains generic public event proof");
+  assert.notEqual(revealFact.effect?.kind, "judgement", "the original reveal carries no duplicate per-purpose H4 fact");
+  const canonicalReveal = revealView.presentationSnapshot.publicJudgementPresentations.find((entry) => entry.eventId === revealEventId);
+  assert.equal(canonicalReveal?.copy.message, `${setup.guo.name} is judging Overindulgence. Judgement: [7♠].`,
+    "the canonical typed record owns the actual original card copy without claiming a final result");
   assert.deepEqual(revealView.presentationV2.interactionScene?.participantRoles, { sourceId: setup.guo.id, originalTargetIds: [setup.guo.id], activeTargetIds: [setup.guo.id], currentParticipantId: setup.guo.id, decisionActorId: setup.sima.id, activeResolverId: setup.sima.id, parentParticipantId: null, participantIds: [] });
   assert.equal(revealView.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(revealView.presentationV2.stableBoundary.decisionActorId, setup.sima.id);

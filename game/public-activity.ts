@@ -4,6 +4,7 @@ import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
 import { PUBLIC_PRESENTATION_EVENT_CATEGORIES, type CommittedPublicOutcome, type CommittedPublicOutcomeChange, type PublicPresentationEventCategory } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
+import { judgementResolutionFor } from "./decisions/judgement";
 import {
   publicH4CardFaceReference,
   publicH4CardKindReference,
@@ -53,12 +54,11 @@ export type PublicActivityStatus = {
 
 const NO_PUBLIC_ACTIVITY: PublicActivityStatus = { kind: "none", text: "" };
 
-function activePublicJudgementFact(input: PublicActivityInput) {
+function activePublicJudgementPresentation(input: PublicActivityInput) {
   const snapshot = input.presentationSnapshot;
   const eventId = input.activePublicJudgementEventId;
   if (!snapshot || !eventId) return null;
   const interaction = snapshot.interaction;
-  let facts: PresentationSnapshot["publicEventFacts"] = snapshot.publicEventFacts;
   if (interaction) {
     const identity = snapshot.identity;
     if (!identity || interaction.semantics !== "PROVEN" || interaction.stage !== "JUDGEMENT"
@@ -67,13 +67,13 @@ function activePublicJudgementFact(input: PublicActivityInput) {
       || interaction.presentationRevision !== identity.presentationRevision) return null;
   } else {
     if (snapshot.identity || !snapshot.retainedPublicEventFacts?.length) return null;
-    facts = snapshot.retainedPublicEventFacts ?? [];
   }
-  const matching = facts.filter((fact) => fact.eventId === eventId
-    && fact.category === "EFFECT_APPLIED" && fact.effect?.kind === "judgement"
-    && fact.rootEventId && fact.outcomeLabel
-    && (!interaction || fact.identity.interactionId === interaction.interactionId
-      && fact.identity.rootFrameId === interaction.rootFrameId));
+  const matching = (snapshot.publicJudgementPresentations ?? []).filter((presentation) => presentation.eventId === eventId
+    && presentation.semantics === "PROVEN" && presentation.visibility === "PUBLIC"
+    && presentation.judgementId && presentation.copy.message.trim()
+    && (!interaction || !presentation.causal
+      || presentation.causal.interactionId === interaction.interactionId
+        && presentation.causal.frameId === interaction.rootFrameId));
   return matching.length === 1 ? matching[0] : null;
 }
 
@@ -1326,10 +1326,10 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   // event, keep PAC aligned with that public card and H4. The server Discard
   // phase takes over as soon as the reveal is no longer the active event.
   if (input.status === "playing") {
-    const fact = activePublicJudgementFact(input);
-    if (fact) {
-      const actor = playerPart(input.players, fact.actorId, true);
-      const judgement = effectLabel(fact.effect?.label ?? fact.label);
+    const presentation = activePublicJudgementPresentation(input);
+    if (presentation) {
+      const actor = playerPart(input.players, presentation.judgingPlayerId, true);
+      const judgement = judgementResolutionFor(presentation.purpose).label;
       if (actor && judgement) {
         const copy = verifiedPlayerCopy([actor, ` is judging ${judgement}.`]);
         return { kind: "judgement", text: copy.message, heading: copy.message,

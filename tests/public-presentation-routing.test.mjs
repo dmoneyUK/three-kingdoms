@@ -300,8 +300,8 @@ test("Judgement H4 selects one owner, with the replacement frame claiming only i
       presentation: { ...replacement, resolutionId: "judgement-resolution" },
       isActive: false, replacementFrameMatches: true,
     },
-  }), { eventId: "replacement-1", owner: "PublicCardDisplay" },
-  "a same-resolution terminal Judgement fact cannot take H4 away from the exact replacement frame");
+  }), { eventId: "stauchness-judgement-result", owner: "PublicInteractionAnnouncementLayer" },
+  "a later committed event advances H4 by event order instead of resolution-wide override");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: fact("stauchness-consequence", 13, "judgement-1", "source-1", {
       resolutionId: "judgement-resolution", effect: { kind: "skill_result", label: "Stauchness" },

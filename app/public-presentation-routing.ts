@@ -388,11 +388,7 @@ export function selectPublicH4AnnouncementOwner(input: {
     && discard.materialIds?.length
     && cardDisplay.discardMaterialIds?.length === discard.materialIds.length
     && cardDisplay.discardMaterialIds.every((id, index) => id === discard.materialIds?.[index]));
-  const sameResolutionJudgementResult = Boolean(judgement && fact
-    && judgement.presentation.resolutionId
-    && fact.resolutionId === judgement.presentation.resolutionId
-    && fact.effect?.kind === "judgement");
-  if (judgement && (!fact || judgement.presentation.order >= fact.order || sameResolutionJudgementResult)) {
+  if (judgement && (!fact || judgement.presentation.order >= fact.order)) {
     if (discard && !judgement.isActive && discard.order > judgement.presentation.order) {
       return { eventId: discard.eventId, owner: "PublicDiscardAnnouncementLayer" };
     }

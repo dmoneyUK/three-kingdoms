@@ -185,10 +185,11 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
     ...(resolved.data.room.presentationSnapshot?.publicEventFacts ?? []),
     ...(resolved.data.room.presentationSnapshot?.retainedPublicEventFacts ?? []),
   ];
-  const revealFact = publicFacts.find((fact) => fact.eventId === revealedEvent.id);
-  assert.equal(revealFact?.category, "EFFECT_APPLIED");
-  assert.equal(revealFact?.actorId, target.id);
-  assert.equal(revealFact?.effect?.kind, "judgement");
+  assert.equal(publicFacts.filter((fact) => fact.eventId === revealedEvent.id && fact.effect?.kind === "judgement").length, 0,
+    "the original reveal has no duplicate per-purpose H4 fact");
+  const canonicalJudgement = resolved.data.room.presentationSnapshot?.publicJudgementPresentations?.find((entry) => entry.eventId === revealedEvent.id);
+  assert.equal(canonicalJudgement?.judgingPlayerId, target.id);
+  assert.equal(canonicalJudgement?.copy.message, `${target.name} is judging Overindulgence. Judgement: [9♠]. Not Match.`);
   assert.equal(derivePublicActivityStatus({ ...resolved.data.room, status: "playing", activePublicJudgementEventId: revealedEvent.id }).kind,
     "judgement", "PAC follows the exact public reveal while that event is presented");
   const judgementResultEvent = resolved.data.room.timeline.find((event) => event.type === "message"
@@ -271,11 +272,13 @@ test("Diao Qiao Overindulgence publishes a single 2 club reveal with current PAC
   assert.equal(judgementPresentations[0].copy.message,
     `${daqiao.name} is judging Overindulgence. Judgement: [2♣]. Not Match.`);
   const facts = [...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? [])];
-  const revealFact = facts.find((fact) => fact.eventId === reveal.id);
-  assert.equal(revealFact?.actorId, daqiao.id);
-  assert.equal(revealFact?.outcomeLabel, `${daqiao.name} revealed 2♣ Attack for Overindulgence.`);
+  assert.equal(facts.filter((fact) => fact.eventId === reveal.id && fact.effect?.kind === "judgement").length, 0,
+    "the original reveal has no duplicate per-purpose copy");
+  assert.equal(judgementPresentations[0].eventId, reveal.id,
+    "the canonical Judgement record owns the original delayed-card reveal copy");
   assert.equal(derivePublicActivityStatus({ ...settled.data.room, status: "playing", activePublicJudgementEventId: reveal.id }).text,
-    `${daqiao.name} is judging Overindulgence.`);
+    `${daqiao.name} is judging Overindulgence.`,
+    "PAC stays aligned to the exact Judgement event while that committed reveal is still active");
 
   const resultFact = facts.find((fact) => fact.eventId !== reveal.id && fact.effect?.kind === "judgement"
     && fact.outcomeLabel?.includes(`${daqiao.name} revealed 2♣ Attack`));

@@ -342,7 +342,7 @@ test("same-event proven conversion copy outranks its generic root narration but 
 test("committed outcomes from existing and synthetic providers use the same H4 layer", () => {
   for (const [eventId, headline] of [
     ["retaliation", "Test Player 2 used Retaliation and obtained one card."],
-    ["stauchness", "Test Player 2 used Stauchness and started a Judgement."],
+    ["stauchness", "Test Player 2 used Stauchness."],
     ["synthetic", "Test Player 2 used a new skill and resolved a public effect."],
   ]) {
     const narration = { eventId, rootEventId: "root", interactionId: "interaction", rootFrameId: "frame",

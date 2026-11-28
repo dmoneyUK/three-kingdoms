@@ -11038,13 +11038,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? canonicalPublicDiscardPresentationByEvent.get(currentInteractionFact.eventId)?.copy
       : undefined,
   );
-  const sameResolutionJudgementResult = Boolean(currentPublicJudgementPresentation?.resolutionId
-    && currentInteractionFact?.resolutionId === currentPublicJudgementPresentation.resolutionId
-    && currentInteractionFact.effect?.kind === "judgement");
   const publicInteractionNarration = publicInteractionNarrationWithJudgement(
     stagePublicInteractionNarration,
     currentPublicJudgementNarration,
-    sameResolutionJudgementResult,
   );
   const judgementNarrationBelongsToAction = publicJudgementNarrationBelongsToAction({
     presentation: currentPublicJudgementPresentation,
