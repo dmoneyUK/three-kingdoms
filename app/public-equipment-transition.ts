@@ -5,6 +5,7 @@ import type { PresentationClientView } from "../game/presentation-client";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PublicPresentationEvent, PublicPhysicalZoneTransition } from "../game/presentation-semantics";
 import type { PublicInteractionNarration } from "../game/public-activity";
+import { createPublicStageVisibleHoldPolicy } from "../game/public-stage-layout";
 import type { PublicCardDisplayAction } from "./public-card-display";
 import {
   publicFactsForEvent,
@@ -139,6 +140,32 @@ export function publicEquipmentCardDisplayAction(input: {
     slot,
     h4EventId: event.id,
   } as const;
+  const visibleHoldPolicy = createPublicStageVisibleHoldPolicy({
+    semantics: "PROVEN",
+    identity: {
+      roomId: input.roomCode,
+      rootEventId: event.id,
+      interactionId: fact.identity.interactionId,
+      eventId: event.id,
+      cardId: event.card.id,
+      viewerId: input.viewerId,
+      rootFrameId: fact.identity.rootFrameId,
+      h4EventId: claim.h4EventId,
+      phase: "REVEAL",
+      materialCardIds: [event.card.id],
+      frame: null,
+    },
+    completion: {
+      kind: "EQUIPMENT_ARRIVAL",
+      claimId: claim.claimId,
+      eventId: claim.eventId,
+      physicalCardId: claim.physicalCardId,
+      ownerId: claim.ownerId,
+      destination: "EQUIPMENT",
+      slot: claim.slot,
+    },
+  });
+  if (!visibleHoldPolicy) return null;
   return {
     key: [input.roomCode, "equipment", route.claimId].join(":"),
     rootEventId: event.id,
@@ -162,7 +189,7 @@ export function publicEquipmentCardDisplayAction(input: {
       scopeKey: route.claimId,
       freshEventIds: input.seenEventIds.has(event.id) ? [] : [event.id],
     },
-    revealCompletionPolicy: "visible-hold",
+    visibleHoldPolicy,
     zoneTransition: claim,
   };
 }

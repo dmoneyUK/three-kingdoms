@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, checkpointPublicStageVisibleHold, positionLabeledCardAboveBand, publicStationaryLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard, publicStageStaticAnnouncementMatchesReveal, publicStageVisibleHoldCanComplete } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, checkpointPublicStageVisibleHold, createPublicStageVisibleHoldPolicy, positionLabeledCardAboveBand, publicStationaryLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard, publicStageStaticAnnouncementMatchesReveal, publicStageVisibleHoldCanComplete, publicStageVisibleHoldPolicyMatches } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -74,6 +74,50 @@ test("visible-hold checkpoint accrues only the visible segment and resumes the r
     startedAtMs: 4000, nowMs: 7765, safePainted: false }), false, "unsafe paint cannot complete at the deadline");
   assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
     startedAtMs: 4000, nowMs: 7765, safePainted: true }), true, "the safe remaining visible budget completes once due");
+});
+
+test("shared visible-hold runtime retires Guicai-only lifecycle and JSX gates", () => {
+  const display = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const equipment = readFileSync(new URL("../app/public-equipment-transition.ts", import.meta.url), "utf8");
+  assert.match(display, /function publicVisibleHoldPolicyFor\(/);
+  assert.match(display, /publicVisibleHoldPaintIdentity\(visibleHoldPolicy\)/);
+  assert.match(display, /pendingVisibleHoldPolicy/);
+  assert.doesNotMatch(display, /sima_yi_guicai|verifiedGuicaiVisibleHold|requiresPublicH4VisibleHold|zoneTransitionPaintIdentity|allowPendingVerifiedReveal|revealCompletionPolicy|pendingRevealIdentity/);
+  assert.match(equipment, /createPublicStageVisibleHoldPolicy\(/);
+  assert.doesNotMatch(equipment, /revealCompletionPolicy/);
+});
+
+test("the shared visible-hold policy binds Judgement and Equipment to exact proof and endpoints", () => {
+  const frame = { eventId: "judgement-event", activationEventId: "activation-event", rootEventId: "root-event",
+    rootResolutionId: "resolution-1", effectId: "public-effect", effectClass: "JUDGEMENT",
+    activationOwnerId: "actor-1", materialCardIds: ["judgement-card"], materialOwnerIds: ["actor-1"] };
+  const judgementInput = { semantics: "PROVEN", identity: { roomId: "room-1", rootEventId: "judgement-event",
+    interactionId: "interaction-1", eventId: "judgement-event", cardId: "judgement-card", viewerId: "viewer-1",
+    rootFrameId: "frame-1", h4EventId: "judgement-event", phase: "REVEAL", materialCardIds: ["judgement-card"], frame },
+  completion: { kind: "CENTRE_RETIRE" } };
+  const judgement = createPublicStageVisibleHoldPolicy(judgementInput);
+  assert.ok(judgement);
+  assert.equal(publicStageVisibleHoldPolicyMatches(judgement, createPublicStageVisibleHoldPolicy(judgementInput)), true);
+  for (const [field, value] of [["viewerId", "viewer-2"], ["rootFrameId", "frame-2"], ["h4EventId", "other-h4"]]) {
+    const altered = createPublicStageVisibleHoldPolicy({ ...judgementInput,
+      identity: { ...judgementInput.identity, [field]: value } });
+    assert.equal(publicStageVisibleHoldPolicyMatches(judgement, altered), false, `${field} mismatch fails closed`);
+  }
+  const wrongMaterial = createPublicStageVisibleHoldPolicy({ ...judgementInput,
+    identity: { ...judgementInput.identity, cardId: "other-card", materialCardIds: ["judgement-card"] } });
+  assert.equal(wrongMaterial, null, "the displayed physical card must be proven as a material");
+
+  const equipmentInput = { semantics: "PROVEN", identity: { roomId: "room-1", rootEventId: "equip-event",
+    interactionId: "interaction-2", eventId: "equip-event", cardId: "weapon-card", viewerId: "viewer-1",
+    rootFrameId: "frame-2", h4EventId: "equip-event", phase: "REVEAL", materialCardIds: ["weapon-card"], frame: null },
+  completion: { kind: "EQUIPMENT_ARRIVAL", claimId: "claim-1", eventId: "equip-event", physicalCardId: "weapon-card",
+    ownerId: "owner-1", destination: "EQUIPMENT", slot: "weapon" } };
+  const equipment = createPublicStageVisibleHoldPolicy(equipmentInput);
+  assert.ok(equipment);
+  assert.equal(publicStageVisibleHoldPolicyMatches(equipment, createPublicStageVisibleHoldPolicy(equipmentInput)), true);
+  const wrongSlot = createPublicStageVisibleHoldPolicy({ ...equipmentInput,
+    completion: { ...equipmentInput.completion, slot: "armor" } });
+  assert.equal(publicStageVisibleHoldPolicyMatches(equipment, wrongSlot), false, "the actual arrival slot is part of the identity");
 });
 
 test("table-local H4, PAC and CardFace coordinates stay fixed when the visible viewport changes", () => {

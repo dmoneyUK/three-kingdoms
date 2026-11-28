@@ -18,6 +18,131 @@ export type PublicStageRevealIdentity = {
   viewerId: string;
 };
 
+export type PublicStageVisibleHoldFrameIdentity = {
+  eventId: string;
+  activationEventId: string | null;
+  rootEventId: string | null;
+  rootResolutionId: string | null;
+  effectId: string;
+  effectClass: "COST" | "CONVERSION" | "EFFECT" | "JUDGEMENT";
+  activationOwnerId: string;
+  materialCardIds: readonly string[];
+  materialOwnerIds: readonly (string | null)[];
+};
+
+export type PublicStageVisibleHoldCompletion =
+  | { kind: "CENTRE_RETIRE" }
+  | {
+    kind: "EQUIPMENT_ARRIVAL";
+    claimId: string;
+    eventId: string;
+    physicalCardId: string;
+    ownerId: string;
+    destination: "EQUIPMENT";
+    slot: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
+  };
+
+const publicStageVisibleHoldPolicyBrand: unique symbol = Symbol("public-stage-visible-hold-policy");
+
+/** One exact, server-proven public CardFace/H4 hold with an explicit real endpoint. */
+export type PublicStageVisibleHoldPolicy = {
+  readonly [publicStageVisibleHoldPolicyBrand]: true;
+  readonly semantics: "PROVEN";
+  readonly identity: PublicStageRevealIdentity & {
+    rootFrameId: string;
+    h4EventId: string;
+    phase: "REVEAL";
+    materialCardIds: readonly string[];
+    frame: PublicStageVisibleHoldFrameIdentity | null;
+  };
+  readonly completion: PublicStageVisibleHoldCompletion;
+};
+
+export type PublicStageVisibleHoldPolicyInput = Omit<PublicStageVisibleHoldPolicy,
+  typeof publicStageVisibleHoldPolicyBrand>;
+
+function validPublicStageVisibleHoldPolicy(value: PublicStageVisibleHoldPolicyInput): boolean {
+  if (!value || typeof value !== "object" || !value.completion || typeof value.completion !== "object"
+    || !value.identity || typeof value.identity !== "object") return false;
+  const identity = value.identity;
+  const requiredIdentity = [identity.roomId, identity.rootEventId, identity.interactionId, identity.eventId,
+    identity.cardId, identity.viewerId, identity.rootFrameId, identity.h4EventId];
+  if (value.semantics !== "PROVEN" || identity.phase !== "REVEAL"
+    || requiredIdentity.some((part) => typeof part !== "string" || !part.trim())
+    || !Array.isArray(identity.materialCardIds) || !identity.materialCardIds.length
+    || identity.materialCardIds.some((id) => typeof id !== "string" || !id.trim())
+    || new Set(identity.materialCardIds).size !== identity.materialCardIds.length
+    || !identity.materialCardIds.includes(identity.cardId)) return false;
+  const frame = identity.frame;
+  if (frame && (typeof frame !== "object" || typeof frame.eventId !== "string" || frame.eventId !== identity.eventId
+    || typeof frame.effectId !== "string" || !frame.effectId.trim()
+    || typeof frame.activationOwnerId !== "string" || !frame.activationOwnerId.trim()
+    || !["COST", "CONVERSION", "EFFECT", "JUDGEMENT"].includes(frame.effectClass)
+    || !Array.isArray(frame.materialCardIds) || !Array.isArray(frame.materialOwnerIds)
+    || frame.materialCardIds.length !== identity.materialCardIds.length
+    || frame.materialOwnerIds.length !== identity.materialCardIds.length
+    || frame.materialCardIds.some((id, index) => id !== identity.materialCardIds[index]
+      || typeof frame.materialOwnerIds[index] !== "string" && frame.materialOwnerIds[index] !== null)
+    || frame.activationEventId !== null && (typeof frame.activationEventId !== "string" || !frame.activationEventId.trim())
+    || frame.rootEventId !== null && (typeof frame.rootEventId !== "string" || !frame.rootEventId.trim())
+    || frame.rootResolutionId !== null && (typeof frame.rootResolutionId !== "string" || !frame.rootResolutionId.trim()))) return false;
+  if (value.completion.kind === "CENTRE_RETIRE") return true;
+  const completion = value.completion;
+  return completion.kind === "EQUIPMENT_ARRIVAL"
+    && typeof completion.claimId === "string" && Boolean(completion.claimId.trim())
+    && typeof completion.ownerId === "string" && Boolean(completion.ownerId.trim())
+    && completion.destination === "EQUIPMENT"
+    && ["weapon", "armor", "offensiveHorse", "defensiveHorse"].includes(completion.slot)
+    && completion.eventId === identity.eventId
+    && completion.physicalCardId === identity.cardId;
+}
+
+/** Create a branded policy only when all reveal, H4, frame and endpoint identities agree. */
+export function createPublicStageVisibleHoldPolicy(
+  input: PublicStageVisibleHoldPolicyInput,
+): PublicStageVisibleHoldPolicy | null {
+  if (!input || !validPublicStageVisibleHoldPolicy(input)) return null;
+  return { ...input, [publicStageVisibleHoldPolicyBrand]: true };
+}
+
+/** Compare two complete policies; array order and endpoint identity are significant. */
+export function publicStageVisibleHoldPolicyMatches(
+  expected: PublicStageVisibleHoldPolicy | null | undefined,
+  actual: PublicStageVisibleHoldPolicy | null | undefined,
+): boolean {
+  if (!expected || !actual || !validPublicStageVisibleHoldPolicy(expected) || !validPublicStageVisibleHoldPolicy(actual)) return false;
+  const a = expected.identity;
+  const b = actual.identity;
+  const frameMatches = a.frame === null || b.frame === null
+    ? a.frame === b.frame
+    : a.frame.eventId === b.frame.eventId
+      && a.frame.activationEventId === b.frame.activationEventId
+      && a.frame.rootEventId === b.frame.rootEventId
+      && a.frame.rootResolutionId === b.frame.rootResolutionId
+      && a.frame.effectId === b.frame.effectId
+      && a.frame.effectClass === b.frame.effectClass
+      && a.frame.activationOwnerId === b.frame.activationOwnerId
+      && a.frame.materialCardIds.length === b.frame.materialCardIds.length
+      && a.frame.materialCardIds.every((id, index) => id === b.frame?.materialCardIds[index])
+      && a.frame.materialOwnerIds.length === b.frame.materialOwnerIds.length
+      && a.frame.materialOwnerIds.every((id, index) => id === b.frame?.materialOwnerIds[index]);
+  const completionMatches = expected.completion.kind === "CENTRE_RETIRE" || actual.completion.kind === "CENTRE_RETIRE"
+    ? expected.completion.kind === actual.completion.kind
+    : expected.completion.kind === actual.completion.kind
+      && expected.completion.claimId === actual.completion.claimId
+      && expected.completion.eventId === actual.completion.eventId
+      && expected.completion.physicalCardId === actual.completion.physicalCardId
+      && expected.completion.ownerId === actual.completion.ownerId
+      && expected.completion.destination === actual.completion.destination
+      && expected.completion.slot === actual.completion.slot;
+  return a.roomId === b.roomId && a.rootEventId === b.rootEventId && a.interactionId === b.interactionId
+    && a.eventId === b.eventId && a.cardId === b.cardId && a.viewerId === b.viewerId
+    && a.rootFrameId === b.rootFrameId && a.h4EventId === b.h4EventId && a.phase === b.phase
+    && a.materialCardIds.length === b.materialCardIds.length
+    && a.materialCardIds.every((id, index) => id === b.materialCardIds[index])
+    && frameMatches && completionMatches;
+}
+
 /** A static H4 may use the pending REVEAL anchor only for its exact live card scope. */
 export function publicStageStaticAnnouncementMatchesReveal(input: {
   phase: "static" | "reveal" | "move" | "parked";

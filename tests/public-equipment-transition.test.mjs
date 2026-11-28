@@ -76,7 +76,12 @@ test("an equipped physical card routes once only after the actual server slot co
   assert.equal(action?.motion?.type, "zone-transition");
   assert.equal(action?.cardFace.id, newWeapon.id);
   assert.equal(action?.publicNoticeEventId, event.id);
-  assert.equal(action?.revealCompletionPolicy, "visible-hold");
+  assert.equal(action?.visibleHoldPolicy?.identity.viewerId, "viewer-1");
+  assert.equal(action?.visibleHoldPolicy?.identity.h4EventId, event.id);
+  assert.deepEqual(action?.visibleHoldPolicy?.completion, {
+    kind: "EQUIPMENT_ARRIVAL", claimId: action?.zoneTransition.claimId, eventId: event.id,
+    physicalCardId: newWeapon.id, ownerId: event.actorId, destination: "EQUIPMENT", slot: "weapon",
+  });
   assert.equal(action?.zoneTransition.h4EventId, event.id);
   assert.equal(publicEquipmentArrivalCompletionMatches({ route: first, claim: action.zoneTransition, roomCode: "ROOM", viewerId: "viewer-1" }), true);
   assert.equal(publicEquipmentArrivalCompletionMatches({ route: first, claim: action.zoneTransition, roomCode: "OTHER", viewerId: "viewer-1" }), false);

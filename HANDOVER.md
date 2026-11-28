@@ -1,13 +1,13 @@
 # HANDOVER
 
-## Latest delivery
+## Latest verified delivery — §10.81-A
 
-§10.82-B was delivered at `36d40dfcb5d6fd5d41521b868fe321b8af0a6014`; exact-SHA Actions [46090075431](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46090075431) passed required tests, D1, Worker deployment and production smoke. Worker `27703add-9155-4b9d-9d7a-ded5a0291f1d`. §10.82-A was delivered at `784285bdff0099f8b5c4bf88936814e2fe740f32`; Actions [46083583004](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46083583004) and deployment passed. Owner iPhone review of §10.82-A/B remains pending.
+SHA `e51c0cc1c8656f758c28749700bc7e14b8ddec20`; exact-SHA Actions `46095122544` passed lint/fast, API, browser startup/H4 smoke, Worker deployment and production smoke. Worker `8b811185-7176-4a45-a947-780d6438fbf3`. Owner iPhone review remains pending.
 
-## Current task — §10.81-A canonical Judgement copy
+## Current task — §10.81-B shared visible-hold lifecycle retirement
 
-Reviewed `docs/UX2-refine.md` at `f504b8af10710f850c7e9906e7c5770469067d28` (revision 2026-11-27 21:47 UTC; later §10.88 amendment does not change §10.81). Remove only superseded same-stage narration and overrides; preserve the canonical typed Judgement proof, actual game results, distinct consequences and privacy.
+Design reviewed: `docs/UX2-refine.md` at `2d8adec54fd1b90fbab01fab54b011606062749c`, including §10.81 and Planner Guide §6C. One typed proof-bound `PublicStageVisibleHoldPolicy` now owns exact room/viewer/event/material/root/interaction/frame/H4 identity and real completion endpoint. The Necromancy proof adapter and Equipment transition builder both construct it; `app/public-card-display.tsx` consumes it for paint, pending layout, H4 recovery, pause/resume and completion. The 235ms interruption checkpoint and existing four-second accumulated visible hold remain intact.
 
-Implemented: removed the Stauchness-only H4 fact builder and raw per-purpose reveal facts; kept skill activation proof without duplicate “started a Judgement” outcome; H4 ownership follows the canonical Judgement presentation and event order; PAC reads the exact validated public Judgement record and fails closed on stale/mismatched stage. No rules or card effects changed.
+§6C retirement: removed `verifiedGuicaiVisibleHold`, `requiresPublicH4VisibleHold`, `zoneTransitionPaintIdentity`, `allowPendingVerifiedReveal`, `pendingRevealIdentity` and `revealCompletionPolicy`. Static search finds none in `app/` or `game/`; `sima_yi_guicai` remains only in `app/page.tsx` domain proof construction/selection, not shared lifecycle/rendering. Equipment arrival remains bound to its actual claim, owner, card and slot. Regression checks cover both completion endpoints, mismatched identity rejection, the shared renderer cleanup, Equipment arrival and visible-time checkpoint.
 
-Validation: `npm run build` passed; focused API 118/118, display/routing/activity 94/94, canonical Judgement projection 12/12; `git diff --check` passed. Targeted ESLint passed for changed files except `app/page.tsx`, where `react-hooks/rules-of-hooks` aborted locally with `RangeError: Maximum call stack size exceeded` at line 5170; do not weaken the rule. No local UI/browser/device tests. Implementation commit, exact-SHA CI, deployment and production smoke pending.
+Validation completed before delivery: focused shared layout/equipment tests 43/43; `npm run test:fast` 531/531; `npm run test:api` 397/397; `git diff --check` passed. No local UI/browser/device tests. Exact implementation SHA Actions, deployment and production smoke are pending this task commit. No Owner acceptance claimed.

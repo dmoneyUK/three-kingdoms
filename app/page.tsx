@@ -20,6 +20,7 @@ import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
 import { Component, CSSProperties, FormEvent, KeyboardEventHandler, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
+import { createPublicStageVisibleHoldPolicy } from "../game/public-stage-layout";
 import type { Card, CardKind } from "../game/model";
 import { MAX_AVAILABLE_CLASSIC_PLAYERS, roomAvailabilityLimit } from "../game/room-availability";
 import { PUBLIC_DISCARD_CARD_DISPLAY_MS, PUBLIC_DISCARD_HANDOFF_MS } from "../game/public-discard-handoff";
@@ -1248,6 +1249,7 @@ type PublicNecromancyJudgementFrameCandidate = VerifiedNecromancyJudgementFrameP
 };
 function publicNecromancyJudgementFrameForRoom(input: {
   roomCode: string;
+  viewerId: string;
   timeline: readonly GameEvent[];
   effects: readonly PresentationSnapshotPublicCardEffect[];
   judgements: readonly PublicJudgementPresentation[];
@@ -1286,6 +1288,41 @@ function publicNecromancyJudgementFrameForRoom(input: {
     || candidate.judgementPresentation.eventId !== input.cursorEventId) return { candidate, action: null };
   const originalJudgementFace = publicH4RankSuitReference(candidate.originalEvent.card.rank, candidate.originalEvent.card.suit, "a Judgement card");
   const replacementJudgementFace = publicH4RankSuitReference(candidate.replacementCard.rank, candidate.replacementCard.suit, "a Judgement card");
+  const effectFrame = createPublicCardEffectFrameView(candidate.effect, {
+    title: "NECROMANCY · JUDGEMENT REPLACEMENT",
+    accessibleLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement. Original: ${originalJudgementFace}. Replacement: ${replacementJudgementFace}.`,
+    activationOwnerName: candidate.owner.name,
+    ownerNamesById: Object.fromEntries(input.players.map((player) => [player.id, player.name])),
+  });
+  if (!effectFrame) return { candidate, action: null };
+  const visibleHoldPolicy = createPublicStageVisibleHoldPolicy({
+    semantics: "PROVEN",
+    identity: {
+      roomId: input.roomCode,
+      rootEventId: candidate.replacementEvent.id,
+      interactionId: candidate.effect.interactionId ?? "",
+      eventId: candidate.replacementEvent.id,
+      cardId: candidate.replacementCard.id,
+      viewerId: input.viewerId,
+      rootFrameId: candidate.effect.rootFrameId ?? "",
+      h4EventId: candidate.replacementEvent.id,
+      phase: "REVEAL",
+      materialCardIds: effectFrame.materials.map(({ card }) => card.id),
+      frame: {
+        eventId: effectFrame.eventId,
+        activationEventId: effectFrame.activationEventId ?? null,
+        rootEventId: effectFrame.rootEventId ?? null,
+        rootResolutionId: effectFrame.rootResolutionId ?? null,
+        effectId: effectFrame.effectId,
+        effectClass: effectFrame.effectClass,
+        activationOwnerId: effectFrame.activationOwnerId,
+        materialCardIds: effectFrame.materials.map(({ card }) => card.id),
+        materialOwnerIds: effectFrame.materials.map(({ ownerId }) => ownerId),
+      },
+    },
+    completion: { kind: "CENTRE_RETIRE" },
+  });
+  if (!visibleHoldPolicy) return { candidate, action: null };
 
   return {
     candidate,
@@ -1301,19 +1338,14 @@ function publicNecromancyJudgementFrameForRoom(input: {
       ariaLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${originalJudgementFace} → ${replacementJudgementFace}.`,
       publicNotice: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement: ${originalJudgementFace} → ${replacementJudgementFace}.`,
       publicNoticeCompact: `Necromancy replaced ${candidate.target.name}'s Judgement.`,
-      revealCompletionPolicy: "visible-hold",
+      visibleHoldPolicy,
       motion: {
         type: "single-target",
         scopeKey: [input.roomCode, "sima_yi_guicai", candidate.originalEvent.id, candidate.replacementEvent.id].join(":"),
         freshEventIds: input.seenCardJourneyEventIds.has(candidate.replacementEvent.id)
           ? [] : [candidate.replacementEvent.id],
       },
-      publicCardEffectFrame: createPublicCardEffectFrameView(candidate.effect, {
-        title: "NECROMANCY · JUDGEMENT REPLACEMENT",
-        accessibleLabel: `${candidate.owner.name} used Necromancy to replace ${candidate.target.name}'s Judgement. Original: ${originalJudgementFace}. Replacement: ${replacementJudgementFace}.`,
-        activationOwnerName: candidate.owner.name,
-        ownerNamesById: Object.fromEntries(input.players.map((player) => [player.id, player.name])),
-      }) ?? undefined,
+      publicCardEffectFrame: effectFrame,
     },
   };
 }
@@ -2069,6 +2101,7 @@ function publicNecromancyJudgementFrameForGameRoom(input: {
 }) {
   return publicNecromancyJudgementFrameForRoom({
     roomCode: input.room.code,
+    viewerId: input.room.meId,
     timeline: input.room.timeline,
     effects: input.room.presentationSnapshot?.publicCardEffects ?? [],
     judgements: input.room.presentationSnapshot?.publicJudgementPresentations ?? [],

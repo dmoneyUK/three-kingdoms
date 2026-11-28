@@ -36,7 +36,10 @@ import {
   checkpointPublicStageVisibleHold,
   publicStageVisibleHoldCanComplete,
   publicStageStaticAnnouncementMatchesReveal,
-  type PublicStageRevealIdentity,
+  createPublicStageVisibleHoldPolicy,
+  publicStageVisibleHoldPolicyMatches,
+  type PublicStageVisibleHoldPolicy,
+  type PublicStageVisibleHoldPolicyInput,
   type PublicStageStationarySurface,
 } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
@@ -192,8 +195,8 @@ export type PublicCardDisplayAction = {
     slot: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
     h4EventId: string;
   };
-  /** Retire after this renderer's safe, visible reveal hold; no seat-parking stage is required. */
-  revealCompletionPolicy?: "visible-hold";
+  /** Exact proof-bound shared visible hold and real completion endpoint. */
+  visibleHoldPolicy?: PublicStageVisibleHoldPolicy;
   settlement?: {
     eventId: string;
     /** Authenticated root proof used to match an actor-private Steal result. */
@@ -485,7 +488,7 @@ function PublicJourneyCard({
   lustCostFrame,
   publicCardEffectFrame,
   sharedStageIdentity,
-  allowPendingVerifiedReveal = false,
+  visibleHoldPolicy,
   parkedEffectLabel,
   onInspectCard,
 }: {
@@ -506,7 +509,7 @@ function PublicJourneyCard({
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   publicCardEffectFrame?: PublicCardEffectFrameView;
   sharedStageIdentity?: { roomId: string; scopeId: string; interactionId?: string | null; viewerId: string };
-  allowPendingVerifiedReveal?: boolean;
+  visibleHoldPolicy?: PublicStageVisibleHoldPolicy;
   parkedEffectLabel?: string;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
@@ -521,20 +524,24 @@ function PublicJourneyCard({
       phase: card.phase.toUpperCase() as "REVEAL" | "MOVE" | "PARKED",
     }));
   const usesSharedRevealLayout = sharesCurrentStageIdentity && card.phase === "reveal";
-  const pendingVerifiedRevealLayout = Boolean(allowPendingVerifiedReveal && primary && usesSharedRevealLayout
-    && !sharedPublicStage?.revealReady && publicCardEffectFrame
-    && publicCardEffectFrame.effectId === "sima_yi_guicai" && publicCardEffectFrame.effectClass === "JUDGEMENT"
-    && publicCardEffectFrame.eventId === card.eventId
-    && publicCardEffectFrame.materials.length === 1
-    && publicCardEffectFrame.materials[0]?.card.id === card.cardFace.id
+  const pendingVisibleHoldLayout = Boolean(visibleHoldPolicy && primary && usesSharedRevealLayout
+    && visibleHoldPolicy.identity.roomId === sharedStageIdentity?.roomId
+    && visibleHoldPolicy.identity.rootEventId === sharedStageIdentity?.scopeId
+    && visibleHoldPolicy.identity.interactionId === sharedStageIdentity?.interactionId
+    && visibleHoldPolicy.identity.viewerId === sharedStageIdentity?.viewerId
+    && visibleHoldPolicy.identity.phase === "REVEAL"
+    && visibleHoldPolicy.identity.eventId === card.eventId
+    && visibleHoldPolicy.identity.cardId === card.cardFace.id
+    && visibleHoldPolicy.identity.h4EventId === card.eventId
+    && !sharedPublicStage?.revealReady
     && publicStageEffectFrameRevealTargetMatches({
       layout: sharedPublicStage?.layout,
-      roomId: sharedStageIdentity!.roomId,
-      rootEventId: sharedStageIdentity!.scopeId,
-      interactionId: sharedStageIdentity!.interactionId,
+      roomId: visibleHoldPolicy.identity.roomId,
+      rootEventId: visibleHoldPolicy.identity.rootEventId,
+      interactionId: visibleHoldPolicy.identity.interactionId,
       eventId: card.eventId,
       cardId: card.cardFace.id,
-      viewerId: sharedStageIdentity!.viewerId,
+      viewerId: visibleHoldPolicy.identity.viewerId,
       primaryEventId: sharedPublicStage?.primaryEventId ?? "",
       primaryCardId: sharedPublicStage?.primaryCardId ?? "",
       announcementEventId: sharedPublicStage?.announcementEventId ?? "",
@@ -558,7 +565,7 @@ function PublicJourneyCard({
     || !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const sharedRevealReadinessPending = Boolean(primary && card.phase === "reveal" && sharedStageIdentity
     && (!sharesCurrentStageIdentity || !sharedPublicStage?.revealReady));
-  const positionUnavailable = placementUnavailable || (sharedRevealReadinessPending && !pendingVerifiedRevealLayout)
+  const positionUnavailable = placementUnavailable || (sharedRevealReadinessPending && !pendingVisibleHoldLayout)
     || usesTableLocalPosition && !localCardRect;
   const inspectable = !positionUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !positionUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
@@ -990,7 +997,8 @@ function battlefieldLustDuelAnnouncementAnchor(card: CardRect): CardRect {
 function hasPaintedLargePublicEffectFrame(
   eventId: string,
   frame: PublicCardEffectFrameView,
-  identity: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
+  identity: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string;
+    allowPendingSameEventLayout?: boolean; requireVisibleH4?: { eventId: string; owner: string } },
   element: HTMLElement,
   onFailure?: (reason: string) => void,
   allowPendingSameEventLayout = false,
@@ -1019,9 +1027,12 @@ function hasPaintedLargePublicEffectFrame(
   const primaryStyle = window.getComputedStyle(element);
   const footprint = panel ? publicEffectFrameVisualFootprint(element) : null;
   const display = element.closest<HTMLElement>(".public-card-display");
-  const announcement = display && shared ? [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
-    .find((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared?.announcementEventId
-      && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : null;
+  const announcements = display && shared ? [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+    .filter((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared?.announcementEventId
+      && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : [];
+  const announcement = identity.requireVisibleH4
+    ? announcements.length === 1 ? announcements[0] : null
+    : announcements[0] ?? null;
   if (!panel || !footprint
     || !display || !announcement
     || frame.eventId !== eventId
@@ -1035,6 +1046,11 @@ function hasPaintedLargePublicEffectFrame(
     || panel.dataset.publicCardFrameMaterialCardIds !== expectedCardIds
     || panel.dataset.publicCardFrameMaterialOwnerIds !== expectedOwnerIds
     || Number(panel.dataset.publicCardFrameMaterialCount) !== frame.materials.length
+    || identity.requireVisibleH4 !== undefined
+      && (announcement?.dataset.publicCardAnnouncementEventId !== identity.requireVisibleH4.eventId
+        || announcement?.dataset.publicH4EventId !== identity.requireVisibleH4.eventId
+        || announcement?.dataset.publicH4Owner !== identity.requireVisibleH4.owner
+        || announcement?.dataset.publicCardAnnouncementDelivery !== "VISIBLE")
     || !publicStageEffectFrameRevealTargetMatches({
       layout: shared.layout,
       roomId: identity.roomId,
@@ -1102,6 +1118,87 @@ type PublicCardPaintIdentity = {
   requireVisibleH4: { eventId: string; owner: string };
 };
 
+function publicVisibleHoldPolicyFor(
+  action: PublicCardDisplayAction,
+  roomId: string,
+  viewerId: string,
+  eventId: string,
+  cardId: string,
+): PublicStageVisibleHoldPolicy | null {
+  const expected = action.visibleHoldPolicy;
+  if (!expected || action.rootEventId !== eventId || action.cardFace?.id !== cardId) return null;
+  const frame = action.publicCardEffectFrame;
+  let completion: PublicStageVisibleHoldPolicyInput["completion"] | null = null;
+  if (action.motion?.type === "zone-transition" && hasExactZoneTransitionClaim(action, eventId, cardId)) {
+    const claim = action.zoneTransition!;
+    completion = { kind: "EQUIPMENT_ARRIVAL", claimId: claim.claimId, eventId: claim.eventId,
+      physicalCardId: claim.physicalCardId, ownerId: claim.ownerId, destination: "EQUIPMENT", slot: claim.slot };
+  } else if (action.motion?.type === "single-target" && !action.zoneTransition) {
+    completion = { kind: "CENTRE_RETIRE" };
+  }
+  if (!completion) return null;
+  const actual = createPublicStageVisibleHoldPolicy({
+    semantics: "PROVEN",
+    identity: {
+      roomId,
+      rootEventId: action.rootEventId,
+      interactionId: action.interactionId ?? "",
+      eventId,
+      cardId,
+      viewerId,
+      rootFrameId: action.rootFrameId ?? "",
+      h4EventId: action.zoneTransition?.h4EventId ?? action.rootEventId,
+      phase: "REVEAL",
+      materialCardIds: frame?.materials.map(({ card }) => card.id) ?? [cardId],
+      frame: frame ? {
+        eventId: frame.eventId,
+        activationEventId: frame.activationEventId ?? null,
+        rootEventId: frame.rootEventId ?? null,
+        rootResolutionId: frame.rootResolutionId ?? null,
+        effectId: frame.effectId,
+        effectClass: frame.effectClass,
+        activationOwnerId: frame.activationOwnerId,
+        materialCardIds: frame.materials.map(({ card }) => card.id),
+        materialOwnerIds: frame.materials.map(({ ownerId }) => ownerId),
+      } : null,
+    },
+    completion,
+  });
+  return actual && publicStageVisibleHoldPolicyMatches(expected, actual) ? expected : null;
+}
+
+function publicVisibleHoldPaintIdentity(policy: PublicStageVisibleHoldPolicy): PublicCardPaintIdentity {
+  return {
+    roomId: policy.identity.roomId,
+    rootEventId: policy.identity.rootEventId,
+    interactionId: policy.identity.interactionId,
+    viewerId: policy.identity.viewerId,
+    allowPendingSameEventLayout: true,
+    requireVisibleH4: { eventId: policy.identity.h4EventId, owner: "PublicCardDisplay" },
+  };
+}
+
+function publicVisibleHoldFrameMatchesElement(
+  policy: PublicStageVisibleHoldPolicy,
+  card: HTMLElement,
+  framePanel: HTMLElement | null,
+): boolean {
+  const { frame, materialCardIds } = policy.identity;
+  if (card.dataset.publicCardJourneyCardIds !== materialCardIds.join(",")) return false;
+  if (!frame) return framePanel === null;
+  return Boolean(framePanel
+    && framePanel.dataset.publicCardFrameEffectId === frame.effectId
+    && framePanel.dataset.publicCardFrameClass === frame.effectClass
+    && framePanel.dataset.publicCardFrameActivationOwnerId === frame.activationOwnerId
+    && framePanel.dataset.publicCardFrameEventId === (frame.activationEventId ?? frame.eventId)
+    && framePanel.dataset.publicCardFrameCardEventId === frame.eventId
+    && (framePanel.dataset.publicCardFrameRootEventId ?? "") === (frame.rootEventId ?? "")
+    && (framePanel.dataset.publicCardFrameRootResolutionId ?? "") === (frame.rootResolutionId ?? "")
+    && framePanel.dataset.publicCardFrameMaterialCardIds === frame.materialCardIds.join(",")
+    && framePanel.dataset.publicCardFrameMaterialOwnerIds === frame.materialOwnerIds.map((ownerId) => ownerId ?? "deck").join(",")
+    && Number(framePanel.dataset.publicCardFrameMaterialCount) === frame.materialCardIds.length);
+}
+
 function hasPaintedLargePublicCard(
   eventId: string,
   size: Pick<CardRect, "width" | "height">,
@@ -1138,7 +1235,28 @@ function hasPaintedLargePublicCard(
       && window.getComputedStyle(candidate).display !== "none"
       && Number(window.getComputedStyle(candidate).opacity) > 0).length === 1
     : true;
-  const painted = Boolean(element && face && rect && elementStyle && faceStyle && matchingH4
+  const shared = table && identity?.requireVisibleH4 && "roomId" in identity
+    ? committedPublicStageLayout(table) : null;
+  const sharedIdentityMatches = Boolean(shared && identity && "roomId" in identity
+    && publicStageEffectFrameRevealTargetMatches({
+      layout: shared.layout,
+      roomId: identity.roomId,
+      rootEventId: identity.rootEventId,
+      interactionId: identity.interactionId,
+      eventId,
+      cardId: element.dataset.publicCardJourneyCardId ?? "",
+      viewerId: identity.viewerId,
+      primaryEventId: shared.primaryEventId,
+      primaryCardId: shared.primaryCardId,
+      announcementEventId: shared.announcementEventId,
+      announcementAnchorEventId: shared.announcementAnchorEventId,
+    }));
+  const sharedAnchorMatches = !identity?.requireVisibleH4 || Boolean(sharedIdentityMatches && localRect && shared
+    && Math.abs(localRect.left - shared.layout.card.left) <= 1
+    && Math.abs(localRect.top - shared.layout.card.top) <= 1
+    && Math.abs(localRect.right - shared.layout.card.right) <= 1
+    && Math.abs(localRect.bottom - shared.layout.card.bottom) <= 1);
+  const painted = Boolean(element && face && rect && elementStyle && faceStyle && matchingH4 && sharedAnchorMatches
     && element.isConnected && element.getClientRects().length > 0
     && elementStyle.display !== "none" && elementStyle.visibility !== "hidden" && Number(elementStyle.opacity) > 0
     && faceStyle.display !== "none" && faceStyle.visibility !== "hidden" && Number(faceStyle.opacity) > 0
@@ -2843,7 +2961,7 @@ function PublicCardAnnouncement({
   compactSupportingMessage,
   presentationNarration,
   negationNarration,
-  pendingRevealIdentity,
+  pendingVisibleHoldPolicy,
   fallbackCardRect,
   phaseNotice,
   outcome,
@@ -2881,7 +2999,7 @@ function PublicCardAnnouncement({
   compactSupportingMessage?: string;
   presentationNarration?: PublicNegationNarration | PublicInteractionNarration;
   negationNarration?: PublicNegationNarration;
-  pendingRevealIdentity?: PublicStageRevealIdentity | null;
+  pendingVisibleHoldPolicy?: PublicStageVisibleHoldPolicy | null;
   fallbackCardRect: CardRect | null;
   phaseNotice?: string;
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
@@ -2956,7 +3074,7 @@ function PublicCardAnnouncement({
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
     phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
-    pendingRevealIdentity,
+    pendingVisibleHoldPolicy,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware, protectFirstParkedMiniature,
   };
@@ -3148,7 +3266,7 @@ function PublicCardAnnouncement({
         eventId, eventCopyKey, geometryKey, viewerLayoutKey, phase, message, compactMessage,
         heading,
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
-        pendingRevealIdentity,
+        pendingVisibleHoldPolicy,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
     privateDrawAware, protectFirstParkedMiniature, dismantleCardFace, segments,
@@ -3235,33 +3353,33 @@ function PublicCardAnnouncement({
             copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
           ],
         }));
-      const pendingRevealCardNodes = pendingRevealIdentity && sharedTable
+      const pendingRevealCardNodes = pendingVisibleHoldPolicy && sharedTable
         ? [...sharedTable.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")].filter((candidate) =>
-          candidate.dataset.publicCardJourneyEventId === pendingRevealIdentity.eventId
-          && candidate.dataset.publicCardJourneyCardId === pendingRevealIdentity.cardId)
+          candidate.dataset.publicCardJourneyEventId === pendingVisibleHoldPolicy.identity.eventId
+          && candidate.dataset.publicCardJourneyCardId === pendingVisibleHoldPolicy.identity.cardId)
         : [];
       const pendingRevealCard = pendingRevealCardNodes?.length === 1 ? pendingRevealCardNodes[0] : null;
-      const pendingRevealFrame = pendingRevealCard?.querySelector<HTMLElement>(".public-card-effect-frame-panel") ?? null;
-      const pendingStaticRevealMatches = Boolean(pendingRevealIdentity && pendingRevealFrame
+      const pendingRevealFrameNodes = pendingRevealCard
+        ? [...pendingRevealCard.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")] : [];
+      const pendingRevealFrame = pendingRevealFrameNodes.length === 1 ? pendingRevealFrameNodes[0] : null;
+      const pendingStaticRevealMatches = Boolean(pendingVisibleHoldPolicy && pendingRevealCard
+        && pendingRevealFrameNodes.length === (pendingVisibleHoldPolicy.identity.frame ? 1 : 0)
         && publicStageStaticAnnouncementMatchesReveal({
           phase,
-          expected: pendingRevealIdentity,
+          expected: { ...pendingVisibleHoldPolicy.identity, eventId: pendingVisibleHoldPolicy.identity.h4EventId },
           actual: {
             roomId: display.dataset.publicCardRoomId ?? "",
             rootEventId: display.dataset.publicCardRootEventId ?? "",
             interactionId: display.dataset.publicCardInteractionId ?? "",
             eventId: copy.dataset.publicCardAnnouncementEventId ?? "",
-            cardId: pendingRevealCard?.dataset.publicCardJourneyCardId ?? "",
+            cardId: pendingRevealCard.dataset.publicCardJourneyCardId ?? "",
             viewerId: display.dataset.publicCardViewerId ?? "",
           },
         })
-        && display.dataset.publicCardEventId === pendingRevealIdentity.eventId
+        && display.dataset.publicCardEventId === pendingVisibleHoldPolicy.identity.eventId
         && display.dataset.publicCardViewerId === display.dataset.publicCardLayoutViewerId
-        && pendingRevealCard?.dataset.publicCardJourneyPhase === "reveal"
-        && pendingRevealFrame.dataset.publicCardFrameEffectId === "sima_yi_guicai"
-        && pendingRevealFrame.dataset.publicCardFrameClass === "JUDGEMENT"
-        && pendingRevealFrame.dataset.publicCardFrameCardEventId === pendingRevealIdentity.eventId
-        && pendingRevealFrame.dataset.publicCardFrameMaterialCardIds === pendingRevealIdentity.cardId);
+        && pendingRevealCard.dataset.publicCardJourneyPhase === "reveal"
+        && publicVisibleHoldFrameMatchesElement(pendingVisibleHoldPolicy, pendingRevealCard, pendingRevealFrame));
       const sharedPendingReveal = phase === "reveal" || phase === "move" || pendingStaticRevealMatches;
       if (sharedStageCandidate && sharedTable && sharedPendingReveal) {
         // Keep the independently anchored factual H4 paint-enabled while the
@@ -5350,36 +5468,12 @@ function singleTargetJourneyMotion(motion: PublicCardDisplayMotion | undefined):
     : null;
 }
 
-function verifiedGuicaiVisibleHold(action: PublicCardDisplayAction, eventId: string, cardId: string): boolean {
-  const frame = action.publicCardEffectFrame;
-  return action.revealCompletionPolicy === "visible-hold" && action.rootEventId === eventId
-    && action.cardFace?.id === cardId && frame?.effectId === "sima_yi_guicai"
-    && frame.effectClass === "JUDGEMENT" && frame.eventId === eventId
-    && frame.materials.length === 1 && frame.materials[0]?.card.id === cardId;
-}
-
-function requiresPublicH4VisibleHold(action: PublicCardDisplayAction, eventId: string, cardId: string): boolean {
-  const claim = action.zoneTransition;
-  return verifiedGuicaiVisibleHold(action, eventId, cardId)
-    || action.revealCompletionPolicy === "visible-hold" && action.rootEventId === eventId
-      && action.cardFace?.id === cardId && claim?.eventId === eventId
-      && claim.physicalCardId === cardId && claim.h4EventId === eventId;
-}
-
 function hasExactZoneTransitionClaim(action: PublicCardDisplayAction, eventId: string, cardId: string): boolean {
   const claim = action.zoneTransition;
   return action.motion?.type === "zone-transition" && action.rootEventId === eventId
+    && action.motion.scopeKey === claim?.claimId
     && action.cardFace?.id === cardId && Boolean(claim?.claimId && claim.eventId === eventId
       && claim.physicalCardId === cardId && claim.h4EventId === eventId && claim.ownerId && claim.slot);
-}
-
-function zoneTransitionPaintIdentity(action: PublicCardDisplayAction, viewerId: string, eventId: string) {
-  const claim = action.zoneTransition;
-  if (!claim || claim.eventId !== eventId || claim.h4EventId !== eventId || claim.physicalCardId !== action.cardFace?.id) return undefined;
-  return {
-    viewerId,
-    requireVisibleH4: { eventId: claim.h4EventId, owner: "PublicCardDisplay" },
-  };
 }
 
 function singleTargetParkingOptions(
@@ -5915,20 +6009,22 @@ function SingleTargetCardJourney({
             || !completedCard || completedCard.phase !== "reveal"
             || completedCard.revealStartedAtMs !== card.revealStartedAtMs) return;
           const latestAction = actionRef.current;
-          const requiresVisibleH4Hold = requiresPublicH4VisibleHold(latestAction, completedCard.eventId, completedCard.cardFace.id);
-          const completesAtVisibleHold = verifiedGuicaiVisibleHold(latestAction, completedCard.eventId, completedCard.cardFace.id);
+          const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, current.viewerId,
+            completedCard.eventId, completedCard.cardFace.id);
+          const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+            && latestAction.visibleHoldPolicy.identity.eventId === completedCard.eventId
+            && latestAction.visibleHoldPolicy.identity.cardId === completedCard.cardFace.id);
+          if (visibleHoldClaim && !visibleHoldPolicy) return;
+          const requiresVisibleH4Hold = Boolean(visibleHoldPolicy);
+          const completesAtVisibleHold = visibleHoldPolicy?.completion.kind === "CENTRE_RETIRE";
           const expectedFrame = latestAction.publicCardEffectFrame?.eventId === completedCard.eventId
             ? latestAction.publicCardEffectFrame : undefined;
-          const requiredH4Identity = zoneTransitionPaintIdentity(latestAction, current.viewerId, completedCard.eventId);
-          const currentPaintEnabled = expectedFrame
-            ? hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD, expectedFrame, {
-              roomId: roomCode,
-              rootEventId: latestAction.rootEventId,
-              interactionId: latestAction.interactionId,
-              viewerId: current.viewerId,
-              allowPendingSameEventLayout: completesAtVisibleHold,
-            })
-            : hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD, undefined, requiredH4Identity);
+          const paintIdentity = visibleHoldPolicy
+            ? publicVisibleHoldPaintIdentity(visibleHoldPolicy)
+            : expectedFrame ? { roomId, rootEventId: latestAction.rootEventId,
+              interactionId: latestAction.interactionId, viewerId: current.viewerId } : undefined;
+          const currentPaintEnabled = hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD,
+            expectedFrame, paintIdentity);
           const safePainted = currentPaintEnabled && document.visibilityState === "visible" && documentVisibleRef.current;
           const now = performance.now();
           const visibleHoldComplete = requiresVisibleH4Hold && publicStageVisibleHoldCanComplete({
@@ -6060,7 +6156,9 @@ function SingleTargetCardJourney({
       return [];
     });
     const initialHoldAction = actionRef.current;
-    const initialHoldCard = initialHoldAction.revealCompletionPolicy === "visible-hold"
+    const initialHoldPolicy = publicVisibleHoldPolicyFor(initialHoldAction, roomCode, viewerId,
+      initialHoldAction.rootEventId, initialHoldAction.cardFace?.id ?? "");
+    const initialHoldCard = initialHoldPolicy
       ? journey.cards.find((card) => card.eventId === initialHoldAction.rootEventId
         && card.cardFace.id === initialHoldAction.cardFace?.id && card.phase === "reveal")
       : null;
@@ -6068,19 +6166,20 @@ function SingleTargetCardJourney({
     const holdTable = initialHoldCard ? document.querySelector<HTMLElement>(".play-table") : null;
     const pauseVisibleHoldIfUnpainted = () => {
       const latestAction = actionRef.current;
-      if (!initialHoldCard || !requiresPublicH4VisibleHold(latestAction, initialHoldCard.eventId, initialHoldCard.cardFace.id)) return;
+      if (!initialHoldCard) return;
       const current = journeyRef.current;
       const card = current.scopeKey === scopeKey ? current.cards.find((candidate) => candidate.eventId === latestAction.rootEventId
         && candidate.cardFace.id === latestAction.cardFace?.id && candidate.phase === "reveal") : null;
       if (!card || card.revealStartedAtMs == null || card.revealStartedAtMs !== initialHoldStartedAtMs) return;
-      const guicai = verifiedGuicaiVisibleHold(latestAction, card.eventId, card.cardFace.id);
-      const painted = guicai && latestAction.publicCardEffectFrame
-        ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, latestAction.publicCardEffectFrame, {
-          roomId: roomCode, rootEventId: latestAction.rootEventId, interactionId: latestAction.interactionId,
-          viewerId: current.viewerId, allowPendingSameEventLayout: true,
-        })
-        : hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, undefined,
-          zoneTransitionPaintIdentity(latestAction, current.viewerId, card.eventId));
+      const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, current.viewerId,
+        card.eventId, card.cardFace.id);
+      const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+        && latestAction.visibleHoldPolicy.identity.eventId === card.eventId
+        && latestAction.visibleHoldPolicy.identity.cardId === card.cardFace.id);
+      if (!visibleHoldClaim) return;
+      const expectedFrame = visibleHoldPolicy?.identity.frame ? latestAction.publicCardEffectFrame : undefined;
+      const painted = Boolean(visibleHoldPolicy && hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame,
+        publicVisibleHoldPaintIdentity(visibleHoldPolicy)));
       if (painted && document.visibilityState === "visible" && documentVisibleRef.current) return;
       const now = performance.now();
       setJourney((latest) => {
@@ -6138,19 +6237,19 @@ function SingleTargetCardJourney({
       }
       const latestAction = actionRef.current;
       const current = journeyRef.current;
-      const visibleHoldCard = latestAction.revealCompletionPolicy === "visible-hold"
-        && requiresPublicH4VisibleHold(latestAction, latestAction.rootEventId, latestAction.cardFace?.id ?? "")
+      const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, current.viewerId,
+        latestAction.rootEventId, latestAction.cardFace?.id ?? "");
+      const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+        && latestAction.visibleHoldPolicy.identity.eventId === latestAction.rootEventId
+        && latestAction.visibleHoldPolicy.identity.cardId === latestAction.cardFace?.id);
+      const visibleHoldCard = visibleHoldClaim
         ? current.cards.find((card) => card.eventId === latestAction.rootEventId
           && card.cardFace.id === latestAction.cardFace?.id && card.phase === "reveal")
         : null;
-      const visibleHoldGuicai = Boolean(visibleHoldCard && verifiedGuicaiVisibleHold(latestAction, visibleHoldCard.eventId, visibleHoldCard.cardFace.id));
-      const visibleHoldPainted = Boolean(visibleHoldCard && (visibleHoldGuicai && latestAction.publicCardEffectFrame
-        ? hasPaintedLargePublicCard(visibleHoldCard.eventId, REVEAL_CARD, latestAction.publicCardEffectFrame, {
-          roomId: roomCode, rootEventId: latestAction.rootEventId, interactionId: latestAction.interactionId,
-          viewerId: current.viewerId, allowPendingSameEventLayout: true,
-        })
-        : hasPaintedLargePublicCard(visibleHoldCard.eventId, REVEAL_CARD, undefined,
-          zoneTransitionPaintIdentity(latestAction, current.viewerId, visibleHoldCard.eventId))));
+      const visibleHoldFrame = visibleHoldPolicy?.identity.frame ? latestAction.publicCardEffectFrame : undefined;
+      const visibleHoldPainted = Boolean(visibleHoldCard && visibleHoldPolicy
+        && hasPaintedLargePublicCard(visibleHoldCard.eventId, REVEAL_CARD, visibleHoldFrame,
+          publicVisibleHoldPaintIdentity(visibleHoldPolicy)));
       const shouldPause = !enabledRef.current || !documentVisibleRef.current || document.visibilityState !== "visible"
         || Boolean(visibleHoldCard && !visibleHoldPainted);
       if (!shouldPause) return;
@@ -6160,7 +6259,9 @@ function SingleTargetCardJourney({
       const cards = current.cards.map((card) => {
         if (card.phase === "reveal" && card.revealStartedAtMs != null) {
           changed = true;
-          const isVisibleHold = requiresPublicH4VisibleHold(latestAction, card.eventId, card.cardFace.id);
+          const isVisibleHold = Boolean(latestAction.visibleHoldPolicy
+            && latestAction.visibleHoldPolicy.identity.eventId === card.eventId
+            && latestAction.visibleHoldPolicy.identity.cardId === card.cardFace.id);
           const checkpoint = isVisibleHold ? checkpointPublicStageVisibleHold({
             elapsedMs: card.revealElapsedMs ?? 0,
             remainingMs: card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
@@ -6196,7 +6297,8 @@ function SingleTargetCardJourney({
       if (mountedRef.current) setJourney(next);
     };
   }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase,
-    roomCode, viewerId, action.publicCardEffectFrame?.eventId, action.zoneTransition?.claimId, action.rootEventId, action.interactionId,
+    roomCode, viewerId, action.publicCardEffectFrame?.eventId, action.zoneTransition?.claimId, action.rootEventId,
+    action.interactionId, action.visibleHoldPolicy,
     sharedPublicStage?.layout.identity, sharedPublicStage?.revealReady, notifyRevealCompletedOnce]);
 
   useEffect(() => {
@@ -6208,20 +6310,19 @@ function SingleTargetCardJourney({
       const latestAction = actionRef.current;
       const expectedFrame = latestAction.publicCardEffectFrame?.eventId === activeCard.eventId
         ? latestAction.publicCardEffectFrame : undefined;
-      const allowPendingVerifiedReveal = latestAction.revealCompletionPolicy === "visible-hold"
-        && verifiedGuicaiVisibleHold(latestAction, activeCard.eventId, activeCard.cardFace.id);
-      const requiredH4Identity = zoneTransitionPaintIdentity(latestAction, viewerIdRef.current, activeCard.eventId);
+      const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, viewerIdRef.current,
+        activeCard.eventId, activeCard.cardFace.id);
+      const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+        && latestAction.visibleHoldPolicy.identity.eventId === activeCard.eventId
+        && latestAction.visibleHoldPolicy.identity.cardId === activeCard.cardFace.id);
+      if (visibleHoldClaim && !visibleHoldPolicy) return false;
+      const paintIdentity = visibleHoldPolicy
+        ? publicVisibleHoldPaintIdentity(visibleHoldPolicy)
+        : expectedFrame ? { roomId, rootEventId: latestAction.rootEventId,
+          interactionId: latestAction.interactionId, viewerId: viewerIdRef.current } : undefined;
       let failureReason = "card-face-not-paint-enabled";
-      const safePainted = expectedFrame
-        ? hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, expectedFrame, {
-          roomId: roomCode,
-          rootEventId: latestAction.rootEventId,
-          interactionId: latestAction.interactionId,
-          viewerId: viewerIdRef.current,
-          allowPendingSameEventLayout: allowPendingVerifiedReveal,
-        }, (reason) => { failureReason = reason; })
-        : hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, undefined, requiredH4Identity,
-          (reason) => { failureReason = reason; });
+      const safePainted = hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, expectedFrame,
+        paintIdentity, (reason) => { failureReason = reason; });
       if (!documentVisibleRef.current || document.visibilityState !== "visible") return false;
       if (!safePainted) {
         const shared = table ? committedPublicStageLayout(table) : null;
@@ -6431,17 +6532,20 @@ function SingleTargetCardJourney({
             : card.moveRemainingMs;
           const expectedFrame = currentAction.publicCardEffectFrame?.eventId === card.eventId
             ? currentAction.publicCardEffectFrame : undefined;
-          const safeRevealPainted = card.phase === "reveal" && expectedFrame
-            ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame, {
-              roomId: roomCode,
-              rootEventId: currentAction.rootEventId,
-              interactionId: currentAction.interactionId,
-              viewerId: viewerIdRef.current,
-            })
-            : card.phase === "reveal"
-              ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, undefined,
-                zoneTransitionPaintIdentity(currentAction, viewerIdRef.current, card.eventId))
-              : true;
+          const visibleHoldPolicy = card.phase === "reveal"
+            ? publicVisibleHoldPolicyFor(currentAction, roomCode, viewerIdRef.current, card.eventId, card.cardFace.id)
+            : null;
+          const visibleHoldClaim = card.phase === "reveal" && Boolean(currentAction.visibleHoldPolicy
+            && currentAction.visibleHoldPolicy.identity.eventId === card.eventId
+            && currentAction.visibleHoldPolicy.identity.cardId === card.cardFace.id);
+          const paintIdentity = visibleHoldPolicy
+            ? publicVisibleHoldPaintIdentity(visibleHoldPolicy)
+            : expectedFrame ? { roomId, rootEventId: currentAction.rootEventId,
+              interactionId: currentAction.interactionId, viewerId: viewerIdRef.current } : undefined;
+          const safeRevealPainted = card.phase === "reveal" && visibleHoldClaim && !visibleHoldPolicy
+            ? false : card.phase === "reveal"
+            ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame, paintIdentity)
+            : true;
           if (card.phase === "reveal") revealPaintResults.set(card.eventId, safeRevealPainted);
           const phaseReady = publicStageJourneyPhaseReady({
             phase: card.phase === "move" ? "MOVE" : card.phase === "parked" ? "PARKED" : "REVEAL",
@@ -6760,7 +6864,7 @@ function SingleTargetCardJourney({
     || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom"
     || action.publicCardEffectFrame?.effectId === "sun_quan_zhiheng"
     || action.publicCardEffectFrame?.effectId === "sun_shangxiang_betrothment"
-    || action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+    || Boolean(publicVisibleHoldPolicyFor(action, roomCode, viewerId, action.rootEventId, action.cardFace?.id ?? ""))
     || action.publicCardEffectFrame?.effectId === "serpent_spear_attack") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
@@ -6901,14 +7005,9 @@ function SingleTargetCardJourney({
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
         publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
           ? action.publicCardEffectFrame : undefined}
-        allowPendingVerifiedReveal={action.revealCompletionPolicy === "visible-hold"
-          && action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
-          && action.publicCardEffectFrame.effectClass === "JUDGEMENT"
-          && action.rootEventId === card.eventId && card.phase === "reveal"
-          && action.cardFace?.id === card.cardFace.id
-          && action.publicCardEffectFrame.eventId === card.eventId
-          && action.publicCardEffectFrame.materials.length === 1
-          && action.publicCardEffectFrame.materials[0]?.card.id === card.cardFace.id}
+        visibleHoldPolicy={card.phase === "reveal"
+          ? publicVisibleHoldPolicyFor(action, roomCode, viewerId, card.eventId, card.cardFace.id) ?? undefined
+          : undefined}
         parkedEffectLabel={card.actorId === viewerId ? card.parkedPublicEffect?.title : undefined}
       />;
     })}
@@ -6925,23 +7024,8 @@ function SingleTargetCardJourney({
       h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
       publicSequenceForEvent={publicSequenceForEvent}
       eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
-      pendingRevealIdentity={action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
-        && action.publicCardEffectFrame.effectClass === "JUDGEMENT"
-        && action.publicCardEffectFrame.materials.length === 1
-        && action.publicCardEffectFrame.eventId === activeCard?.eventId
-        && action.publicCardEffectFrame.materials[0]?.card.id === activeCard?.cardFace.id
-        && activeCard?.phase === "reveal"
-        && displayedAnnouncementEventId === activeCard.eventId
-        && action.rootEventId === activeCard.eventId
-        && Boolean(action.interactionId)
-        ? {
-          roomId: roomCode,
-          rootEventId: action.rootEventId,
-          interactionId: action.interactionId!,
-          eventId: activeCard.eventId,
-          cardId: activeCard.cardFace.id,
-          viewerId,
-        }
+      pendingVisibleHoldPolicy={activeCard?.phase === "reveal" && displayedAnnouncementEventId === activeCard.eventId
+        ? publicVisibleHoldPolicyFor(action, roomCode, viewerId, activeCard.eventId, activeCard.cardFace.id)
         : undefined}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
