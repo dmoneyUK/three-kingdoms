@@ -4259,25 +4259,6 @@ export function InteractionStage({
   </section>;
 }
 
-function createPresentationTransitionStore(initialView: PresentationClientView) {
-  let previousView: PresentationClientView | null = null;
-  let snapshot = buildPresentationTransition(null, initialView);
-  const listeners = new Set<() => void>();
-  return {
-    accept(nextView: PresentationClientView) {
-      if (nextView === previousView) return;
-      snapshot = buildPresentationTransition(previousView, nextView);
-      previousView = nextView;
-      listeners.forEach((listener) => listener());
-    },
-    getSnapshot: () => snapshot,
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => { listeners.delete(listener); };
-    },
-  };
-}
-
 export type DecisionPresentation = {
   phaseLabel: string;
   turnOwner: string;

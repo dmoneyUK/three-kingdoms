@@ -229,6 +229,8 @@ test("pure transition comparison fails closed for non-semantic results and keeps
 
 test("GameRoom uses the scoped store for its real InteractionStage and Attack/Dodge callsites", () => {
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /import \{ createPresentationTransitionStore \} from "\.\/presentation\/presentation-transition-store"/);
+  assert.doesNotMatch(page, /function createPresentationTransitionStore\s*\(/);
   assert.match(page, /createPresentationTransitionStore\(presentationTransitionScope, clientPresentation\)/);
   assert.match(page, /presentationTransitionStore\.getSnapshotFor\(presentationTransitionScope\)/);
   assert.match(page, /presentationTransitionStore\.accept\(presentationTransitionScope, clientPresentation\)/);
