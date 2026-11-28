@@ -33,6 +33,7 @@ const fastTests = [
   "tests/entourage-presentation.test.mjs",
   "tests/presentation-snapshot.test.mjs",
   "tests/presentation-client.test.mjs",
+  "tests/presentation-transition-store.test.mjs",
   "tests/public-presentation-routing.test.mjs",
   "tests/public-presentation-turn.test.mjs",
   "tests/public-equipment-transition.test.mjs",

@@ -37,11 +37,12 @@ import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, Pre
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import type { PublicPhysicalZoneTransition, PublicPresentationEvent, PublicPresentationEventFactDraft } from "../game/presentation-semantics";
 import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind } from "../game/presentation-v2";
-import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
+import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
 import { latestProvenPublicEventSequence, publicDismantleSettlementIdentityFromEvent, publicDismantleSettlementRetirementKey, publicDismantleSettlementRetirementReason } from "../game/public-target-card-settlement-lifecycle";
 import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
-import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
+import type { PresentationTransitionKind } from "../game/presentation-transition";
+import { createPresentationTransitionStore } from "./presentation/presentation-transition-store";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, triggerDecisionInstruction, viewerNegationAcknowledgement, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { createPrecommitScopeForAction, derivePrecommitOwnerControls, precommitDraftForScope, resetPrecommitOwnerDraft, togglePrecommitDraftCard, togglePrecommitDraftTarget, togglePrecommitOwnerDraft, type PrecommitOwnerKind, type PrecommitSelectionDraft } from "./local-precommit-selection";
@@ -89,7 +90,6 @@ type ActiveAttackDodgeSettlement = {
   remainingMs: number;
 };
 type RetiredAttackDodgeComposition = { roomCode: string; eventIds: Set<string>; cardIds: Set<string> };
-type AttackDodgeObservedProof = { roomCode: string; proofKey: string; responseEventId: string };
 type ActivePublicNegationRead = { key: string; action: PublicCardDisplayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 
 function finalizePublicNegationNarration(
@@ -312,13 +312,6 @@ function markPrivateStealResultSeen(scope: string) {
   catch { /* A blocked session store must not prevent the settlement from resolving. */ }
 }
 
-function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<string> {
-  return new Set(timeline.flatMap((event) => {
-    const proof = (event as GameEvent & { attackDodgeResponse?: unknown }).attackDodgeResponse;
-    const key = attackDodgeResponseProofKey(proof);
-    return key ? [key] : [];
-  }));
-}
 type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; isTestPlayer: boolean; role: string | null };
 function diaoChanNoticeCopy(proof: PresentationSnapshotDiaoChanSkillNotice, players: readonly Player[]) {
   const owner = players.find((player) => player.id === proof.sourceId && player.hero === "diao-chan");
@@ -5118,11 +5111,21 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
   const stealSettlements = clientPresentation.stealSettlements ?? NO_STEAL_SETTLEMENTS;
   const cardAcquisitionSettlements = clientPresentation.cardAcquisitionSettlements ?? [];
   const attackHitSettlements = clientPresentation.attackHitSettlements ?? NO_ATTACK_HIT_SETTLEMENTS;
-  const [presentationTransitionStore] = useState(() => createPresentationTransitionStore(clientPresentation));
-  const presentationTransition = useSyncExternalStore(presentationTransitionStore.subscribe, presentationTransitionStore.getSnapshot, presentationTransitionStore.getSnapshot);
+  const presentationTransitionScope = useMemo(() => ({ roomCode: room.code, viewerId: room.meId }), [room.code, room.meId]);
+  const [presentationTransitionStore] = useState(() => createPresentationTransitionStore(presentationTransitionScope, clientPresentation));
+  const presentationTransitionSnapshot = useSyncExternalStore(
+    presentationTransitionStore.subscribe,
+    () => presentationTransitionStore.getSnapshotFor(presentationTransitionScope),
+    () => presentationTransitionStore.getServerSnapshotFor(presentationTransitionScope),
+  );
+  const pendingAttackDodgeEventIds = useMemo(
+    () => new Set(presentationTransitionSnapshot.pendingAttackDodgeTransitions.map((transition) => transition.eventId)),
+    [presentationTransitionSnapshot.pendingAttackDodgeTransitions],
+  );
+  const presentationTransition = presentationTransitionSnapshot.presentation;
   useEffect(() => {
-    presentationTransitionStore.accept(clientPresentation);
-  }, [clientPresentation, presentationTransitionStore]);
+    presentationTransitionStore.accept(presentationTransitionScope, clientPresentation);
+  }, [clientPresentation, presentationTransitionScope, presentationTransitionStore]);
   const [selected, setSelected] = useState(""); const [inspectOnlyHandCardId, setInspectOnlyHandCardId] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const [localPlayTargetNotice, setLocalPlayTargetNotice] = useState<LocalPlayTargetNotice | null>(null); const target = targetIds[0] ?? "";
   const targetActionIdentityRef = useRef({ roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" });
   const handRailRef = useRef<HTMLDivElement | null>(null);
@@ -5363,11 +5366,6 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
     retired.cardIds.forEach((cardId) => prior.cardIds.add(cardId));
     publishRetiredAttackDodgeComposition(prior);
   }, [publishRetiredAttackDodgeComposition]);
-  const [newAttackDodgeResponseProofs, setNewAttackDodgeResponseProofs] = useState<AttackDodgeObservedProof[]>([]);
-  const observedAttackDodgeProofs = useRef<{ roomCode: string; proofKeys: Set<string> } | null>(null);
-  if (observedAttackDodgeProofs.current === null) {
-    observedAttackDodgeProofs.current = { roomCode: room.code, proofKeys: attackDodgeProofKeysFromTimeline(room.timeline) };
-  }
   const [activePublicNegationRead, setActivePublicNegationRead] = useState<ActivePublicNegationRead | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
@@ -5418,6 +5416,7 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
     });
   }, [room.code, room.meId, room.timeline]);
   const markPublicCardJourneyEventParked = useCallback((eventId: string) => {
+    presentationTransitionStore.acknowledgeAttackDodgeEvent(presentationTransitionScope, eventId);
     setPublicCardJourneySeen((current) => {
       const seen = current.roomCode === room.code
         ? current.eventIds
@@ -5425,7 +5424,7 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
       if (current.roomCode === room.code && seen.has(eventId)) return current;
       return { roomCode: room.code, eventIds: new Set([...seen, eventId]) };
     });
-  }, [room.code, room.timeline]);
+  }, [presentationTransitionScope, presentationTransitionStore, room.code, room.timeline]);
   const markPublicCardJourneyRevealCompleted = useCallback((sourceEventId: string, physicalCardId: string) => {
     completePublicCardRevealAndRetireReplacement({
       context: publicCardRevealContextRef.current,
@@ -7859,9 +7858,6 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
     : null;
   const attackDodgeHoldSuperseded = Boolean(attackDodgeHoldSupersessionReason);
   const visibleActiveAttackDodgeSettlement = attackDodgeHoldSuperseded ? null : activeAttackDodgeSettlement;
-  const currentAttackRootIdentityKey = currentAttackRootIdentity
-    ? JSON.stringify([currentAttackRootIdentity.rootEventId, currentAttackRootIdentity.interactionId, currentAttackRootIdentity.rootFrameId, currentAttackRootIdentity.sourceId, currentAttackRootIdentity.targetId])
-    : "";
   const attackDodgeResponsesForCurrentRoot = currentAttackRootIdentity
     ? attackDodgeResponseCandidates.filter(({ proof }) => attackDodgeResponseMatchesRoot(proof, currentAttackRootIdentity))
     : [];
@@ -7871,38 +7867,12 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
   const attackDodgeResponsesForActiveSettlement = visibleActiveAttackDodgeSettlement
     ? attackDodgeResponseCandidates.filter(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey)
     : [];
-  useEffect(() => {
-    const observation = observedAttackDodgeProofs.current;
-    if (!observation) return;
-    if (observation.roomCode !== room.code) {
-      observation.roomCode = room.code;
-      observation.proofKeys = attackDodgeProofKeysFromTimeline(room.timeline);
-      setNewAttackDodgeResponseProofs((current) => current.length === 0 ? current : []);
-      return;
-    }
-
-    const arrivals = newlyObservedAttackDodgeResponseKeys(attackDodgeResponseCandidates, observation.proofKeys);
-    const currentRootProofKeys = currentAttackRootIdentity
-      ? new Set(attackDodgeResponseCandidates.flatMap(({ proof }) => attackDodgeResponseMatchesRoot(proof, currentAttackRootIdentity)
-        ? [attackDodgeResponseProofKey(proof) ?? ""]
-        : []))
-      : null;
-    const eligibleArrivals = filterAttackDodgeResponseArrivalsForRoot(arrivals, attackDodgeResponseCandidates, currentAttackRootIdentity);
-    setNewAttackDodgeResponseProofs((current) => {
-      const retained = current.filter((entry) => entry.roomCode === room.code
-        && !attackDodgeSettlementCapturedEventIdsSnapshot.has(entry.responseEventId)
-        && (!currentRootProofKeys || currentRootProofKeys.has(entry.proofKey)));
-      const next = [...retained, ...eligibleArrivals.map((arrival) => ({ ...arrival, roomCode: room.code }))];
-      const unique = [...new Map(next.map((entry) => [entry.proofKey, entry])).values()];
-      return unique.length === current.length && unique.every((entry, index) => entry.roomCode === current[index].roomCode
-        && entry.proofKey === current[index].proofKey && entry.responseEventId === current[index].responseEventId)
-        ? current
-        : unique;
-    });
-  }, [room.code, currentAttackRootIdentityKey, currentAttackRootIdentity, room.timeline, attackDodgeResponseCandidates, attackDodgeSettlementCapturedEventIdsSnapshot]);
-  const pendingAttackDodgeResponseProofKeys = newAttackDodgeResponseProofs
-    .filter((entry) => entry.roomCode === room.code && !attackDodgeSettlementCapturedEventIdsSnapshot.has(entry.responseEventId))
-    .map((entry) => entry.proofKey);
+  const pendingAttackDodgeResponseProofKeys = presentationTransitionSnapshot.pendingAttackDodgeTransitions.flatMap((transition) => {
+    if (transition.kind !== "DODGE_COMMITTED"
+      || attackDodgeSettlementCapturedEventIdsSnapshot.has(transition.eventId)
+      || currentAttackRootIdentity && !attackDodgeResponseMatchesRoot(transition.proof, currentAttackRootIdentity)) return [];
+    return [transition.proofKey];
+  });
   const attackDodgeResponseSelection = selectAttackDodgeResponseCandidate(attackDodgeResponseCandidates, {
     currentRoot: currentAttackRootIdentity,
     heldProofKey: visibleActiveAttackDodgeSettlement?.phase === "complete" ? null : activeAttackDodgeSettlementProofKey,
@@ -10374,7 +10344,7 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
       motion: {
         type: "attack-dodge",
         scopeKey: [room.code, attackHitSettlementCandidate.action.rootEventId].join(":"),
-        rootFresh: !publicCardJourneySeenEventIds.has(attackHitSettlementCandidate.action.rootEventId),
+        rootFresh: pendingAttackDodgeEventIds.has(attackHitSettlementCandidate.action.rootEventId),
         responseFresh: false,
         deflectionFresh: false,
       },
@@ -10465,7 +10435,7 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
         motion: {
           type: "attack-dodge" as const,
           scopeKey: [room.code, rootAction.rootEventId].join(":"),
-          rootFresh: !publicCardJourneySeenEventIds.has(rootAction.rootEventId),
+          rootFresh: pendingAttackDodgeEventIds.has(rootAction.rootEventId),
           responseFresh: false,
           deflectionFresh: false,
         },
@@ -10514,8 +10484,8 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
         motion: {
           type: "attack-dodge",
           scopeKey: [room.code, attackDodgeDisplayCandidate.proof.rootEventId].join(":"),
-          rootFresh: !publicCardJourneySeenEventIds.has(attackDodgeDisplayCandidate.proof.rootEventId),
-          responseFresh: !publicCardJourneySeenEventIds.has(attackDodgeDisplayCandidate.proof.responseEventId),
+          rootFresh: pendingAttackDodgeEventIds.has(attackDodgeDisplayCandidate.proof.rootEventId),
+          responseFresh: pendingAttackDodgeEventIds.has(attackDodgeDisplayCandidate.proof.responseEventId),
           deflectionFresh: false,
         },
         settlement: {
