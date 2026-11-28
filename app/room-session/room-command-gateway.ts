@@ -109,13 +109,13 @@ export class RoomCommandGateway<TRoom extends RoomSessionRoom> {
   private testController = false;
 
   constructor(options: RoomCommandGatewayOptions<TRoom> = {}) {
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? ((input, init) => globalThis.fetch(input, init));
     this.normalize = options.normalize ?? ((value) => normalizeRoomData(value) as TRoom | null);
     this.callbacks = options.callbacks ?? {};
     this.storage = options.storage ?? (() => typeof window === "undefined" ? null : window.localStorage);
     this.now = options.now ?? Date.now;
-    this.setTimer = options.setTimer ?? setTimeout;
-    this.clearTimer = options.clearTimer ?? clearTimeout;
+    this.setTimer = options.setTimer ?? ((handler, timeout, ...args) => globalThis.setTimeout(handler, timeout, ...args));
+    this.clearTimer = options.clearTimer ?? ((timer) => globalThis.clearTimeout(timer));
     this.timeoutMs = options.timeoutMs ?? 15_000;
   }
 
@@ -319,10 +319,14 @@ export class RoomCommandGateway<TRoom extends RoomSessionRoom> {
     if (!this.pollRecovery.begin(key)) return false;
 
     const controller = new AbortController();
-    const flight: ReadFlight<TRoom> = { controller, promise: Promise.resolve(false), fresh };
-    const promise = this.performRead(capture, key, reason, controller);
-    flight.promise = promise;
-    this.reads.set(key, flight);
+    let resolveFlight!: (value: TRoom | false) => void;
+    let rejectFlight!: (reason?: unknown) => void;
+    const promise = new Promise<TRoom | false>((resolve, reject) => {
+      resolveFlight = resolve;
+      rejectFlight = reject;
+    });
+    this.reads.set(key, { controller, promise, fresh });
+    void this.performRead(capture, key, reason, controller).then(resolveFlight, rejectFlight);
     return promise;
   }
 

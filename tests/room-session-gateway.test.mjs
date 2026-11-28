@@ -143,6 +143,160 @@ test("Home can attach callbacks to its stable Gateway before restoring a session
   assert.equal(published[0].myHand[0].id, "private-player-1");
 });
 
+test("default fetch preserves the platform receiver for create POST and restored GET", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  const requests = [];
+  globalThis.setTimeout = function (callback, delay, ...args) {
+    return Reflect.apply(previousSetTimeout, globalThis, [callback, delay, ...args]);
+  };
+  globalThis.clearTimeout = function (timer, ...args) {
+    return Reflect.apply(previousClearTimeout, globalThis, [timer, ...args]);
+  };
+  globalThis.fetch = function (input, init = {}) {
+    assert.strictEqual(this, globalThis, "default fetch must receive the platform global");
+    const method = init.method ?? "GET";
+    requests.push({ input: String(input), method, body: init.body ? JSON.parse(String(init.body)) : null });
+    if (method === "POST") return Promise.resolve(json({ room: room("NEW22"), token: "created-token" }));
+    const query = new URL(String(input), "https://local.test").searchParams;
+    return Promise.resolve(json(room(query.get("code") ?? "")));
+  };
+
+  try {
+    const createGateway = new RoomCommandGateway({
+      normalize: (value) => value && typeof value === "object" ? value : null,
+      storage: () => memoryStorage(),
+      callbacks: { onRoom: () => true },
+    });
+    assert.equal(await createGateway.command({ action: "create", name: "Player One", code: "" }), true);
+
+    const restoredPublications = [];
+    const restoreGateway = new RoomCommandGateway({
+      normalize: (value) => value && typeof value === "object" ? value : null,
+      storage: () => memoryStorage({
+        "three-realms-session": JSON.stringify({ code: "ABCDE", token: "saved-token", name: "Player One" }),
+      }),
+      callbacks: { onRoom: (value, source) => { restoredPublications.push({ value, source }); return true; } },
+    });
+    const restored = await restoreGateway.restoreSavedSession();
+
+    assert.equal(requests.filter((request) => request.method === "POST" && request.body?.action === "create").length, 1);
+    assert.equal(requests.filter((request) => request.method === "GET").length, 1);
+    assert.equal(restored?.code, "ABCDE");
+    assert.equal(restoredPublications.length, 1);
+    assert.equal(restoredPublications[0].source, "poll");
+    assert.equal(restoredPublications[0].value.meId, restored.meId);
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
+  }
+});
+
+test("default timers preserve the platform receiver and clear each scheduled timeout", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  const scheduled = [];
+  const cleared = [];
+  globalThis.fetch = async () => json(room("ABCDE"));
+  globalThis.setTimeout = function (callback, delay) {
+    assert.strictEqual(this, globalThis, "default setTimeout must receive the platform global");
+    const timer = scheduled.length + 1;
+    scheduled.push({ timer, callback, delay });
+    return timer;
+  };
+  globalThis.clearTimeout = function (timer) {
+    assert.strictEqual(this, globalThis, "default clearTimeout must receive the platform global");
+    cleared.push(timer);
+  };
+
+  try {
+    const published = [];
+    const gateway = new RoomCommandGateway({
+      normalize: (value) => value && typeof value === "object" ? value : null,
+      storage: () => memoryStorage({
+        "three-realms-session": JSON.stringify({ code: "ABCDE", token: "saved-token", name: "Player One" }),
+      }),
+      callbacks: { onRoom: (value) => { published.push(value); return true; } },
+    });
+    const restored = await gateway.restoreSavedSession();
+
+    assert.equal(restored?.meId, "player-1");
+    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled[0].delay, 15_000);
+    assert.deepEqual(cleared, [scheduled[0].timer]);
+    assert.equal(published.length, 1);
+    assert.equal(published[0].code, "ABCDE");
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
+  }
+});
+
+test("synchronous GET transport or timer failures do not strand a read flight", async () => {
+  for (const failurePoint of ["fetch", "timer"]) {
+    const storage = memoryStorage({
+      "three-realms-session": JSON.stringify({ code: "ABCDE", token: "saved-token", name: "Player One" }),
+    });
+    let fetchCalls = 0;
+    let timerCalls = 0;
+    const published = [];
+    const gateway = new RoomCommandGateway({
+      fetcher: () => {
+        fetchCalls++;
+        if (failurePoint === "fetch" && fetchCalls === 1) throw new Error("synchronous fetch failure");
+        return Promise.resolve(json(room("ABCDE")));
+      },
+      normalize: (value) => value && typeof value === "object" ? value : null,
+      storage: () => storage,
+      setTimer: () => {
+        timerCalls++;
+        if (failurePoint === "timer" && timerCalls === 1) throw new Error("synchronous timer failure");
+        return timerCalls;
+      },
+      clearTimer: () => {},
+      callbacks: { onRoom: (value) => { published.push(value); return true; } },
+    });
+
+    assert.equal(await gateway.restoreSavedSession(), false, `${failurePoint} failure should fail closed`);
+    const recovered = await gateway.refresh({ reason: `recover-after-sync-${failurePoint}-failure` });
+    assert.equal(recovered?.meId, "player-1", `${failurePoint} failure must allow the next GET`);
+    assert.equal(gateway.stale, false);
+    assert.equal(published.length, 1);
+    assert.equal(fetchCalls, failurePoint === "fetch" ? 2 : 1);
+  }
+});
+
+test("a synchronous command timer failure releases the submission lock for retry", async () => {
+  let timerCalls = 0;
+  let postCalls = 0;
+  const gateway = new RoomCommandGateway({
+    fetcher: async (_input, init = {}) => {
+      assert.equal(init.method, "POST");
+      postCalls++;
+      return json({ room: room("NEW22"), token: "created-token" });
+    },
+    normalize: (value) => value && typeof value === "object" ? value : null,
+    storage: () => memoryStorage(),
+    setTimer: () => {
+      timerCalls++;
+      if (timerCalls === 1) throw new Error("synchronous timer failure");
+      return timerCalls;
+    },
+    clearTimer: () => {},
+    callbacks: { onRoom: () => true },
+  });
+  const create = { action: "create", name: "Player One", code: "" };
+
+  assert.equal(await gateway.command(create), false);
+  assert.equal(postCalls, 0);
+  assert.equal(await gateway.command(create), true);
+  assert.equal(postCalls, 1);
+});
+
 test("same identity and generation coalesce one GET and publish once", async () => {
   const pending = deferred();
   let calls = 0;
