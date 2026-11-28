@@ -15,6 +15,7 @@ import { BUILD_SHA } from "../app/build-info.ts";
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const publicCardDisplaySource = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+const opponentPlayerCardSource = readFileSync(new URL("../app/components/game/opponent-player-card.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
@@ -801,7 +802,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \{[\s\S]*height: 100% !important;/, "opponent artwork fills the hero region");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
   assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile rule");
-  assert.match(gameRoomSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
+  assert.match(opponentPlayerCardSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
   assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-portrait"[^>]*data-hero-id="cao-cao"[\s\S]*<\/button><div class="local-hero-identity-footer" aria-label="Your role and health"><span class="local-hero-role" aria-label="Role: Lord">Lord<\/span><span class="local-hero-hp" aria-label="HP 4 of 4">HP 4\/4<\/span><\/div>/, "local identity footer follows the genuine portrait and keeps role before numeric HP");
   assert.doesNotMatch(html, /class="local-hero-overlay"|class="local-hero-hearts"/, "local artwork has no identity overlay or heart markers");
   assert.equal(hpDisplay(5), "♥♥♥♥♥");
@@ -994,7 +995,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(gameRoomSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
   assert.match(gameRoomSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-player-equipment-slot-owner=\{player\.id\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions keep a real owner-slot anchor without rendering fake equipped art");
   assert.match(gameRoomSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
-  assert.match(gameRoomSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");
+  assert.match(opponentPlayerCardSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");
   assert.match(sequenceStyleSource, /UX2 §10\.8\.2\.2 H2-G1[\s\S]*?\.game-shell \.player-board \.opponent-status-equipment-strip\s*\{[\s\S]*?flex: 0 0 20px[\s\S]*?data-seat-topology="side-column"[\s\S]*?\.opponent-status-equipment-strip\s*\{[\s\S]*?flex-basis: 18px/, "the final seat rules use a compact shared HP/equipment band at both top and side seats");
   assert.match(sequenceStyleSource, /\.opponent-seat-inspect-button\s*\{[\s\S]*?height: 44px[\s\S]*?background: transparent[\s\S]*?pointer-events: auto/, "target selection keeps a transparent 44px name-band Inspector hit target without a painted icon");
   assert.match(sequenceStyleSource, /\.opponent-hero-card\.is-targeting-with-seat-inspector \.opponent-hero-target\s*\{[\s\S]*?inset: 0 0 var\(--opponent-seat-inspect-portrait-reserve, 24px\)/, "legal portrait target ends before the independent Inspector hit region");

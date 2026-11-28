@@ -15,6 +15,11 @@ import { gameplayDeclineButtonClassName } from "./semantic-action-style";
 import { projectPublicEquipmentTargetPool } from "./public-equipment-target-pool";
 import { normalizeHandChoiceKeys, projectEligibleHandChoices, toggleHandChoiceKey } from "./hand-choice-selection";
 import { EMPTY_MOBILE_SEAT_RING_METRICS, isMobileSeatRingEnabled, mobileSeatRingTopology, sameMobileSeatRingMetrics, subscribeMobileSeatRingMeasurements, type MobileSeatRingMetrics } from "./layout/mobile-seat-ring";
+import { HeroPortrait } from "./components/game/hero-portrait";
+import { LocalPlayerDock } from "./components/game/local-player-dock";
+import { OpponentPlayerCard } from "./components/game/opponent-player-card";
+import type { Hero, Player } from "./components/game/player-types";
+import { suitColorClass } from "./components/game/card-suit-style";
 
 import { isEntourageDodgeFor } from "../game/entourage-presentation";
 
@@ -29,7 +34,7 @@ import { baselineHand, pendingPrivateHandCardIds, PRIVATE_HAND_REVEAL_DURATION_M
 import { beginAutomaticDrawAttempt, createAutomaticDrawAttempt, normalDrawDecisionIdentity, normalDrawPresentationBatch, normalDrawPresentationView, normalDrawPrivateCardIds, normalDrawQueuedH4DisplayDuration, normalDrawStageEventId, prepareAutomaticDrawAttempt, reconcileAutomaticDrawAttempt } from "../game/normal-draw-decision.js";
 import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
 import { getResponseOptions } from "../game/responses";
-import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
+import { HEROES, heroGender } from "../game/heroes";
 import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
 import { isOrdinaryTurnActionAuthorized, type OrdinaryTurnAction } from "../game/ordinary-turn-action";
 import { derivePrivateResponseGuidance } from "../game/private-response-guidance.ts";
@@ -79,7 +84,10 @@ import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, pres
 import { shouldAcceptPublicPresentationTurn, type PublicPresentationTurnScope, type PublicPresentationTurnViewer } from "../game/public-presentation-turn";
 import { publicActionAnnouncementOverride, publicEffectFrameOwnsInteractionRoot, publicInteractionNarrationBelongsToAction, publicInteractionNarrationWithJudgement, publicJudgementH4OwnerInput, publicJudgementNarrationBelongsToAction, publicJudgementNarrationForPresentation, publicJudgementPresentationAtCursor, publicJudgementReplacementFrameMatches, publicJudgementReplacementFrameOwnsCursor, selectJudgementAwarePublicCardAction, type PublicJudgementPresentation } from "../game/public-judgement-presentation";
 
-type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
+export { HERO_ART_BY_ID, HeroPortrait } from "./components/game/hero-portrait";
+export { LocalPlayerDock } from "./components/game/local-player-dock";
+export { projectSideColumnSeat } from "./components/game/opponent-player-card";
+
 type ActiveSkillSelectionState = PrecommitSelectionDraft;
 type InspectorCardDetailDismissRef = { current: (() => boolean) | null };
 type ActiveAttackDodgeSettlement = {
@@ -313,7 +321,6 @@ function markPrivateStealResultSeen(scope: string) {
   catch { /* A blocked session store must not prevent the settlement from resolving. */ }
 }
 
-type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; isTestPlayer: boolean; role: string | null };
 function diaoChanNoticeCopy(proof: PresentationSnapshotDiaoChanSkillNotice, players: readonly Player[]) {
   const owner = players.find((player) => player.id === proof.sourceId && player.hero === "diao-chan");
   if (!owner) return null;
@@ -2535,49 +2542,6 @@ function shouldSuppressDuplicatePublicCardAnnouncement(
   return Boolean(owner && owner.owner !== "PublicCardDisplay" && owner.eventId === interactionEventId);
 }
 
-export const HERO_ART_BY_ID: Record<string, string> = {
-  "cao-cao": "/hero-cao-cao.jpg",
-  "liu-bei": "/hero-liu-bei.jpg",
-  "sun-quan": "/hero-sun-quan.jpg",
-  "simayi": "/hero-sima-yi.jpg",
-  "xiahou-dun": "/hero-xiahou-dun.jpg",
-  "zhang-liao": "/hero-zhang-liao.jpg",
-  "zhang-fei": "/hero-zhang-fei.jpg",
-  "zhen-ji": "/hero-zhen-ji.jpg",
-  "xu-chu": "/hero-xu-chu.jpg",
-  "guo-jia": "/hero-guo-jia.jpg",
-  "yue-jin": "/hero-yue-jin.jpg",
-  "gongsun-zan": "/hero-gongsun-zan.jpg",
-  "ma-chao": "/hero-ma-chao.jpg",
-  "daqiao": "/hero-daqiao.jpg",
-  "zhuge-liang": "/hero-zhuge-liang.jpg",
-  "zhao-yun": "/hero-zhao-yun.jpg",
-  "guan-yu": "/hero-guan-yu.jpg",
-  "gan-ning": "/hero-gan-ning.jpg",
-  "huang-gai": "/hero-huang-gai.jpg",
-  "lü-meng": "/hero-lv-meng.jpg",
-  "lady-gan": "/hero-lady-gan.jpg",
-  "huang-yueying": "/hero-huang-yueying.jpg",
-  "zhou-yu": "/hero-zhou-yu.jpg",
-  "diao-chan": "/hero-diao-chan.jpg",
-  "lü-bu": "/hero-lv-bu.jpg",
-  "hua-tuo": "/hero-hua-tuo.jpg",
-  huaxiong: "/hero-hua-xiong.jpg",
-  "sun-shangxiang": "/hero-sun-shangxiang.jpg",
-  "lu-xun": "/hero-lu-xun.jpg",
-  "pan-feng": "/hero-pan-feng.jpg",
-};
-
-export function HeroPortrait({ hero }: { hero: Pick<Hero, "id" | "name"> }) {
-  const initials = hero.name.split(" ").map((part) => part[0]).join("");
-  const art = HERO_ART_BY_ID[hero.id];
-  if (!art) return <span className="hero-art-fallback" data-hero-art-id={hero.id} aria-hidden="true">{initials}</span>;
-  // Static public artwork is intentionally rendered directly so the same path
-  // works in the Worker-backed build and in server-rendered test fixtures.
-  // eslint-disable-next-line @next/next/no-img-element -- static local hero artwork
-  return <img className="hero-art-image" data-hero-art-id={hero.id} src={art} alt="" aria-hidden="true" />;
-}
-
 export function hpDisplay(hp: number | null) { return hp !== null && hp <= 0 ? `${hp} HP` : "♥".repeat(Math.max(0, hp ?? 0)); }
 export function calculateHandCardStep(handRailWidth: number, cardsOrCount: number | readonly string[], cardWidth = 68) {
   const count = typeof cardsOrCount === "number" ? cardsOrCount : cardsOrCount.length;
@@ -2587,7 +2551,6 @@ export function calculateHandCardStep(handRailWidth: number, cardsOrCount: numbe
 }
 function publicPlayerName(name: string) { return name; }
 function delayUntil(deadline: number) { return Math.max(0, deadline - Date.now()); }
-function suitColorClass(suit: Card["suit"]) { return suit === "♥" || suit === "♦" ? "red-suit" : "black-suit"; }
 
 function pendingSelfTargetActionWindow(room: Room) {
   const sourceId = room.pendingTargetCard?.sourceId ?? room.pendingNegation?.sourceId ?? room.pendingDuel?.sourceId ?? room.pendingAttack?.sourceId ?? room.pendingGreenDragon?.sourceId ?? room.pendingRockCleaving?.sourceId ?? room.pendingFrostSword?.sourceId ?? room.pendingGroup?.sourceId;
@@ -3388,37 +3351,6 @@ type LocalPlayTargetNotice = {
   stale?: boolean;
 };
 
-type OpponentPlayerCardProps = {
-  totalPlayers: number;
-  player: Player;
-  viewerId: string;
-  playerHero: Hero | null;
-  relativeIndex: number;
-  mobileSeatRing: { enabled: boolean; topCapacity: number; boardWidth: number; seatWidth: number; seatHeight: number; gap: number; leftInset: number; topStep: number };
-  isTurn: boolean;
-  isSelectedTarget: boolean;
-  isGroupPreview: boolean;
-  interactionRoles: InteractionSeatSemanticRoles;
-  targetSelectionActive: boolean;
-  showSeparateInspectAffordance: boolean;
-  targetAttemptEnabled: boolean;
-  targetAttemptDescription: string | null;
-  isInspected: boolean;
-  targetablePlayer: boolean;
-  daqiaoDeflectionTargetMode: boolean;
-  testViewerController: boolean;
-  onTarget: (trigger?: HTMLButtonElement | null) => void;
-  onInspect: (trigger?: HTMLButtonElement | null) => void;
-  onSwitchTestViewer: (playerId: string) => void;
-  judgementInFlight: ReadonlySet<string>;
-  serpentSelected: string[];
-  triggerResponse: boolean;
-  triggerSelectionUsesCards: boolean;
-  responseDecisionReady: boolean;
-  triggerCardOption: TriggerOptionView | null;
-  onToggleEquipment: (cardId: string) => void;
-};
-
 const subscribeToPhoneViewport = (onChange: () => void) => {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
   const query = window.matchMedia("(max-width: 520px)");
@@ -3429,116 +3361,6 @@ const subscribeToPhoneViewport = (onChange: () => void) => {
 const getPhoneViewportSnapshot = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 520px)").matches;
-
-export function projectSideColumnSeat(totalPlayers: number, relativeIndex: number, options: { topCapacity?: number } = {}): { side: "left" | "right" | "top"; row: number; rowCount: number; topIndex?: number; topCount?: number } | null {
-  if (!Number.isInteger(totalPlayers) || !Number.isInteger(relativeIndex) || totalPlayers < 5 || totalPlayers > 10 || relativeIndex < 1 || relativeIndex >= totalPlayers) return null;
-  const opponentCount = totalPlayers - 1;
-  const requestedTopCapacity = Number.isFinite(options.topCapacity) ? Math.trunc(options.topCapacity ?? 0) : 0;
-  const topCount = Math.max(0, Math.min(opponentCount, totalPlayers === 7 ? 4 : totalPlayers === 8 ? 5 : opponentCount, requestedTopCapacity));
-  const sideCount = opponentCount - topCount;
-  const leftCount = Math.floor(sideCount / 2);
-  const rightCount = sideCount - leftCount;
-  const rowCount = Math.max(leftCount, rightCount);
-
-  // Walk the visual ring from the local viewer: left-bottom upward, across
-  // the top from left to right, then down the right edge toward the viewer.
-  if (relativeIndex <= leftCount) {
-    return { side: "left", row: rowCount - relativeIndex + 1, rowCount, topCount };
-  }
-  if (relativeIndex <= leftCount + topCount) {
-    return { side: "top", row: 0, rowCount: 0, topIndex: relativeIndex - leftCount - 1, topCount };
-  }
-  return { side: "right", row: relativeIndex - leftCount - topCount, rowCount, topCount };
-}
-
-function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
-  if (slot === "weapon") return <svg viewBox="0 0 18 18" aria-hidden="true" data-equipment-glyph="sword">
-    <path data-sword-part="blade" d="M7.2 7.7 16 1.4 17.6.6l-.4 1.9-7.1 7.9Z" />
-    <path data-sword-groove="true" d="m9 8.7 7-6.4" fill="none" stroke="#70552d" strokeWidth=".8" strokeLinecap="round" />
-    <path data-sword-part="crossguard" d="m6.3 6.3 6.2 6.2-1.2 1.2-6.2-6.2Z" />
-    <path data-sword-part="grip" d="m7.1 9.1 1.5 1.5-3.7 3.7-1.5-1.5Z" />
-    <circle data-sword-part="pommel" cx="3.2" cy="15" r="1.2" />
-  </svg>;
-  if (slot === "armor") return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.2 12.2 3v3.8c0 2.8-2.4 4.9-5.2 6.4C4.2 11.7 1.8 9.6 1.8 6.8V3L7 1.2Z" /><path d="M4.5 4.2v3.2c0 1.2 1 2.2 2.5 3 1.5-.8 2.5-1.8 2.5-3V4.2" /></svg>;
-  return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
-}
-
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, mobileSeatRing, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, showSeparateInspectAffordance, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
-  const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex, {
-    topCapacity: mobileSeatRing.enabled ? mobileSeatRing.topCapacity : 0,
-  });
-  const seatPlacementStyle: CSSProperties | undefined = sideColumnSeat
-    ? sideColumnSeat.side === "top"
-      ? {
-        left: `${mobileSeatRing.leftInset + (sideColumnSeat.topIndex ?? 0) * mobileSeatRing.topStep}px`,
-        top: "0px",
-        width: mobileSeatRing.seatWidth,
-        height: mobileSeatRing.seatHeight,
-        gridRow: "1",
-        gridColumn: "1 / -1",
-        transform: "none",
-      }
-      : { gridRow: sideColumnSeat.row + (mobileSeatRing.enabled && (sideColumnSeat.topCount ?? 0) > 0 ? 1 : 0) }
-    : undefined;
-  const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
-  for (const equipment of player.equipmentCards) {
-    const slot = cardDefinition(equipment.kind).equipmentSlot;
-    if (slot) equipmentBySlot.set(slot, equipment);
-  }
-  const equipmentSummary = LOCAL_EQUIPMENT_SLOTS.map(({ key, label }) => {
-    const equipment = equipmentBySlot.get(key);
-    if (!equipment) return <span className="opponent-equipment-slot is-empty" data-slot={key} data-player-equipment-slot-owner={player.id} data-occupied="false" aria-hidden="true" key={key} />;
-    const equipmentName = cardDefinition(equipment.kind).name;
-    const accessibleSlotLabel = key === "defensiveHorse" ? "Plus-one horse" : key === "offensiveHorse" ? "Minus-one horse" : label;
-    return <span className="opponent-equipment-slot is-occupied" data-slot={key} data-player-equipment-slot-owner={player.id} data-occupied="true" key={key}><span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${accessibleSlotLabel} equipped: ${equipmentName}`} title={`${label}: ${equipmentName}`}><OpponentEquipmentGlyph slot={key} /></span></span>;
-  });
-  const visibleJudgement = player.judgementCards.filter((card) => !judgementInFlight.has(card.id));
-  const visibleJudgementCount = visibleJudgement.length;
-  const judgementIndicators = visibleJudgement.map((judgement) => <span
-    className="opponent-judgement-indicator" data-judgement-id={judgement.id} data-card-kind={judgement.kind}
-    key={judgement.id}
-    role="img" aria-label={`${cardDefinition(judgement.kind).name} in ${player.name}'s Judgement zone`}
-    title={cardDefinition(judgement.kind).name}>
-    {judgement.kind === "Lightning" ? "⚡" : judgement.kind === "Overindulgence"
-      ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h10l-1 4a4 4 0 0 1-3.5 3v3h3v2h-7v-2h3V9A4 4 0 0 1 4 6L3 2Z" fill="currentColor" /></svg>
-      : "◆"}
-  </span>);
-  const targetButtonDisabled = targetSelectionActive && !targetAttemptEnabled && (!targetablePlayer || !player.alive);
-  const seatInspectorActive = targetSelectionActive && showSeparateInspectAffordance;
-  const deflectionTargetSelectable = daqiaoDeflectionTargetMode && targetSelectionActive && targetablePlayer && player.alive;
-  const targetButtonLabel = targetAttemptEnabled && !targetablePlayer
-    ? `Check ${player.name}${targetAttemptDescription ? ` — ${targetAttemptDescription}` : ""}`
-    : daqiaoDeflectionTargetMode && targetSelectionActive
-    ? deflectionTargetSelectable
-      ? `${isSelectedTarget ? "Deselect" : "Select"} ${player.name} as Deflection target`
-      : `${player.name}, not an eligible Deflection target`
-    : `${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`;
-  const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
-  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} data-top-seat-index={sideColumnSeat?.topIndex} data-top-seat-count={sideColumnSeat?.topCount} style={seatPlacementStyle} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
-      <div className="opponent-public-zones">
-      <div className={`player-hero-card opponent-hero-card${seatInspectorActive ? " is-targeting-with-seat-inspector" : ""}`}>
-        {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id} aria-hidden="true"><HeroPortrait hero={playerHero} /></span>}
-        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} aria-pressed={targetSelectionActive ? isSelectedTarget : isInspected} aria-expanded={isInspected} onClick={(event) => {
-          const trigger = event?.currentTarget ?? null;
-          return targetSelectionActive ? onTarget(trigger) : onInspect(trigger);
-        }} />
-        <div className="opponent-hero-overlay">
-          {!seatInspectorActive && <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>}
-        </div>
-        {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
-      </div>
-      <div className={`opponent-status-equipment-strip${seatInspectorActive ? " has-seat-inspector" : ""}`}>
-        <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
-        {visibleJudgementCount > 0 && <div className="opponent-judgement-status" data-judgement-owner-id={player.id} data-multiple={visibleJudgementCount > 1 ? "true" : undefined} role="group" aria-label={`${player.name} Judgement zone`}>
-          <span className="opponent-judgement-indicators">{judgementIndicators}</span>
-          {visibleJudgementCount > 1 && <span className="opponent-judgement-overflow" role="img" aria-label={`${visibleJudgementCount} Judgement cards; inspect ${player.name} for details`}>{visibleJudgementCount}</span>}
-        </div>}
-        <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
-        {seatInspectorActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span className="opponent-player-name" aria-hidden="true">{player.name}</span></button>}
-      </div>
-    </div>
-  </article>;
-}
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Waiting for the next public update." : phase === "finished" ? "Finished" : ""; }
 
@@ -4643,14 +4465,6 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
   </div>;
 }
 
-const LOCAL_EQUIPMENT_SLOTS = [
-  { key: "weapon", label: "Weapon" },
-  { key: "armor", label: "Armour" },
-  { key: "defensiveHorse", label: "+1 Horse" },
-  { key: "offensiveHorse", label: "-1 Horse" },
-] as const;
-type LocalEquipmentSlot = (typeof LOCAL_EQUIPMENT_SLOTS)[number]["key"];
-
 type HeroSkillButtonModel = {
   name: string;
   description: string;
@@ -4757,165 +4571,6 @@ export const HERO_SKILL_RESPONSE_IDS: Record<string, Record<string, readonly str
   "zhao-yun": { Braveheart: ["zhao_yun_dodge_as_attack", "zhao_yun_attack_as_dodge"] },
   "hua-tuo": { "First Aid": ["hua_tuo_first_aid"] },
 };
-
-type LocalPlayerDockProps = {
-  player: Player | null;
-  hero: Hero | null;
-  interactionRoles: InteractionSeatSemanticRoles;
-  guidance: ReactNode;
-  children: ReactNode;
-  heroSkillControl?: ReactNode;
-  selfTargetable: boolean;
-  selfTargetSelected: boolean;
-  onSelfTarget: () => void;
-  onHeroInfo: (hero: Hero, trigger: HTMLElement) => void;
-  onInfoCard: (card: Card, trigger: HTMLElement) => void;
-  equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
-  hiddenCardIds?: ReadonlySet<string>;
-  equipmentArrivalPendingIds?: ReadonlySet<string>;
-  isGroupPreview?: boolean;
-  preserveGuidanceHeight?: boolean;
-  attackResponsePrompt?: boolean;
-};
-
-type LocalPlayerDockLayout = {
-  dockRef: React.RefObject<HTMLElement | null>;
-  judgementRailRef: React.RefObject<HTMLDivElement | null>;
-  judgementCardWidth: number;
-  judgementCardLayout: { step: number; measured: boolean };
-};
-
-function useLocalPlayerDockLayout(input: { playerId?: string; preserveGuidanceHeight: boolean; judgementCardCount: number }): LocalPlayerDockLayout {
-  const dockRef = useRef<HTMLElement | null>(null);
-  const guidanceHeightRef = useRef<number | null>(null);
-  const preserveGuidanceHeightRef = useRef(input.preserveGuidanceHeight);
-  const judgementRailRef = useRef<HTMLDivElement | null>(null);
-  const [judgementRailWidth, setJudgementRailWidth] = useState(0);
-  const [judgementCardWidth, setJudgementCardWidth] = useState(34);
-  useLayoutEffect(() => {
-    const rail = judgementRailRef.current;
-    if (!rail) return;
-    const updateWidth = () => {
-      const configuredWidth = Number.parseFloat(getComputedStyle(rail).getPropertyValue("--zone-card-width"));
-      setJudgementRailWidth(rail.clientWidth);
-      if (Number.isFinite(configuredWidth) && configuredWidth > 0) setJudgementCardWidth(configuredWidth);
-    };
-    updateWidth();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
-    }
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(rail);
-    return () => observer.disconnect();
-  }, [input.playerId]);
-  useLayoutEffect(() => {
-    preserveGuidanceHeightRef.current = input.preserveGuidanceHeight;
-    const guidanceNode = dockRef.current?.querySelector<HTMLElement>(".console-guidance");
-    if (!guidanceNode) return;
-    const height = guidanceHeightRef.current;
-    if (input.preserveGuidanceHeight && height !== null) guidanceNode.style.minHeight = `${height}px`;
-    else guidanceNode.style.removeProperty("min-height");
-  }, [input.preserveGuidanceHeight]);
-  useLayoutEffect(() => {
-    const guidanceNode = dockRef.current?.querySelector<HTMLElement>(".console-guidance");
-    if (!guidanceNode) return;
-    const measure = () => {
-      if (preserveGuidanceHeightRef.current) return;
-      const height = guidanceNode.getBoundingClientRect().height;
-      if (height > 0) guidanceHeightRef.current = height;
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(guidanceNode);
-    return () => observer.disconnect();
-  }, [input.playerId]);
-  const judgementCardLayout = useMemo(() => {
-    const cardWidth = judgementCardWidth;
-    const count = input.judgementCardCount;
-    if (count <= 1) return { step: cardWidth, measured: judgementRailWidth > 0 };
-    const naturalStep = (judgementRailWidth - cardWidth) / (count - 1);
-    return { step: naturalStep >= cardWidth ? naturalStep : Math.max(12, naturalStep), measured: judgementRailWidth > 0 };
-  }, [input.judgementCardCount, judgementCardWidth, judgementRailWidth]);
-  return { dockRef, judgementRailRef, judgementCardWidth, judgementCardLayout };
-}
-
-export function LocalPlayerDock(props: LocalPlayerDockProps) {
-  const layout = useLocalPlayerDockLayout({
-    playerId: props.player?.id,
-    preserveGuidanceHeight: props.preserveGuidanceHeight ?? false,
-    judgementCardCount: props.player?.judgementCards?.length ?? 0,
-  });
-  return <LocalPlayerDockView {...props} layout={layout} />;
-}
-
-function LocalPlayerDockView({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), equipmentArrivalPendingIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false, layout }: LocalPlayerDockProps & { layout: LocalPlayerDockLayout }) {
-  const { dockRef, judgementRailRef, judgementCardWidth, judgementCardLayout } = layout;
-  const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
-  for (const equipment of player?.equipmentCards ?? []) {
-    const slot = cardDefinition(equipment.kind).equipmentSlot;
-    if (slot) equipmentBySlot.set(slot, equipment);
-  }
-  const slotLabel = (slot: LocalEquipmentSlot) => LOCAL_EQUIPMENT_SLOTS.find((entry) => entry.key === slot)?.label ?? slot;
-  const judgementCards = player?.judgementCards ?? [];
-  const fallbackSkills = hero?.skills?.length ? hero.skills : hero ? [{ name: hero.skill ?? "Hero Skill", description: hero.ability }] : [];
-  const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
-  const interactionRoleClasses = [
-    interactionRoles.isInteractionSource ? "interaction-seat-source" : "",
-    interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : "",
-    interactionRoles.isActiveTarget ? "interaction-seat-active-target" : "",
-    interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : "",
-    interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : "",
-    interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : "",
-    interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : "",
-  ].filter(Boolean).join(" ");
-  const renderZoneCard = (card: Card, selected = false, selectable = false) => {
-    const definition = cardDefinition(card.kind);
-    const isEquipment = Boolean(definition.equipmentSlot);
-    const equipmentArrivalPending = isEquipment && equipmentArrivalPendingIds.has(card.id);
-    const inspect = (trigger: HTMLButtonElement) => onInfoCard(card, trigger);
-    return <div className={`local-zone-card ${suitColorClass(card.suit)} ${selectable ? "local-zone-card-selectable" : ""} ${selected ? "selected-cost" : ""}${equipmentArrivalPending ? " equipment-arrival-pending" : ""}`} key={card.id} data-equipment-id={isEquipment ? card.id : undefined} data-equipment-arrival-pending={equipmentArrivalPending ? "true" : undefined} data-judgement-id={!isEquipment ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
-      <CardFace card={card} />
-      {selectable
-        ? <button type="button" className="local-zone-card-button" aria-label={`Select ${definition.name}`} aria-pressed={selected} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} />
-        : <button type="button" className="local-zone-card-button" aria-label={isEquipment ? `View ${definition.name} details` : `Explain ${definition.name}`} onClick={(event) => inspect(event.currentTarget)} />}
-      {isEquipment
-        ? selectable && <button type="button" className="local-equipment-inspect-button" aria-label={`View ${definition.name} details without selecting`} title={`View ${definition.name} details without selecting`} onClick={(event) => { event.stopPropagation(); inspect(event.currentTarget); }} />
-        : <button type="button" className="zone-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); inspect(event.currentTarget); }}>i</button>}
-    </div>;
-  };
-  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area" tabIndex={-1}>
-    {guidance}
-    <div className="local-dock-identity">
-      <div className="local-hero-anchor">
-        {hero ? <>
-          <button
-            type="button"
-            className={`local-hero-card${selfTargetable ? " targetable-target" : ""}${selfTargetSelected ? " selected-target" : ""}`}
-            aria-label={selfTargetable ? `Select ${player?.name ?? "your character"}` : `Explain ${hero.name}`}
-            aria-pressed={selfTargetable ? selfTargetSelected : undefined}
-            onClick={(event) => selfTargetable ? onSelfTarget() : onHeroInfo(hero, event.currentTarget)}
-          ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /></span></button>
-          <div className="local-hero-identity-footer" aria-label="Your role and health">
-            <span className="local-hero-role" aria-label={player?.role ? `Role: ${player.role}` : "Role pending"}>{player?.role ?? "Role pending"}</span>
-            <span className="local-hero-hp" aria-label={`HP ${player?.hp ?? 0} of ${player?.maxHp ?? 0}`}>HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span>
-          </div>
-          {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`View ${hero.name} details`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero, event.currentTarget); }}><span aria-hidden="true">i</span></button>}
-        </> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
-        {judgementCards.length > 0 && <div ref={judgementRailRef} className="local-judgement-cards local-judgement-overlay" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }} role="group" aria-label="Persistent Judgement cards">
-          {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
-        </div>}
-      </div>
-    </div>
-    <div className="local-dock-zones" aria-label="Your status and equipment zones">
-      <div className="local-status-panel" aria-label="Hero skills">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
-      <div className="local-equipment-panel" aria-label="Equipment">
-        <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} data-player-equipment-slot-owner={player?.id ?? undefined} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}><span className="local-zone-empty-label">{slotLabel(key)}</span></span>}</div>; })}</div>
-      </div>
-    </div>
-    {children}
-  </section>;
-}
 
 type HandViewportCardPosition = { id: string; index: number; left: number; center: number; visible: boolean };
 type HandViewportSnapshot = {

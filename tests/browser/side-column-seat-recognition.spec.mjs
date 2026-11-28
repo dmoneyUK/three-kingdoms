@@ -143,10 +143,10 @@ async function readLayout(page) {
 }
 
 function loadSeatProjector() {
-  const source = readFileSync(new URL("../../app/page.tsx", import.meta.url), "utf8");
-  const sourceFile = ts.createSourceFile("app/page.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const source = readFileSync(new URL("../../app/components/game/opponent-player-card.tsx", import.meta.url), "utf8");
+  const sourceFile = ts.createSourceFile("app/components/game/opponent-player-card.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = sourceFile.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "projectSideColumnSeat");
-  expect(declaration, "the app exports the production seat projection function").toBeTruthy();
+  expect(declaration, "the opponent card module owns the production seat projection function").toBeTruthy();
   const implementation = source.slice(declaration.getStart(sourceFile), declaration.end).replace(/^export\s+/, "");
   const compiled = ts.transpileModule(implementation, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
