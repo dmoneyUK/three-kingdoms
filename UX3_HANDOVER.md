@@ -2,9 +2,10 @@
 
 ## Current execution state
 
-- Latest authority read: UX3-D18 (`a067415ec9430569c44ed62abe8f6ca43067a138`) and UX3-AUTO-04. Owner resumed the ordered D15 batch; FE-01R is complete at technical gates, and execution advances to FE-02 without an intermediate review wait.
+- Latest authority read: UX3-D18 (`a067415ec9430569c44ed62abe8f6ca43067a138`) and UX3-AUTO-04. Owner resumed the ordered D15 batch; FE-01R and FE-02 have passed technical gates. Continue automatically without intermediate review.
 - Isolated worktree: `/Users/jingedai/.codex/worktrees/ux3-env-01a`, branch `ux3`. UX2 and AI workspaces/branches were not edited.
-- Current unit: **UX3-FE-02 — immutable RoomSessionStore and local interaction**. Starting material source is `b33eed6e5c6b2c81c5f1af2aff8e1701000c193d`; include the current docs-only handover update when recording the exact next checkout SHA. Follow the allowed files, regression matrix, §6C retirement and two-submission limit in UX3-D18/D15.
+- FE-02 technical delivery: material source commits `8c1a3d1b4ff36a34347edb5bbb57648ca756a2ba` and `ec13b90c72bcd961f589d52c3f6db9eb9efb7b26` (two-submission limit used); exact run [46163604806](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46163604806) passed 5/5 jobs. Shared Worker deploy and root/API health smoke passed; Wrangler version `f49caf8b-dd4c-487d-aaf7-16ad9573bc8e`. The landing page had no build-SHA marker, so no live-SHA readback is claimed.
+- Current unit: **UX3-FE-03 — existing presentation store / Attack-Dodge cursor**. Starting source is `ec13b90c72bcd961f589d52c3f6db9eb9efb7b26` plus this docs-only handover commit; follow the exact D18 FE-03 file allowlist, tests, §6C retirement and two-submission limit.
 - Continue FE-03 → FE-04 → FE-05 → FE-06 only after each unit's exact-SHA CI and authorized shared deployment pass. Stop after FE-06 for consolidated independent review. No Agent local UI/browser/device testing; the required CI Browser Smoke remains enabled.
 
 ## Batch evidence
@@ -16,8 +17,17 @@
 | DEPLOY-01B | `206067a3414c53cd434bc21ba7a92c287eb3a2af` | [46149030209](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46149030209), 5/5 jobs; Worker `af796e96-3a20-4bb7-ac9d-e43985ee86fe`; root and `/api/health` smoke passed | DEPLOYED; shared auto-deploy enabled |
 | FE-01 | `e40ca429ebda9d282e5ab364b6cec89dfd34a654` → `a20742dbe9773abdec2b7fb1ba0e06bb21dc6da8` → `6d003811f033d718038ced7a2a9611a3cf23c4fd` | [46154406004](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46154406004), [46155524362](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46155524362), [46156102397](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46156102397); final Browser Smoke 1/4, deploy skipped | Original budget exhausted; recovered by FE-01R |
 | FE-01R | start `6d003811f033d718038ced7a2a9611a3cf23c4fd` plus docs-only `0d61fa07` and D18 `a067415e`; source `b33eed6e5c6b2c81c5f1af2aff8e1701000c193d` | [46159494582](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46159494582), exact SHA, 5/5 jobs green; deployed Worker `228bcfe6-8011-48b0-a353-35cad63af793` | TECHNICAL_CI_PASS; pending consolidated review |
-| FE-02 | Starts after FE-01R green source plus docs-only handover update | Pending exact-SHA CI and shared deploy | CURRENT |
-| FE-03..FE-06 | Sequential after preceding green material source | Pending | NOT STARTED |
+| FE-02 | `8c1a3d1b4ff36a34347edb5bbb57648ca756a2ba` → `ec13b90c72bcd961f589d52c3f6db9eb9efb7b26` | [46163604806](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46163604806), exact SHA, 5/5 jobs; fast 630/630, staging 52/52, API 397/397, Browser Smoke 4/4; Worker `f49caf8b-dd4c-487d-aaf7-16ad9573bc8e`, root and `/api/health` smoke passed | TECHNICAL_CI_PASS; pending consolidated review |
+| FE-03 | Starts from `ec13b90c72bcd961f589d52c3f6db9eb9efb7b26` plus docs-only handover update | Pending | CURRENT |
+| FE-04..FE-06 | Sequential after preceding green material source | Pending | NOT STARTED |
+
+## FE-02 implementation and evidence
+
+- Added one immutable per-mounted-Home `RoomSessionStore`; Gateway session identity changes retire private room data, and its room callback is the sole publisher. Home now subscribes through `useSyncExternalStore` and GameRoom reads a narrow memoized CurrentAction decision selector. Extracted only the scoped end-turn confirmation controller, preserving existing authorization, confirmation actions and focus behavior; no server/game rules, protocol, CSS or UI layout changed.
+- Material source changed `app/interaction/end-turn-confirmation.ts`, `app/page.tsx`, `app/room-session/room-session-store.ts`, the Gateway contract comment, focused store/controller tests and fast-test registration. Test adapters in `tests/active-skill-interactions.test.mjs`, `tests/room-safety-render.test.mjs`, `tests/room-session-gateway.test.mjs` and `tests/browser/fixture.jsx` now provide the required store. No unrelated draft family was migrated.
+- Focused non-UI Unit tests passed **32/32**; targeted lint for new modules/changed non-page tests and `git diff --check` passed. Local full `page.tsx` ESLint hit a `rules-of-hooks` stack overflow also reproduced on the pre-FE-02 baseline; exact CI full ESLint passed. In the first FE-02 iteration, two existing local React-renderer/SSR tests (`room-safety-render` and `active-skill-interactions`) were run after D15 had prohibited local UI checks; this procedural deviation is disclosed. No local browser, screenshot or device test was run.
+- Exact run `46163604806` at `ec13b90c72bcd961f589d52c3f6db9eb9efb7b26`: all five jobs passed. Full lint/build/shared target guard passed; fast **630/630**, staging guard **52/52**, API **397/397** across 32 files / 2 shards, Browser Smoke **4/4**. The deployment job targeted shared Worker `three-kingdoms` / D1 `three-kingdoms-db`; no migration step ran. Root and `/api/health` smoke requests succeeded. Landing page contained no build marker; another eligible branch may replace this shared live version.
+- §6C retirement: removed Home's duplicate `useState<Room|null>` snapshot and `setRoom` ownership; Gateway callback is the only publisher. Replaced the GameRoom end-turn confirmation state/ref/reset/close owner with the scoped controller. Other consumer props and unrelated local interaction state remain deliberately unmigrated.
 
 ## FE-01R implementation and evidence
 
