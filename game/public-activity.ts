@@ -4,6 +4,7 @@ import type { PresentationSnapshot } from "./presentation-snapshot";
 import { publicDecisionFromPresentationSnapshot } from "./presentation-semantics.ts";
 import { PUBLIC_PRESENTATION_EVENT_CATEGORIES, type CommittedPublicOutcome, type CommittedPublicOutcomeChange, type PublicPresentationEventCategory } from "./presentation-semantics";
 import { CARD_DEFINITIONS } from "./cards";
+import { judgementResolutionFor } from "./decisions/judgement";
 import {
   publicH4CardFaceReference,
   publicH4CardKindReference,
@@ -53,12 +54,11 @@ export type PublicActivityStatus = {
 
 const NO_PUBLIC_ACTIVITY: PublicActivityStatus = { kind: "none", text: "" };
 
-function activePublicJudgementFact(input: PublicActivityInput) {
+function activePublicJudgementPresentation(input: PublicActivityInput) {
   const snapshot = input.presentationSnapshot;
   const eventId = input.activePublicJudgementEventId;
   if (!snapshot || !eventId) return null;
   const interaction = snapshot.interaction;
-  let facts: PresentationSnapshot["publicEventFacts"] = snapshot.publicEventFacts;
   if (interaction) {
     const identity = snapshot.identity;
     if (!identity || interaction.semantics !== "PROVEN" || interaction.stage !== "JUDGEMENT"
@@ -67,13 +67,13 @@ function activePublicJudgementFact(input: PublicActivityInput) {
       || interaction.presentationRevision !== identity.presentationRevision) return null;
   } else {
     if (snapshot.identity || !snapshot.retainedPublicEventFacts?.length) return null;
-    facts = snapshot.retainedPublicEventFacts ?? [];
   }
-  const matching = facts.filter((fact) => fact.eventId === eventId
-    && fact.category === "EFFECT_APPLIED" && fact.effect?.kind === "judgement"
-    && fact.rootEventId && fact.outcomeLabel
-    && (!interaction || fact.identity.interactionId === interaction.interactionId
-      && fact.identity.rootFrameId === interaction.rootFrameId));
+  const matching = (snapshot.publicJudgementPresentations ?? []).filter((presentation) => presentation.eventId === eventId
+    && presentation.semantics === "PROVEN" && presentation.visibility === "PUBLIC"
+    && presentation.judgementId && presentation.copy.message.trim()
+    && (!interaction || !presentation.causal
+      || presentation.causal.interactionId === interaction.interactionId
+        && presentation.causal.frameId === interaction.rootFrameId));
   return matching.length === 1 ? matching[0] : null;
 }
 
@@ -649,8 +649,16 @@ export function derivePublicInteractionNarration(input: {
   rootFrameId: string;
   /** Selects the exact active public event instead of a later same-root result. */
   eventId?: string;
+  /** Validated immutable public facts retained with an ordered presentation event. */
+  committedPublicFacts?: readonly PresentationSnapshot["publicEventFacts"][number][];
   /** Exact live Kirin Bow frame whose own committed discard and Attack hit may share H4. */
   liveKirinBowEffectEventId?: string;
+  /** Canonical exact discard copy supplied by the verified settlement owner. */
+  canonicalDiscardCopy?: {
+    eventId: string;
+    headline: string;
+    segments?: readonly VerifiedPlayerCopySegment[];
+  };
 }): PublicInteractionNarration | null {
   const snapshot = input.snapshot;
   const identity = snapshot?.identity;
@@ -658,10 +666,31 @@ export function derivePublicInteractionNarration(input: {
   if (!snapshot || !input.rootEventId) return null;
   let latest: PresentationSnapshot["publicEventFacts"][number] | undefined;
   const publicFactsByEventId = new Map<string, PresentationSnapshot["publicEventFacts"][number]>();
-  for (const fact of [...(snapshot.retainedPublicEventFacts ?? []), ...snapshot.publicEventFacts]) {
+  const factSignature = (fact: PresentationSnapshot["publicEventFacts"][number]) => {
+    const { identity, committedOutcome, ...semanticFact } = fact;
+    return JSON.stringify({
+      ...semanticFact,
+      identity: { interactionId: identity.interactionId, rootFrameId: identity.rootFrameId },
+      committedOutcome: committedOutcome ? (({ identity: outcomeIdentity, ...outcome }) => ({
+        ...outcome,
+        identity: { interactionId: outcomeIdentity.interactionId, rootFrameId: outcomeIdentity.rootFrameId },
+      }))(committedOutcome) : undefined,
+    });
+  };
+  for (const fact of [
+    ...(snapshot.retainedPublicEventFacts ?? []),
+    ...snapshot.publicEventFacts,
+    ...(input.committedPublicFacts ?? []),
+  ]) {
     if (fact.rootEventId === input.rootEventId
       && fact.identity.interactionId === input.interactionId
-      && fact.identity.rootFrameId === input.rootFrameId) publicFactsByEventId.set(fact.eventId, fact);
+      && fact.identity.rootFrameId === input.rootFrameId) {
+      const prior = publicFactsByEventId.get(fact.eventId);
+      if (prior && factSignature(prior) !== factSignature(fact)) return null;
+      // Queue facts are appended last and keep the committed checkpoint/revision
+      // that was validated when the event entered the viewer's presentation queue.
+      publicFactsByEventId.set(fact.eventId, fact);
+    }
   }
   const verifiedFacts = [...publicFactsByEventId.values()].sort((left, right) => left.order - right.order);
   const verifiedRootOrder = verifiedFacts.find((fact) => fact.eventId === input.rootEventId)?.order ?? -1;
@@ -771,9 +800,19 @@ export function derivePublicInteractionNarration(input: {
   const targetPart = affectedParts.length === 1 ? affectedParts[0] : null;
   const target = targetPart?.name ?? null;
   const amount = Number.isSafeInteger(latest.amount) && (latest.amount ?? 0) > 0 ? latest.amount : null;
-  const committedOutcomeCopy = latest.committedOutcome
-    ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players, verifiedFacts)
+  const hasDiscardOutcome = latest.category === "CARD_DISCARDED"
+    || latest.committedOutcome?.changes.some((change) => change.kind === "CARD_DISCARDED") === true;
+  const canonicalDiscardCopy = input.canonicalDiscardCopy?.eventId === latest.eventId
+    && hasDiscardOutcome && input.canonicalDiscardCopy.headline.trim()
+    ? {
+      message: input.canonicalDiscardCopy.headline,
+      segments: [...(input.canonicalDiscardCopy.segments ?? [])],
+    }
     : null;
+  const committedOutcomeCopy = canonicalDiscardCopy
+    ?? (latest.committedOutcome
+      ? formatCommittedPublicOutcomeCopy(latest.committedOutcome, input.players, verifiedFacts)
+      : null);
   if (latest.committedOutcome && !committedOutcomeCopy) return null;
   let headlineCopy: { message: string; segments: VerifiedPlayerCopySegment[] } | null = null;
   const fromParts = (parts: readonly (string | { id: string; name: string })[]) => {
@@ -1287,10 +1326,10 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   // event, keep PAC aligned with that public card and H4. The server Discard
   // phase takes over as soon as the reveal is no longer the active event.
   if (input.status === "playing") {
-    const fact = activePublicJudgementFact(input);
-    if (fact) {
-      const actor = playerPart(input.players, fact.actorId, true);
-      const judgement = effectLabel(fact.effect?.label ?? fact.label);
+    const presentation = activePublicJudgementPresentation(input);
+    if (presentation) {
+      const actor = playerPart(input.players, presentation.judgingPlayerId, true);
+      const judgement = judgementResolutionFor(presentation.purpose).label;
       if (actor && judgement) {
         const copy = verifiedPlayerCopy([actor, ` is judging ${judgement}.`]);
         return { kind: "judgement", text: copy.message, heading: copy.message,

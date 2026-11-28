@@ -28,7 +28,6 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, judgementSucceeds, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { projectPublicJudgementPresentations, type PublicJudgementPresentationRecord } from "../../../game/public-judgement-presentation";
-import { publicH4RankSuitReference } from "../../../game/public-h4-copy";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
 import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestNegationResponseRecord, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
@@ -553,7 +552,7 @@ async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedA
     hash(room.skill_state_json ?? ""),
     hash(players.map((player) => `${player.id}:${player.hand_json ?? "[]"}`).join("|")),
   ]);
-  return [room.status, room.phase ?? "", projectedActionPlayerId ?? "", pendingRevision, skillStateRevision, handRevision].join("|");
+  return [room.status, room.phase ?? "", room.turn_epoch ?? 0, projectedActionPlayerId ?? "", pendingRevision, skillStateRevision, handRevision].join("|");
 }
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) {
@@ -800,37 +799,6 @@ function publicFactFor(causal: CausalContext | undefined, category: PublicPresen
     category, ...fields, ...(committedOutcome ? { committedOutcome } : {}), ...(committedIdentity ? { committedIdentity } : {}),
   };
 }
-function stauchnessJudgementPublicFact(input: {
-  log: string[];
-  causal: CausalContext | undefined;
-  rootEventId: string | undefined;
-  envelope?: CausalEnvelope | null;
-  actor: PlayerRow;
-  card: Card;
-  outcome: "revealed" | "not-heart" | "heart" | "source-unavailable";
-  affectedPlayerIds?: readonly string[];
-}) {
-  if (!input.rootEventId) return undefined;
-  const resultCopy = input.outcome === "revealed" ? ""
-    : input.outcome === "not-heart" ? " — not a Heart"
-      : input.outcome === "heart" ? " — no effect"
-        : " — not a Heart; no consequence was applied";
-  const judgementFace = publicH4RankSuitReference(input.card.rank, input.card.suit) ?? "a Judgement card";
-  const detail = ` used Stauchness. Judgement: ${judgementFace}${resultCopy}`;
-  const outcomeLabel = `${input.actor.name}${detail}`;
-  return publicFactFor(input.causal, "EFFECT_APPLIED", {
-    rootEventId: input.rootEventId,
-    actorId: input.actor.id,
-    affectedPlayerIds: [...new Set([input.actor.id, ...(input.affectedPlayerIds ?? [])])],
-    label: "Stauchness",
-    outcomeLabel,
-    outcomeCopySegments: [
-      { kind: "player", playerId: input.actor.id, text: input.actor.name },
-      { kind: "text", text: detail },
-    ],
-    effect: { kind: "judgement", label: "Stauchness" },
-  }, input.envelope, publicIdentityFromCommittedRoot(input.log, input.rootEventId, input.causal));
-}
 function stauchnessJudgementLogLabel(actor: PlayerRow, card: Card, outcome: "revealed" | "not-heart" | "heart" | "source-unavailable") {
   const resultCopy = outcome === "revealed" ? ""
     : outcome === "not-heart" ? " — not a Heart"
@@ -873,7 +841,7 @@ function addCommittedPublicSkillOutcome(
   }, eventId);
   return { log: committed.log, eventId, causal: causal.context, envelope: causal.envelope };
 }
-type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; outcomeLabel: string };
+type PublicTriggerOutcomeSummary = { affectedPlayerIds?: string[]; outcomeLabel?: string };
 
 function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOutcomeSummary {
   const details = outcome as unknown as Record<string, unknown>;
@@ -892,7 +860,10 @@ function publicTriggerOutcomeSummary(outcome: { kind: string }): PublicTriggerOu
     case "prevent_damage": return { outcomeLabel: "prevented the damage" };
     case "target_discard": return { outcomeLabel: "discarded one selected card" };
     case "discard_cards": return { affectedPlayerIds: ids(details.targetId), outcomeLabel: "resolved a discard effect" };
-    case "judgement": return { outcomeLabel: "started a Judgement" };
+    // The canonical Judgement presentation owns the reveal copy. Keep the
+    // committed skill-use fact for activation proof, without a duplicate
+    // generic "started a Judgement" H4 outcome.
+    case "judgement": return {};
     case "attacker_draw": return { outcomeLabel: "allowed the attacker to draw a card" };
     case "follow_up_attack": return { outcomeLabel: "prepared a follow-up Attack" };
     default: return { outcomeLabel: "resolved its effect" };
@@ -922,7 +893,7 @@ function publicTriggerFactFor(trigger: TriggerPending, players: PlayerRow[], eff
     ...(affectedPlayerIds.length ? { affectedPlayerIds } : {}),
     ...(option?.label ? { label: option.label } : {}),
     ...(summary.outcomeLabel ? { outcomeLabel: summary.outcomeLabel } : {}),
-    effect: { kind: outcome.kind },
+    effect: { kind: outcome.kind, effectId },
   }, envelope);
 }
 
@@ -1545,6 +1516,7 @@ function publicJudgementPresentationRecord(
     semantics: "PROVEN" as const,
     visibility: "PUBLIC" as const,
     judgementId: judgement.revealedEventId ?? "",
+    ...(judgement.activationEventId ? { activationEventId: judgement.activationEventId } : {}),
     targetId: judgement.targetId,
     judgingPlayerId: judgement.targetId,
     purpose: judgement.purpose,
@@ -3051,23 +3023,11 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
     if (result.status === "satisfied") {
       const source = players.find((player) => player.id === damageResume.sourceId && player.alive) ?? null;
       if (source) {
-        const stauchnessPendingFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
-          ? stauchnessJudgementPublicFact({
-            log,
-            causal: judgement.causal,
-            rootEventId: damageResume.rootEventId,
-            envelope: parseCausalEnvelope(room.causal_envelope_json),
-            actor: target,
-            card: finalCard,
-            outcome: "not-heart",
-            affectedPlayerIds: [source.id],
-          })
-          : undefined;
-        const presentation = addLogWithId(log, stauchnessPendingFact
+        const presentation = addLogWithId(log, damageResume.secondaryEffectId === "xiahou_dun_ganglie"
           ? stauchnessJudgementLogLabel(target, finalCard, "not-heart")
           : `${target.name} judges ${finalCard.rank}${finalCard.suit} for Stauchness.`, undefined, {
           resolutionId: judgement.resolutionId, importance: "essential", finalResult: true,
-          actorId: target.id, ...(stauchnessPendingFact ? { publicFact: stauchnessPendingFact } : {}),
+          actorId: target.id,
         });
         const pending: TriggerPending = withPresentationBarrier({
           kind: "trigger",
@@ -3093,42 +3053,18 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
         ]);
         return [];
       }
-      const unavailableFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
-        ? stauchnessJudgementPublicFact({
-          log,
-          causal: judgement.causal,
-          rootEventId: damageResume.rootEventId,
-          envelope: parseCausalEnvelope(room.causal_envelope_json),
-          actor: target,
-          card: finalCard,
-          outcome: "source-unavailable",
-          affectedPlayerIds: damageResume.sourceId ? [damageResume.sourceId] : [],
-        })
-        : undefined;
-      log = addFinalResult(log, unavailableFact
+      log = addFinalResult(log, damageResume.secondaryEffectId === "xiahou_dun_ganglie"
         ? stauchnessJudgementLogLabel(target, finalCard, "source-unavailable")
         : `${target.name} judges ${finalCard.rank}${finalCard.suit}, but the damage source is no longer available.`, undefined, judgement.resolutionId,
-        unavailableFact ? { actorId: target.id, publicFact: unavailableFact } : undefined);
+        damageResume.secondaryEffectId === "xiahou_dun_ganglie" ? { actorId: target.id } : undefined);
     } else {
       const resultText = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
         ? "The Heart result means Stauchness has no effect."
         : "The Heart result ends the post-damage reaction.";
-      const stauchnessNoEffectFact = damageResume.secondaryEffectId === "xiahou_dun_ganglie"
-        ? stauchnessJudgementPublicFact({
-          log,
-          causal: judgement.causal,
-          rootEventId: damageResume.rootEventId,
-          envelope: parseCausalEnvelope(room.causal_envelope_json),
-          actor: target,
-          card: finalCard,
-          outcome: "heart",
-          affectedPlayerIds: damageResume.sourceId ? [damageResume.sourceId] : [],
-        })
-        : undefined;
-      log = addFinalResult(log, stauchnessNoEffectFact
+      log = addFinalResult(log, damageResume.secondaryEffectId === "xiahou_dun_ganglie"
         ? stauchnessJudgementLogLabel(target, finalCard, "heart")
         : `${target.name} judges ${finalCard.rank}${finalCard.suit}. ${resultText}`, undefined, judgement.resolutionId, {
-        ...(stauchnessNoEffectFact ? { actorId: target.id, publicFact: stauchnessNoEffectFact } : {}),
+        ...(damageResume.secondaryEffectId === "xiahou_dun_ganglie" ? { actorId: target.id } : {}),
       });
     }
     const resolvedEffectIds = damageResume.secondaryEffectId
@@ -3283,19 +3219,9 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
     return [];
   }
   const purpose = judgementPurposeForDelayed(delayed) ?? "overindulgence";
-  const rule = judgementResolutionFor(purpose);
   const rootEventId = latestPublicCardSourceEventId(log, delayed.id);
-  const judgementFact = causalRoot && rootEventId ? publicFactFor(causalRoot.context, "EFFECT_APPLIED", {
-    rootEventId,
-    actorId: target.id,
-    affectedPlayerIds: [target.id],
-    label: rule.label,
-    outcomeLabel: `${target.name} revealed ${draw.card.rank}${draw.card.suit} ${cardDefinition(draw.card.kind).name} for ${rule.label}.`,
-    effect: { kind: "judgement", label: rule.label },
-  }, causalRoot.envelope) : undefined;
   const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, {
     judgement: true,
-    ...(judgementFact ? { publicFact: judgementFact } : {}),
   });
   const judgement: JudgementContinuation = { targetId: target.id, purpose, revealedCard: draw.card, revealedEventId: presentation.eventId,
     ...(rootEventId ? { actionRootEventId: rootEventId } : {}), ...(causalRoot ? { causal: causalRoot.context } : {}),
@@ -3462,8 +3388,11 @@ function privateStealParticipantResultForEvent(
     card: card as unknown as Card,
   };
 }
-async function claimTurnAction(roomId: string, seat: number, phase: string) {
-  const result = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ?").bind(roomId, seat, phase).run();
+async function claimTurnAction(roomId: string, seat: number, phase: string, turnEpoch: number) {
+  const result = await db().prepare(`UPDATE rooms SET phase = 'resolving'
+    WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ? AND turn_epoch = ? AND pending_json IS NULL
+      AND EXISTS (SELECT 1 FROM players WHERE room_id = ? AND seat = ? AND alive = 1)`)
+    .bind(roomId, seat, phase, turnEpoch, roomId, seat).run();
   return (result.meta.changes ?? 0) > 0;
 }
 function groupSequenceFromPending(pending: Pending | null): GroupContinuation | null {
@@ -3562,6 +3491,25 @@ async function finishIfWon(roomId: string) {
 
 function turnStartContext(player: PlayerRow) {
   return { event: "turn_start" as const, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero };
+}
+
+function prepareTurnStart(player: PlayerRow, log: string[]) {
+  const options = getTriggeredEffects(turnStartContext(player));
+  const skillState = JSON.stringify(turnHistoryFor(player.id));
+  const startPublicSequence = publicSequenceWatermarkFromLog(log);
+  if (!options.length) return { phase: "draw" as const, pending: null, log, skillState, startPublicSequence };
+
+  const labels = options.map((option) => option.label).join(" or ");
+  const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
+  const pending: TriggerPending = withPresentationBarrier({
+    kind: "trigger",
+    event: "turn_start",
+    actorId: player.id,
+    reason: `${player.name} may use ${labels}, or decline`,
+    deadline: nextResponseDeadline(player),
+    continuation: { kind: "turn_start_event", playerId: player.id },
+  }, presentation.log, presentation.eventId);
+  return { phase: "response" as const, pending, log: presentation.log, skillState, startPublicSequence };
 }
 
 function hpRecoveredTriggerContext(player: PlayerRow, recovery: RecoveryRecord, players: PlayerRow[]) {
@@ -3995,42 +3943,19 @@ async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLost
 }
 
 /** Canonical beginning-of-turn transition. Only this path may offer turn-start capabilities. */
-async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string, expectedPhase: "draw" | "resolving" = "resolving") {
+async function beginTurnStart(roomId: string, turnSeat: number, expectedPendingJson?: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const players = rows.results ?? [];
   const player = players.find((candidate) => candidate.seat === turnSeat && candidate.alive);
   if (!room || !player) return;
-  const options = getTriggeredEffects(turnStartContext(player));
-  const log = parse<string[]>(room.log_json, []);
-  // The boundary is the latest public event committed before this turn's
-  // optional start trigger is appended. Invalid sequence metadata stays
-  // unknown so the client can fail closed for public transient presentation.
-  const startPublicSequence = publicSequenceWatermarkFromLog(log);
-  const skillState = JSON.stringify(turnHistoryFor(player.id));
+  const prepared = prepareTurnStart(player, parse<string[]>(room.log_json, []));
   const boundary = expectedPendingJson !== undefined
     ? { where: "phase = 'resolving' AND pending_json = ? AND turn_seat = ?", values: [expectedPendingJson, turnSeat] }
-    : expectedPhase === "draw"
-      ? { where: "phase = 'draw' AND pending_json IS NULL AND turn_seat = ? AND turn_epoch = 0", values: [turnSeat] }
-      : { where: "phase = 'resolving' AND pending_json IS NULL AND turn_seat = ?", values: [turnSeat] };
-  if (!options.length) {
-    const update = await db().prepare(`UPDATE rooms SET turn_seat = ?, phase = 'draw', pending_json = NULL, skill_state_json = ?, turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND ${boundary.where}`)
-      .bind(turnSeat, skillState, startPublicSequence, roomId, ...boundary.values).run();
-    if ((update.meta.changes ?? 0) <= 0) return;
-    return;
-  }
-  const labels = options.map((option) => option.label).join(" or ");
-  const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
-  const pending: TriggerPending = withPresentationBarrier({
-    kind: "trigger",
-    event: "turn_start",
-    actorId: player.id,
-    reason: `${player.name} may use ${labels}, or decline`,
-    deadline: nextResponseDeadline(player),
-    continuation: { kind: "turn_start_event", playerId: player.id },
-  }, presentation.log, presentation.eventId);
-  const update = await db().prepare(`UPDATE rooms SET turn_seat = ?, phase = 'response', pending_json = ?, log_json = ?, skill_state_json = ?, turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND ${boundary.where}`)
-    .bind(turnSeat, serializePending(pending), JSON.stringify(presentation.log), skillState, startPublicSequence, roomId, ...boundary.values).run();
+    : { where: "phase = 'resolving' AND pending_json IS NULL AND turn_seat = ?", values: [turnSeat] };
+  const updateSql = "UPDATE rooms SET turn_seat = ?, phase = ?, pending_json = ?, log_json = ?, skill_state_json = ?, turn_epoch = turn_epoch + 1, turn_start_public_sequence = ? WHERE id = ? AND status = 'playing' AND " + boundary.where;
+  const update = await db().prepare(updateSql)
+    .bind(turnSeat, prepared.phase, prepared.pending ? serializePending(prepared.pending) : null, JSON.stringify(prepared.log), prepared.skillState, prepared.startPublicSequence, roomId, ...boundary.values).run();
   if ((update.meta.changes ?? 0) <= 0) return;
 }
 
@@ -4182,20 +4107,33 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
   let openingLog = [`${(players.find((player) => player.role === "Lord") ?? players[0]).name} begins the match.`];
   for (const { player, cards } of openingHands) for (const drawn of cards) openingLog = addPrivateDrawEvent(openingLog, player, drawn, true);
   const claim = `initial-deal:${crypto.randomUUID()}`;
+  const lord = players.find((player) => player.role === "Lord") ?? players[0];
+  const lordOpening = openingHands.find((entry) => entry.player.id === lord.id);
+  const lordHero = STANDARD_HEROES.find((candidate) => candidate.id === lord.hero);
+  const lordMaxHp = lordHero?.hp ?? lord.max_hp ?? 0;
+  const lordHp = lordMaxHp + (lord.role === "Lord" ? 1 : 0);
+  const firstTurn = prepareTurnStart({
+    ...lord,
+    hp: lordHp,
+    max_hp: lordHp,
+    alive: 1,
+    hand_json: JSON.stringify(lordOpening?.cards ?? []),
+    judgement_json: "[]",
+    equipment_json: "{}",
+  }, openingLog);
   const updates = openingHands.map(({ player, cards }) => {
     const hero = STANDARD_HEROES.find((candidate) => candidate.id === player.hero);
     const maxHp = hero?.hp ?? player.max_hp ?? 0;
     const hp = maxHp + (player.role === "Lord" ? 1 : 0);
     return db().prepare("UPDATE players SET hp = ?, max_hp = ?, hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'playing' AND phase = ?)").bind(hp, hp, JSON.stringify(cards), player.id, roomId, claim);
   });
-  const lord = players.find((player) => player.role === "Lord") ?? players[0];
   const committed = await db().batch([
     db().prepare("UPDATE rooms SET status = 'playing', phase = ? WHERE id = ? AND status = 'heroes'").bind(claim, roomId),
     ...updates,
-    db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ?, test_hand_preset_json = NULL WHERE id = ? AND status = 'playing' AND phase = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify(openingLog), JSON.stringify(turnHistoryFor(lord.id)), roomId, claim),
+    db().prepare("UPDATE rooms SET turn_seat = ?, phase = ?, pending_json = ?, deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ?, turn_epoch = turn_epoch + 1, turn_start_public_sequence = ?, test_hand_preset_json = NULL WHERE id = ? AND status = 'playing' AND phase = ?")
+      .bind(lord.seat, firstTurn.phase, firstTurn.pending ? serializePending(firstTurn.pending) : null, JSON.stringify(deck), JSON.stringify(firstTurn.log), firstTurn.skillState, firstTurn.startPublicSequence, roomId, claim),
   ]);
-  if ((committed[0]?.meta.changes ?? 0) <= 0) return false;
-  await beginTurnStart(roomId, lord.seat, undefined, "draw");
+  if ((committed[0]?.meta.changes ?? 0) <= 0 || (committed.at(-1)?.meta.changes ?? 0) <= 0) return false;
   return true;
 }
 function db() { return sharedResponseDatabase(env.DB); }
@@ -9268,7 +9206,11 @@ export async function POST(request: Request) {
       const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
       const livePlayers = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
       const liveMe = livePlayers.find((player) => player.id === me.id) ?? null;
-      const options = activeHeroSkillOptions(liveMe, liveRoom ?? room, livePlayers);
+      if (!liveRoom || !liveMe || liveRoom.status !== "playing" || liveRoom.turn_seat !== liveMe.seat || !liveMe.alive
+        || !liveRoom.phase?.startsWith("play") || liveRoom.pending_json !== null) {
+        return json({ error: "There is no active hero skill available now.", stale: true, room: await roomState(code, token) }, 409);
+      }
+      const options = activeHeroSkillOptions(liveMe, liveRoom, livePlayers);
       const skillId = String(body.providerId ?? "");
       const option = options.find((candidate) => candidate.effectId === skillId);
       const skillState = parse<KingSkillState>(liveRoom?.skill_state_json ?? null, {});
@@ -9315,7 +9257,9 @@ export async function POST(request: Request) {
         if (execution.outcome.kind === "betrothment" && (heroGender(target.hero) !== "male" || (target.hp ?? 0) >= (target.max_hp ?? 0) || selected.length !== 2 || selected.some((card) => !liveHand.some((held) => held.id === card.id)))) return json({ error: "Betrothment requires exactly 2 Hand cards and an injured living male target.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "prodigal_healer" && ((target.hp ?? 0) >= (target.max_hp ?? 0) || selected.length !== 1 || !liveHand.some((held) => held.id === selected[0]?.id) || selected.some((card) => equipmentCards(liveMe).some((equipped) => equipped.id === card.id)))) return json({ error: "Prodigal Healer requires exactly 1 Hand card and a living injured target.", stale: true, room: await roomState(code, token) }, 409);
       }
-      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase LIKE 'play%'").bind(room.id, liveMe.seat).run();
+      const claim = await db.prepare(`UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ? AND turn_epoch = ? AND pending_json IS NULL
+        AND EXISTS (SELECT 1 FROM players WHERE room_id = ? AND id = ? AND seat = ? AND alive = 1)`)
+        .bind(room.id, liveMe.seat, liveRoom.phase, liveRoom.turn_epoch, room.id, liveMe.id, liveMe.seat).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "The turn changed before that hero skill resolved.", stale: true, room: await roomState(code, token) }, 409);
       if (execution.outcome.kind === "influencing_attack") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
@@ -10852,30 +10796,21 @@ export async function POST(request: Request) {
           await continueAfterDying(room.id, continuation.resumePlayerId ?? continuation.sourceId);
           return json({ room: await roomState(code, token) });
         }
-        log = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness", triggerPublicFact).log;
-        const stauchnessRevealFact = triggerExecution?.effectId === "xiahou_dun_ganglie"
-          ? stauchnessJudgementPublicFact({
-            log,
-            causal: continuation.causal,
-            rootEventId: continuation.rootEventId,
-            envelope: parseCausalEnvelope(liveRoom.causal_envelope_json),
-            actor: target,
-            card: draw.card,
-            outcome: "revealed",
-            affectedPlayerIds: continuation.sourceId ? [continuation.sourceId] : [],
-          })
-          : undefined;
+        const activationNotice = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness", triggerPublicFact);
+        log = activationNotice.log;
         const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, {
           judgement: true,
           ...(continuation.resolutionId ? { resolutionId: continuation.resolutionId } : {}),
-          ...(stauchnessRevealFact ? { actorId: target.id, publicFact: stauchnessRevealFact } : {}),
         });
         const judgement: JudgementContinuation = {
           targetId: target.id,
           purpose: "ganglie",
           revealedCard: draw.card,
           revealedEventId: presentation.eventId,
-          ...(stauchnessRevealFact?.rootEventId ? { actionRootEventId: stauchnessRevealFact.rootEventId } : {}),
+          ...(triggerExecution?.effectId === "xiahou_dun_ganglie" && triggerPublicFact
+            ? { activationEventId: activationNotice.eventId } : {}),
+          ...(triggerExecution?.effectId === "xiahou_dun_ganglie" && continuation.rootEventId
+            ? { actionRootEventId: continuation.rootEventId } : {}),
           resolutionId: continuation.resolutionId,
           ...(continuation.causal ? { causal: continuation.causal } : {}),
           resume: { kind: "damage_suffered", continuation: { ...continuation, secondaryEffectId: triggerExecution?.effectId } },
@@ -11503,7 +11438,7 @@ export async function POST(request: Request) {
 
     if (action === "draw") {
       if (!liveRoom.phase?.startsWith("draw")) return json({ error: "You have already drawn this turn." }, 409);
-      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const delayed = takeNextDelayedCard(parse<Card[]>(me.judgement_json, []))?.delayed ?? null;
       if (delayed) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -11533,7 +11468,7 @@ export async function POST(request: Request) {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
       const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "serpent_spear_attack", effectiveKind: "Attack" });
       if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, "Attack", target, true) }, 409);
-      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const materialIds = new Set(materials.map((item) => item.id)); hand = hand.filter((item) => !materialIds.has(item.id)); discard.push(...materials);
       const serpentProof = publicConversionDraft("serpent_spear_attack", me.id, materials,
         { playerId: me.id, hand: handBeforeAction, equipment: equipmentCards(me) }, target.id, "Attack", "DISCARD",
@@ -11567,7 +11502,7 @@ export async function POST(request: Request) {
       if (card.kind === "Negation" && !playableAttack) return json({ error: "Negation can only be played while answering a stratagem." }, 400);
       if (card.kind === "Peach" && !playableAttack) {
         if ((me.hp ?? 0) >= (me.max_hp ?? 0)) return json({ error: "You are already at full health." }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         const beforeHp = me.hp ?? 0;
         const maxHp = me.max_hp ?? beforeHp;
@@ -11601,7 +11536,7 @@ export async function POST(request: Request) {
         ]);
         await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: me.id, amountRecovered, sourceId: me.id, reason: "peach", ...(peachFact?.committedIdentity && peachFact.committedOutcome ? { publicOutcomeEventId: peachEventId, causal: peachCausal.context } : {}) }] : [], { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id });
       } else if (cardDefinition(card.kind).equipmentSlot && !playableAttack) {
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         const beforeHand = [...hand];
         const equipment = equipmentZone(me); const slot = cardDefinition(card.kind).equipmentSlot!; const replacedEquipment = equipment[slot];
         hand = hand.filter((item) => item.id !== card.id); equipment[slot] = card;
@@ -11673,13 +11608,13 @@ export async function POST(request: Request) {
         if (replacedEquipment) await advanceEquipmentLostEvents(room.id, equipmentLostRecords(me.id, [replacedEquipment], "replacement"), { kind: "phase", phase: liveRoom.phase ?? "play", playerId: me.id, handLoss: { playerId: me.id, beforeHand } });
         else await maybeOpenHandLossTrigger(room.id, me.id, beforeHand);
       } else if (card.kind === "DrawTwo" && !playableAttack) {
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         drawnCards = await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, me.name, me.id, { kind: "draw_two", cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "Oath" && !playableAttack) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card, "All living players"); log = addLog(log, `${me.name} plays Oath of the Peach Garden.`);
         await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, "all living players", me.id, { kind: "oath" }, hand, deck, discard, log);
@@ -11687,7 +11622,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         const players = rows.results ?? []; const choosersInOrder = playersInTurnOrder(players, me.seat);
         if (!choosersInOrder.length) return json({ error: "There are no living characters to take part in Bumper Harvest." }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);
         const rootResolutionId = crypto.randomUUID();
         const root = addCardEventWithId(log, me.name, card, "All living players", "play", true, {
@@ -11705,7 +11640,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targets = playersInTurnOrder(players, me.seat).filter((player) => player.id !== me.id);
         if (!targets.length) return json({ error: "There are no other living characters to target." }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);
         const requiredKind = card.kind === "BarbarianInvasion" ? "Attack" : "Dodge"; const cardName = card.kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
         const presentation = addCardEventWithId(log, me.name, card, "All other players"); log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
@@ -11715,7 +11650,7 @@ export async function POST(request: Request) {
         await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope);
       } else if (card.kind === "Lightning" && !playableAttack) {
         if (parse<Card[]>(me.judgement_json, []).some((delayed) => delayed.kind === "Lightning")) return json({ error: "You already have Lightning in your Judgement Zone." }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card); log = addLog(log, `${me.name} plays Lightning into their own Judgement Zone.`);
         await beginStratagemUse(liveRoom, me, (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [], card, card, me.name, me.id, { kind: "lightning", targetId: me.id, cardId: card.id }, hand, deck, discard, log);
@@ -11725,7 +11660,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Overindulgence on ${target.name}.`);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
@@ -11736,7 +11671,7 @@ export async function POST(request: Request) {
         const players = rows.results ?? [];
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "BorrowedSword" && !playableAttack) {
@@ -11745,7 +11680,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name, "play", true, { actorId: me.id }); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Dismantle" && !playableAttack) {
@@ -11754,7 +11689,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 400);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Steal" && !playableAttack) {
@@ -11764,7 +11699,7 @@ export async function POST(request: Request) {
         const players = rows.results ?? [];
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, targetEvaluation.rejection.code === "NO_TARGETABLE_CARDS" ? 400 : 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
         await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "steal", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Duel" && !playableAttack) {
@@ -11773,7 +11708,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
         if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         const presentation = addCardEventWithId(log, me.name, card, target.name); log = addLog(presentation.log, `${me.name} starts a Duel with ${target.name}.`);
         const wushuangPlayerId = me.hero === "lü-bu" ? me.id : target.hero === "lü-bu" ? target.id : undefined;
@@ -11801,7 +11736,7 @@ export async function POST(request: Request) {
           }
         }
         const target = targets[0];
-        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);
         if (!(halberdAttack && targets.length > 1)) discard.push(card);
         const attackMeta: PresentationMeta = playedAsAttack ? { playedAs: "attack" } : {};
@@ -11858,7 +11793,7 @@ export async function POST(request: Request) {
       }
     } else {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Only the active player can finish the Play Phase." }, 409);
-      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+      if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const skillState = parse<KingSkillState>(liveRoom.skill_state_json, {});
       const attackUsed = attackWasUsed(skillState, me.id);
       const discardOptions = getTriggeredEffects({
@@ -11903,7 +11838,7 @@ export async function POST(request: Request) {
     let hand = parse<Card[]>(me.hand_json, []); const handBeforeDiscard = [...hand]; const required = Math.max(0, hand.length - (me.hp ?? 0)); const requested = Array.isArray(body.cardIds) ? [...new Set(body.cardIds.map(String))] : [];
     if (requested.length !== required) return json({ error: `Choose exactly ${required} card${required === 1 ? "" : "s"} to discard.` }, 400);
     const selectedCards = requested.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); if (selectedCards.length !== required) return json({ error: "One of those cards is no longer in your hand." }, 409);
-    if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+    if (!await claimTurnAction(room.id, me.seat, liveRoom.phase, liveRoom.turn_epoch)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
     const selectedIds = new Set(requested); hand = hand.filter((card) => !selectedIds.has(card.id)); const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...selectedCards]; const discardEvent = addDiscardEventWithId(parse<string[]>(liveRoom.log_json, []), me, selectedCards, { mode: "self", source: { kind: "phase", label: "Discard phase" }, activationOwnerId: me.id }); let log = addLog(discardEvent.log, `${me.name} discards ${selectedCards.length} selected card${selectedCards.length === 1 ? "" : "s"}.`);
     log = addLog(log, `${me.name} completes Discard; the turn-end event begins.`); await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]); await beginTurnEnd(room.id, me, discardEvent.eventId ? { eventId: discardEvent.eventId, actorId: me.id, cardCount: selectedCards.length, deadline: Date.now() + PUBLIC_DISCARD_HANDOFF_MS } : undefined);
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeDiscard);

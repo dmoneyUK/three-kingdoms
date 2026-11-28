@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { publicDiscardAnnouncement, publicDiscardByActionAnnouncement, routePublicDiscardTransition } from "../app/public-discard-transition.ts";
+import { publicDiscardAnnouncement, routePublicDiscardTransition } from "../app/public-discard-transition.ts";
 import { layoutPublicResultCards } from "../app/public-result-layout.ts";
 
 const actorId = "player-1";
@@ -94,29 +95,6 @@ test("complete discard H4 retains exact rank, suit, name, identity and order for
   }
 });
 
-test("effect-led discard H4 attributes the committed actor and names exact cards in material order", () => {
-  const copy = publicDiscardByActionAnnouncement({
-    actor: { id: "frost-user", name: "Frost User" },
-    materialOwner: { id: "frost-target", name: "Frost Target" },
-    actionLabel: "Frost Sword",
-    actionSourceKind: "equipment",
-    cards: [
-      { id: "hidden-before-commit", kind: "Dodge", rank: "7", suit: "♣" },
-      { id: "equipped-before-commit", kind: "NioShield", rank: "7", suit: "♠" },
-    ],
-  });
-  assert.equal(copy?.headline, "Frost User used [Frost Sword] to discard 2 cards from Frost Target: [7♣ Dodge] · [7♠ Nio Shield].");
-  assert.equal(copy?.accessibleLabel, copy?.headline);
-  assert.deepEqual(copy?.cards?.map(({ id }) => id), ["hidden-before-commit", "equipped-before-commit"]);
-  assert.equal(publicDiscardByActionAnnouncement({
-    actor: { id: "frost-user", name: "Frost User" },
-    materialOwner: { id: "frost-target", name: "Frost Target" },
-    actionLabel: "Frost Sword",
-    actionSourceKind: "equipment",
-    cards: [{ id: "incomplete-card", kind: "Dodge" }],
-  })?.headline, "Frost User used [Frost Sword] to discard 1 card from Frost Target.");
-});
-
 test("a committed play root is not double-claimed by the generic discard route", () => {
   const card = { id: "played-root", kind: "Duel" };
   const input = setup({
@@ -162,15 +140,11 @@ test("timeline identity must match the active event's actor, sequence, and physi
   assert.equal(routePublicDiscardTransition({ ...input, timeline: [input.event, duplicate] }), null);
 });
 
-test("3–5 committed discard cards fit in one neutral presentation row without collisions", () => {
-  const obstacles = [
-    { left: 0, top: 0, right: 390, bottom: 96 },
-    { left: 35, top: 400, right: 355, bottom: 448 },
-    { left: 145, top: 490, right: 245, bottom: 535 },
-  ];
+test("3–5 committed discard cards stay packed around the fixed nominal centre", () => {
+  const preferredCenter = { centerX: 195, centerY: 280 };
   for (const count of [3, 4, 5]) {
-    const layout = layoutPublicResultCards(count, { width: 390, height: 560 }, obstacles);
-    assert.ok(layout, `${count} cards should fit around phone seats, H4 and PAC`);
+    const layout = layoutPublicResultCards(count, { width: 390, height: 560 }, preferredCenter);
+    assert.ok(layout, `${count} cards should fit the measured board`);
     assert.equal(layout.rows, 1);
     assert.equal(layout.placements.length, count);
     assert.ok(layout.placements.every(({ centerX, centerY }) => centerX >= layout.cardWidth / 2
@@ -183,25 +157,30 @@ test("3–5 committed discard cards fit in one neutral presentation row without 
         && Math.abs(a.centerY - b.centerY) < layout.cardHeight;
       assert.equal(overlaps, false, `${count} card positions must not overlap`);
     }
-    for (const { centerX, centerY } of layout.placements) {
-      const box = { left: centerX - layout.cardWidth / 2, right: centerX + layout.cardWidth / 2,
-        top: centerY - layout.cardHeight / 2, bottom: centerY + layout.cardHeight / 2 };
-      assert.equal(obstacles.some((obstacle) => box.left < obstacle.right && box.right > obstacle.left
-        && box.top < obstacle.bottom && box.bottom > obstacle.top), false,
-      `${count} card positions must avoid Seats, H4 and PAC`);
-    }
+    assert.equal((layout.placements[0].centerX + layout.placements.at(-1).centerX) / 2, preferredCenter.centerX);
+    assert.equal(layout.placements[0].centerY, preferredCenter.centerY);
   }
 });
 
-test("larger committed discard groups use two rows while keeping all cards inside the measured table", () => {
-  const layout = layoutPublicResultCards(8, { width: 390, height: 560 }, [
-    { left: 0, top: 0, right: 390, bottom: 92 },
-    { left: 20, top: 490, right: 370, bottom: 550 },
-  ]);
+test("larger committed discard groups use two board-sized rows around the same nominal centre", () => {
+  const preferredCenter = { centerX: 195, centerY: 280 };
+  const layout = layoutPublicResultCards(8, { width: 390, height: 560 }, preferredCenter);
   assert.ok(layout);
   assert.equal(layout.rows, 2);
   assert.equal(layout.placements.length, 8);
   assert.ok(layout.placements.every(({ centerX, centerY }) => centerX - layout.cardWidth / 2 >= 0
     && centerX + layout.cardWidth / 2 <= 390
     && centerY - layout.cardHeight / 2 >= 0 && centerY + layout.cardHeight / 2 <= 560));
+  assert.equal((layout.placements[0].centerY + layout.placements.at(-1).centerY) / 2, preferredCenter.centerY);
+});
+
+test("public result layout has no external obstacle input or collision-based alternate position", () => {
+  const preferredCenter = { centerX: 195, centerY: 280 };
+  const clear = layoutPublicResultCards(3, { width: 390, height: 560 }, preferredCenter);
+  assert.ok(clear);
+  assert.equal(clear.placements[1].centerX, preferredCenter.centerX);
+  assert.equal(clear.placements[1].centerY, preferredCenter.centerY);
+  assert.equal(layoutPublicResultCards.length, 3, "layout accepts only count, board bounds, and nominal centre");
+  const source = readFileSync(new URL("../app/public-result-layout.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /PublicResultObstacle|intersects|candidateScore|candidatePositions/);
 });

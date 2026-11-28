@@ -71,6 +71,20 @@ Commit and push only files belonging to the authorized task. Keep implementation
 
 For autonomous UI/Layout CI cadence, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
 
+## Mandatory task identifier in every commit message
+
+Every Coding Agent commit must identify its authorized task in the **commit subject**, before pushing. This applies to implementation, tests, fixes, CI repairs, documentation and HANDOVER-only commits, including intermediate commits. Use the original stable design section/task identifier (including its subsection, when applicable) from the current authorized task in HANDOVER/latest design; do not invent a new number for a follow-up correction.
+
+Required format: `[<task-id>] <type>: <concise description>`. Examples:
+- `[10.81-B] fix: preserve Necromancy visible hold`
+- `[10.81-B] fix: resolve lint failure`
+- `[10.81-B] docs: record verified delivery in HANDOVER`
+- `[10.89] fix: stabilize battlefield coordinates`
+
+Use the same task ID throughout implementation, regression fixes, CI repair and delivery records. If a task is explicitly authorized to combine multiple numbered scopes in one commit, list every applicable ID in the subject, e.g. `[10.81-A][10.81-B] fix: align judgement presentation`; this is not permission to merge otherwise separate tasks. For authorized repository work outside the numbered design, use its existing stable task ID (or an explicit workflow-maintenance identifier for authorized process-only changes), never an unrelated UX number. If no authorized identifier can be established, resolve it with the Reviewer before committing.
+
+Before each commit, check that the subject contains the correct ID and that staged files belong to that task. Keep the ID in the subject even when using Conventional Commit descriptions, and record the exact commit SHA and same task ID in HANDOVER's delivery state. Do not rewrite published Git history solely to add identifiers. This rule applies to the next and all subsequent commits, including an already in-flight task; it does not change current task authorization or CI gates.
+
 ## HANDOVER discipline
 
 `HANDOVER.md` must stay short and current. It records:

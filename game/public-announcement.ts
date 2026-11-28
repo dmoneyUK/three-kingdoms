@@ -7,6 +7,71 @@ export type PublicAnnouncementCandidate<T> = {
   supersedeOnNewerPublicPlay?: boolean;
 };
 
+export type CanonicalPublicDiscardOwnerCandidate<T> = {
+  /** The exact server-committed discard event, not its parent play or later result. */
+  eventId: string;
+  /** Ordered physical material identity from the normalized public settlement. */
+  orderedPhysicalCardIds: readonly string[];
+  owner: T;
+};
+
+/**
+ * Select one already proof-normalized discard presentation owner at its exact
+ * committed event cursor. Ambiguous or malformed ownership fails closed.
+ */
+export function selectCanonicalPublicDiscardOwner<T>(
+  cursorEventId: string | null | undefined,
+  candidates: readonly (CanonicalPublicDiscardOwnerCandidate<T> | null | undefined)[],
+): T | null {
+  if (!cursorEventId) return null;
+  const due = candidates.filter((candidate): candidate is CanonicalPublicDiscardOwnerCandidate<T> => candidate !== null
+    && candidate !== undefined && candidate.eventId === cursorEventId
+    && candidate.orderedPhysicalCardIds.length > 0
+    && candidate.orderedPhysicalCardIds.every((id) => typeof id === "string" && id.trim().length > 0)
+    && new Set(candidate.orderedPhysicalCardIds).size === candidate.orderedPhysicalCardIds.length);
+  return due.length === 1 ? due[0].owner : null;
+}
+
+/**
+ * Selects a committed card presentation at the active event cursor, then
+ * falls back to timeline-ranked non-discard public announcement candidates.
+ * Canonical discard ownership is resolved separately from a verified event
+ * plus ordered material descriptor and can never re-enter this fallback.
+ */
+export function selectPublicCardActionForCursor<T extends { rootEventId: string }>(input: {
+  cursorEvent?: { id: string } | null;
+  canonicalDiscardOwner?: T | null;
+  nonHeroAction?: T | null;
+  latestHeroAction?: T | null;
+  checkpointEventId: (action: T) => string;
+  timelineEventIds: readonly string[];
+  laterPublicPlayEventIds?: readonly string[];
+}): { cursorOwnedAction: T | null; latestAction: T | null } {
+  if (input.canonicalDiscardOwner) {
+    return { cursorOwnedAction: input.canonicalDiscardOwner, latestAction: input.canonicalDiscardOwner };
+  }
+
+  const candidates: PublicAnnouncementCandidate<T>[] = [];
+  if (input.nonHeroAction) candidates.push({
+    value: input.nonHeroAction,
+    rootEventId: input.nonHeroAction.rootEventId,
+    checkpointEventId: input.checkpointEventId(input.nonHeroAction),
+    priority: 2,
+  });
+  if (input.latestHeroAction) candidates.push({
+    value: input.latestHeroAction,
+    rootEventId: input.latestHeroAction.rootEventId,
+    checkpointEventId: input.checkpointEventId(input.latestHeroAction),
+    priority: 1,
+    supersedeOnNewerPublicPlay: true,
+  });
+
+  return {
+    cursorOwnedAction: null,
+    latestAction: selectPublicAnnouncementCandidate(candidates, input.timelineEventIds, input.laterPublicPlayEventIds),
+  };
+}
+
 /**
  * Select one already proof-built public announcement candidate. Both its
  * physical root and semantic checkpoint must occur exactly once in the

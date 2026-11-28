@@ -1,19 +1,22 @@
 "use client";
 
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { fixedPublicActivityBand, fixedPublicH4Band, measurePublicElementAtWidth, measuredPublicH4PaintRect, publicStageH4Geometry } from "./public-upper-anchor";
+import { fixedPublicActivityBand, fixedPublicH4Band, fixedPublicStationaryLane, measurePublicElementAtWidth, measuredPublicH4PaintRect, publicStageH4Geometry, publicStationaryCardPlacement } from "./public-upper-anchor";
 import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 import {
   calculatePublicStageLayout,
   publicStageBandClearance,
+  publicStageCoordinateFromTableLocal,
   publicStageFailedRevealMatchesScene,
   publicStageHasVisibleAreaAfterForegroundOverlay,
   publicStageRevealNeedsOwnedRemeasure,
+  publicStageRectToTableLocal,
   publicStageSceneMatchesCard,
   type PublicStageLayout,
   type PublicStagePhase,
   type PublicStageRect,
   type PublicStageStationarySurface,
+  type PublicStageTableCoordinateSpace,
 } from "../game/public-stage-layout";
 
 export type SharedPublicStageLayout = {
@@ -29,6 +32,7 @@ export type SharedPublicStageLayout = {
 };
 
 const PublicStageLayoutContext = createContext<SharedPublicStageLayout | null>(null);
+const PublicStageCoordinateContext = createContext<PublicStageTableCoordinateSpace | null>(null);
 // Publish the measured scene synchronously with its DOM generation marker.
 // React context remains the render subscription; scheduled consumers may read
 // this same commit before that subscription has rerendered.
@@ -39,6 +43,32 @@ export function committedPublicStageLayout(table: HTMLElement): SharedPublicStag
 
 export function usePublicStageLayout() {
   return useContext(PublicStageLayoutContext);
+}
+
+export function usePublicStageCoordinates() {
+  return useContext(PublicStageCoordinateContext);
+}
+
+export function publicStageCoordinateSpaceForTable(table: HTMLElement): PublicStageTableCoordinateSpace | null {
+  const rect = table.getBoundingClientRect();
+  const width = table.offsetWidth;
+  const height = table.offsetHeight;
+  if (rect.width <= 0 || rect.height <= 0 || width <= 0 || height <= 0) return null;
+  return {
+    originLeft: rect.left,
+    originTop: rect.top,
+    borderLeft: table.clientLeft,
+    borderTop: table.clientTop,
+    scaleX: rect.width / width,
+    scaleY: rect.height / height,
+  };
+}
+
+function sameCoordinateSpace(left: PublicStageTableCoordinateSpace | null, right: PublicStageTableCoordinateSpace | null) {
+  if (!left || !right) return left === right;
+  return [left.originLeft - right.originLeft, left.originTop - right.originTop,
+    left.borderLeft - right.borderLeft, left.borderTop - right.borderTop,
+    left.scaleX - right.scaleX, left.scaleY - right.scaleY].every((value) => Math.abs(value) < 0.25);
 }
 
 function rectOf(element: Element): PublicStageRect {
@@ -163,10 +193,14 @@ export function PublicStageLayoutProvider({
   children: ReactNode;
 }) {
   const [snapshot, setSnapshot] = useState<SharedPublicStageLayout | null>(null);
+  const [coordinateState, setCoordinateState] = useState<{
+    scopeId: string | null;
+    value: PublicStageTableCoordinateSpace | null;
+  }>({ scopeId: null, value: null });
   const snapshotRef = useRef<SharedPublicStageLayout | null>(null);
   const generationRef = useRef({ sceneKey: "", geometrySignature: "", generation: 0 });
   const movePathRef = useRef<{ sceneKey: string; rect: PublicStageRect } | null>(null);
-  const revealAnchorRef = useRef<{ sceneKey: string; viewportKey: string; leftFromTable: number; topFromTable: number } | null>(null);
+  const revealAnchorRef = useRef<{ sceneKey: string; tableKey: string; leftLocal: number; topLocal: number } | null>(null);
   const traceSignatureRef = useRef("");
   const revealReadinessTraceRef = useRef("");
   const unavailableObservationKeyRef = useRef("");
@@ -177,6 +211,17 @@ export function PublicStageLayoutProvider({
         .find((candidate) => candidate.dataset.publicStageLayoutScope === scopeId) ?? null
       : null;
     if (!table) return;
+    const refreshCoordinateSpace = () => {
+      const next = publicStageCoordinateSpaceForTable(table);
+      setCoordinateState((current) => current.scopeId === scopeId && sameCoordinateSpace(current.value, next)
+        ? current
+        : { scopeId, value: next });
+    };
+    const coordinateResizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refreshCoordinateSpace);
+    coordinateResizeObserver?.observe(table);
+    const initialCoordinateFrame = coordinateResizeObserver ? 0 : window.requestAnimationFrame(refreshCoordinateSpace);
+    window.addEventListener("resize", refreshCoordinateSpace);
+    window.addEventListener("orientationchange", refreshCoordinateSpace);
     let frame = 0;
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
 
@@ -207,6 +252,7 @@ export function PublicStageLayoutProvider({
 
     const measure = () => {
       frame = 0;
+      refreshCoordinateSpace();
       if (!scopeId || !roomId || !viewerId) {
         clear();
         return;
@@ -238,6 +284,9 @@ export function PublicStageLayoutProvider({
         return;
       }
       const phase = phaseName as PublicStagePhase;
+      const protectedGeometryElements = phase === "REVEAL"
+        ? []
+        : [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)];
       if (display.dataset.publicCardLayoutPending === "true" && phase !== "REVEAL") {
         clear();
         return;
@@ -260,7 +309,7 @@ export function PublicStageLayoutProvider({
           table, display, primary, ...framePanels,
           ...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']"),
           table.querySelector<HTMLElement>("[data-public-activity-chip='true']"),
-          ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
+          ...protectedGeometryElements,
         ]);
         setData(table, "data-public-stage-layout-status", "unavailable");
         setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
@@ -296,7 +345,7 @@ export function PublicStageLayoutProvider({
       if (frameFootprint && !announcement) {
         observeUnavailableGeometry(JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, "public-bands"]), [
           table, display, primary, announcement, chip,
-          ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
+          ...protectedGeometryElements,
         ]);
         setData(table, "data-public-stage-layout-status", "unavailable");
         setData(table, "data-public-stage-layout-phase", phase.toLowerCase());
@@ -324,7 +373,7 @@ export function PublicStageLayoutProvider({
         const bounds = rectOf(table);
         const left = bounds.left + 8;
         const width = Math.max(1, bounds.right - bounds.left - 16);
-        const top = Math.max(bounds.top + 8, window.visualViewport?.offsetTop ?? 0);
+        const top = bounds.top + 8;
         return { left, top, right: left + width, bottom: top + 52, width, height: 52 };
       })();
       let pacBand = fixedPublicActivityBand(table, consoleGuidance, chip);
@@ -360,14 +409,15 @@ export function PublicStageLayoutProvider({
         return;
       }
 
-      const visualViewport = window.visualViewport;
-      const viewport = {
-        left: visualViewport?.offsetLeft ?? 0,
-        top: visualViewport?.offsetTop ?? 0,
-        right: (visualViewport?.offsetLeft ?? 0) + (visualViewport?.width ?? window.innerWidth),
-        bottom: (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight),
-      };
       const tableBounds = rectOf(table);
+      const tableCoordinates = publicStageCoordinateSpaceForTable(table);
+      if (!tableCoordinates) {
+        clear();
+        return;
+      }
+      const localRect = (rect: PublicStageRect) => publicStageRectToTableLocal(rect, tableCoordinates) ?? rect;
+      const tableLocalBounds = localRect(tableBounds);
+      const viewport = tableBounds;
       const stationarySurface: PublicStageStationarySurface = phase === "REVEAL" && frameFootprint
         ? "effect-frame" : "card";
       const h4Geometry = publicStageH4Geometry(h4Band, {
@@ -383,7 +433,7 @@ export function PublicStageLayoutProvider({
       const harvestPoolWrapper = [...table.querySelectorAll<HTMLElement>(".battlefield-choice-stage")]
         .find((element) => element.dataset.harvestRootEventId === scopeId) ?? null;
       const harvestPoolPanel = harvestPoolWrapper?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null;
-      const harvestRootPoolOverlap = Boolean(harvestPoolWrapper && harvestPoolPanel && visibleObstacle(harvestPoolPanel)
+      const harvestRootPoolOverlap = Boolean(phase === "MOVE" && harvestPoolWrapper && harvestPoolPanel && visibleObstacle(harvestPoolPanel)
         && display.dataset.publicCardKind === "BumperHarvest"
         && display.dataset.publicCardHarvestActive === "true"
         && display.dataset.publicCardRootEventId === scopeId
@@ -392,8 +442,8 @@ export function PublicStageLayoutProvider({
         && primary.dataset.publicCardJourneyRole === "root"
         && primary.dataset.publicCardJourneyEventId === scopeId
         && primary.dataset.publicCardJourneyCardId === cardId
-        && (phase === "REVEAL" || phase === "MOVE"));
-      const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
+        && phase === "MOVE");
+      const obstacles = protectedGeometryElements
         .filter((element) => element !== primary && element !== announcement && element !== chip
           && !(harvestRootPoolOverlap && element === harvestPoolWrapper)
           && !primary.contains(element) && (!announcement || !announcement.contains(element)) && (!chip || !chip.contains(element))
@@ -475,31 +525,48 @@ export function PublicStageLayoutProvider({
       }
       const sceneKey = JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, phase]);
       const signatureCardRect = phase === "MOVE" && movePath ? movePath : measuredCardRect;
+      const localSignatureCardRect = localRect(signatureCardRect);
       const signatureCardSize = phase === "MOVE" && moveTarget
         ? { width: moveTarget.right - moveTarget.left, height: moveTarget.bottom - moveTarget.top }
         : cardSize;
+      const localSignatureCardSize = {
+        width: signatureCardSize.width / tableCoordinates.scaleX,
+        height: signatureCardSize.height / tableCoordinates.scaleY,
+      };
       const geometrySignature = JSON.stringify({
         phase,
-        viewport: roundedRect(viewport),
-        table: roundedRect(tableBounds),
-        consoleGuidance: roundedRect(consoleBounds),
+        viewport: roundedRect(tableLocalBounds),
+        table: roundedRect(tableLocalBounds),
+        consoleGuidance: roundedRect(localRect(consoleBounds)),
         upperH4: upperH4 ? {
-          reserve: upperH4.reserve,
+          reserve: localRect(upperH4.reserve),
           gap: upperH4.gap,
           overlapPolicy: upperH4.overlapPolicy,
         } : null,
-        primary: signatureCardSize,
-        // REVEAL may move once from its preferred anchor to the shared safe
-        // stack. That owned placement must not mint a second generation.
-        primaryRect: phase === "REVEAL" ? null : roundedRect(signatureCardRect),
-        primaryOffset: phase === "MOVE" ? { left: 0, top: 0 } : primaryOffset,
+        primary: localSignatureCardSize,
+        // A passive REVEAL retains its fixed nominal anchor across paint and
+        // unrelated component changes.
+        primaryRect: phase === "REVEAL" ? null : roundedRect(localSignatureCardRect),
+        primaryOffset: phase === "MOVE" ? { left: 0, top: 0 } : {
+          left: primaryOffset.left / tableCoordinates.scaleX,
+          top: primaryOffset.top / tableCoordinates.scaleY,
+        },
         // Copy growth is paint-only: it must not change the fixed card anchor
         // or mint a second physical-card generation.
-        announcement: upperH4 ? { width: h4Band.width, height: h4Band.height } : measuredSize(announcementRect),
+        announcement: upperH4 ? {
+          width: h4Band.width / tableCoordinates.scaleX,
+          height: h4Band.height / tableCoordinates.scaleY,
+        } : {
+          width: announcementRect.width / tableCoordinates.scaleX,
+          height: announcementRect.height / tableCoordinates.scaleY,
+        },
         // PAC copy is an independently painted layer. Its wrapping/size must
         // not mint a new reveal generation or restart a card's lifecycle.
-        activity: phase === "REVEAL" ? null : measuredSize(activityRect),
-        obstacles: obstacles.map(({ id, rect }) => [id, roundedRect(rect)])
+        activity: phase === "REVEAL" ? null : {
+          width: activityRect.width / tableCoordinates.scaleX,
+          height: activityRect.height / tableCoordinates.scaleY,
+        },
+        obstacles: phase === "REVEAL" ? [] : obstacles.map(({ id, rect }) => [id, roundedRect(localRect(rect))])
           .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
       });
       const generationState = generationRef.current;
@@ -510,78 +577,56 @@ export function PublicStageLayoutProvider({
       generationRef.current = { sceneKey, geometrySignature, generation: nextGeneration };
 
       const scene = { semantics: "PROVEN" as const, roomId, scopeId, interactionId, eventId, cardId, viewerId, phase, generation: nextGeneration };
-      const safeLeft = Math.max(viewport.left, tableBounds.left) + 8;
-      const safeRight = Math.min(viewport.right, tableBounds.right) - 8;
-      const safeTop = Math.max(viewport.top, tableBounds.top) + 8;
-      const safeBottom = Math.min(viewport.bottom, consoleBounds.top);
-      const revealViewportKey = JSON.stringify([
-        viewport.left, viewport.top, viewport.right, viewport.bottom,
-        tableBounds.width, tableBounds.height,
-      ].map((value) => Math.round(value * 2) / 2));
+      const frameOffset = Number(framePanels[0]?.dataset.publicCardFramePreferredLaneTopOffset ?? 0);
+      const preferredTopOffset = stationarySurface === "effect-frame" && Number.isFinite(frameOffset) ? frameOffset : 0;
+      const nominalLane = fixedPublicStationaryLane(table, tableCoordinates);
+      const nominalPlacement = publicStationaryCardPlacement(table, cardSize, tableCoordinates, preferredTopOffset);
+      const revealAnchorGeometryKey = JSON.stringify([
+        table.offsetWidth, table.offsetHeight,
+        nominalLane?.h4Reserve, nominalLane?.pacReserve,
+        cardSize.width / tableCoordinates.scaleX, cardSize.height / tableCoordinates.scaleY,
+        preferredTopOffset,
+      ]);
       if (phase === "REVEAL" && (revealAnchorRef.current?.sceneKey !== cardSceneKey
-        || revealAnchorRef.current?.viewportKey !== revealViewportKey)) {
-        revealAnchorRef.current = {
+        || revealAnchorRef.current?.tableKey !== revealAnchorGeometryKey)) {
+        revealAnchorRef.current = nominalPlacement ? {
           sceneKey: cardSceneKey,
-          viewportKey: revealViewportKey,
-          leftFromTable: visualPrimary.left - tableBounds.left,
-          topFromTable: visualPrimary.top - tableBounds.top,
-        };
+          tableKey: revealAnchorGeometryKey,
+          leftLocal: nominalPlacement.tableLocalRect.left,
+          topLocal: nominalPlacement.tableLocalRect.top,
+        } : null;
       }
-      const canonicalRevealAnchor = phase === "REVEAL" && revealAnchorRef.current?.sceneKey === cardSceneKey
-        && revealAnchorRef.current?.viewportKey === revealViewportKey
-        ? {
-          left: tableBounds.left + revealAnchorRef.current.leftFromTable,
-          top: tableBounds.top + revealAnchorRef.current.topFromTable,
-        }
+      const canonicalRevealAnchor = phase === "REVEAL"
+        ? revealAnchorRef.current?.sceneKey === cardSceneKey && revealAnchorRef.current?.tableKey === revealAnchorGeometryKey
+          ? {
+            left: publicStageCoordinateFromTableLocal(revealAnchorRef.current.leftLocal, "x", tableCoordinates) ?? Number.NaN,
+            top: publicStageCoordinateFromTableLocal(revealAnchorRef.current.topLocal, "y", tableCoordinates) ?? Number.NaN,
+          }
+          : { left: Number.NaN, top: Number.NaN }
         : visualPrimary;
-      const compactWidth = safeRight - safeLeft - cardSize.width - 8;
-      let compactAnnouncement: { width: number; height: number } | undefined;
-      if (phase === "REVEAL" && announcement && compactWidth >= 120) {
-        const savedWidth = announcement.style.width;
-        announcement.style.width = `${compactWidth}px`;
-        try {
-          const compactRect = announcement.getBoundingClientRect();
-          compactAnnouncement = measuredSize(compactRect);
-        } finally {
-          announcement.style.width = savedWidth;
-        }
-      }
       const result = calculatePublicStageLayout({
         scene,
         viewport,
         table: tableBounds,
         preferredCard: {
-          left: Math.max(safeLeft, Math.min(safeRight - cardSize.width, canonicalRevealAnchor.left)),
-          top: Math.max(safeTop, Math.min(safeBottom - cardSize.height, canonicalRevealAnchor.top)),
+          left: canonicalRevealAnchor.left,
+          top: canonicalRevealAnchor.top,
         },
         card: cardSize,
         upperH4,
         announcement: measuredSize(announcementRect),
-        compactAnnouncement,
         activity: measuredSize(activityRect),
         activityBottom: consoleBounds.top,
         obstacles,
         stationarySurface,
         fixedBands: phase === "REVEAL" ? { h4: h4Geometry, pac: pacBand } : undefined,
-        announcementPaint: phase === "REVEAL" && announcement ? measuredPublicH4PaintRect(announcement) : null,
-        activityPaint: phase === "REVEAL" && chip && visibleObstacle(chip) ? rectOf(chip) : null,
-        ...(harvestRootPoolOverlap ? { harvestRootPoolOverlap: {
-          semantics: "PROVEN" as const,
-          scopeId,
-          rootEventId: display.dataset.publicCardRootEventId!,
-          interactionId: display.dataset.publicCardInteractionId!,
-          eventId,
-          cardId,
-          poolRootEventId: harvestPoolWrapper?.dataset.harvestRootEventId ?? "",
-          phase: phase as "REVEAL" | "MOVE",
-        } } : {}),
         phaseRects,
       });
       if (result.status !== "placed") {
         if (snapshotRef.current && canRetainPublicStageLayout(table, snapshotRef.current)) return;
         observeUnavailableGeometry(JSON.stringify([roomId, scopeId, interactionId, eventId, cardId, viewerId, phase]), [
           table, display, primary, announcement, chip,
-          ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS),
+          ...protectedGeometryElements,
         ]);
         if (isAttackDodgeUxTraceActive()) {
           const signature = `${eventId}:${viewerId}:${phase}:${result.reason}`;
@@ -617,7 +662,6 @@ export function PublicStageLayoutProvider({
           consoleGuidance: roundedRect(consoleBounds),
           primary: roundedRect(visualPrimary),
           announcement: roundedRect(announcementRect),
-          compactAnnouncement,
           activity: chip ? roundedRect(rectOf(chip)) : null,
           obstacles: obstacles.map(({ id, rect }) => ({ id, rect: roundedRect(rect) })),
         }));
@@ -705,7 +749,8 @@ export function PublicStageLayoutProvider({
       setSnapshot((current) => sameSnapshot(current, next) ? current : next);
       resizeObserver?.disconnect();
       for (const element of [table, display, ...(phase === "MOVE" ? [] : [primary]), announcement, chip,
-        ...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)].filter((candidate): candidate is HTMLElement => Boolean(candidate))) resizeObserver?.observe(element);
+        ...protectedGeometryElements]
+        .filter((candidate): candidate is HTMLElement => Boolean(candidate))) resizeObserver?.observe(element);
     };
     function schedule() {
       if (frame) return;
@@ -714,9 +759,9 @@ export function PublicStageLayoutProvider({
 
     const ownedGeometryElement = (target: Node): HTMLElement | null => {
       const element = target instanceof HTMLElement ? target : target.parentElement;
-      return element?.matches(
+      return element?.closest<HTMLElement>(
         '.public-card-journey-card[data-public-card-primary-card="true"], [data-public-card-announcement="true"], [data-public-activity-chip="true"]',
-      ) ? element : null;
+      ) ?? null;
     };
     const isUnavailableCurrentRevealGeometry = (target: Node) => {
       const element = ownedGeometryElement(target);
@@ -786,6 +831,21 @@ export function PublicStageLayoutProvider({
           && ["data-public-stage-layout-status", "data-public-stage-layout-phase", "data-public-stage-layout-identity", "data-public-stage-layout-failure"].includes(record.attributeName ?? "")) return false;
         if (record.type === "attributes" && record.attributeName?.startsWith("data-public-stage-layout-")
           && record.target !== table) return false;
+        const passiveReveal = Boolean(table.querySelector<HTMLElement>(
+          '.public-card-journey-card[data-public-card-primary-card="true"][data-public-card-journey-phase="reveal"]',
+        ));
+        if (passiveReveal) {
+          const target = record.target instanceof HTMLElement ? record.target : record.target.parentElement;
+          const ownedCardGeometry = target ? ownedGeometryElement(target) : null;
+          const sameDisplayChildList = record.type === "childList" && record.target instanceof HTMLElement
+            && record.target.matches('.public-card-display[data-public-card-display="true"]')
+            && record.target.dataset.publicCardRootEventId === scopeId
+            && record.target.dataset.publicCardViewerId === viewerId
+            && record.target.dataset.publicCardLayoutViewerId === viewerId
+            && (record.target.dataset.publicCardInteractionId ?? null) === interactionId;
+          const isTableGeometry = record.target === table && record.type === "attributes";
+          if (!ownedCardGeometry && !sameDisplayChildList && !isTableGeometry) return false;
+        }
         if (record.type === "attributes" && record.attributeName === "style" && ownedGeometryElement(record.target)) {
           // The first shared layout moves the real card and H4 to the measured
           // target. Re-measure that same proven REVEAL once those React-owned
@@ -799,19 +859,27 @@ export function PublicStageLayoutProvider({
     mutationObserver?.observe(table, { attributes: true, childList: true, characterData: true, subtree: true });
     const onResize = () => schedule();
     window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("scroll", onResize);
+    // Browser zoom/pan changes the client-to-table conversion and the client
+    // coordinates returned in the shared snapshot. Re-measure those values,
+    // but keep reveal identity/generation keyed only to table-local geometry.
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", onResize);
+    visualViewport?.addEventListener("scroll", onResize);
     measure();
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
+      if (initialCoordinateFrame) window.cancelAnimationFrame(initialCoordinateFrame);
+      coordinateResizeObserver?.disconnect();
+      window.removeEventListener("resize", refreshCoordinateSpace);
+      window.removeEventListener("orientationchange", refreshCoordinateSpace);
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
       unavailableObservationKeyRef.current = "";
       clearCountdownLayoutMetadata(table);
       committedLayouts.delete(table);
       window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("scroll", onResize);
+      visualViewport?.removeEventListener("resize", onResize);
+      visualViewport?.removeEventListener("scroll", onResize);
       setData(table, "data-public-stage-layout-status", undefined);
       setData(table, "data-public-stage-layout-phase", undefined);
       setData(table, "data-public-stage-layout-failure", undefined);
@@ -824,12 +892,15 @@ export function PublicStageLayoutProvider({
     && snapshot.layout.scene.viewerId === viewerId
     && snapshot.layout.scene.interactionId === interactionId
     ? snapshot : null;
-  return <PublicStageLayoutContext.Provider value={currentSnapshot}>{children}</PublicStageLayoutContext.Provider>;
+  const currentCoordinateSpace = coordinateState.scopeId === scopeId ? coordinateState.value : null;
+  return <PublicStageCoordinateContext.Provider value={currentCoordinateSpace}>
+    <PublicStageLayoutContext.Provider value={currentSnapshot}>{children}</PublicStageLayoutContext.Provider>
+  </PublicStageCoordinateContext.Provider>;
 }
 
 
-/** Retain only a previously committed, same-event/viewer pair which is still
- * safe against current DOM geometry. Never carry state across viewer changes. */
+/** Retain only the same committed event/viewer with a valid live card footprint.
+ * Passive REVEAL ignores surrounding overlay intersections. */
 export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPublicStageLayout): boolean {
   const scene = shared.layout.scene;
   if (table.dataset.publicStageLayoutScope !== scene.scopeId) return false;
@@ -862,13 +933,6 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
   const within = (r: PublicStageRect, bounds: PublicStageRect) => r.left >= bounds.left - 1 && r.right <= bounds.right + 1 && r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1;
   const liveBounds = rectOf(table);
   const consoleBounds = rectOf(consoleGuidance);
-  const viewport = window.visualViewport;
-  const viewportBounds = {
-    left: viewport?.offsetLeft ?? 0,
-    top: viewport?.offsetTop ?? 0,
-    right: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth),
-    bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
-  };
   const pacVisibleAndSafe = passiveReveal || !pac || visibleObstacle(pac)
     && Math.abs(pacRect.bottom - consoleBounds.top) <= 2
     && pacRect.left >= liveBounds.left - 1 && pacRect.right <= liveBounds.right + 1
@@ -893,18 +957,19 @@ export function canRetainPublicStageLayout(table: HTMLElement, shared: SharedPub
     && Math.abs(currentFrame.rect.top - shared.layout.card.top) <= 1
     && Math.abs(currentFrame.rect.right - shared.layout.card.right) <= 1
     && Math.abs(currentFrame.rect.bottom - shared.layout.card.bottom) <= 1);
-  const obstacles = [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
+  const finitePrimary = [currentPrimary.left, currentPrimary.top, currentPrimary.right, currentPrimary.bottom]
+    .every(Number.isFinite) && currentPrimary.right > currentPrimary.left && currentPrimary.bottom > currentPrimary.top;
+  const obstacles = passiveReveal ? [] : [...document.querySelectorAll<HTMLElement>(PROTECTED_SELECTORS)]
     .filter((el) => el !== card && el !== h4 && el !== pac && !card.contains(el) && visibleObstacle(el))
     .map(rectOf);
-  const primaryInsideSafeScene = within(currentPrimary, liveBounds)
-    && within(currentPrimary, viewportBounds)
-    && currentPrimary.bottom <= Math.min(viewportBounds.bottom, consoleBounds.top)
-    && (passiveReveal || !pacRect || !intersects(currentPrimary, pacRect))
-    && (passiveReveal || !h4Rect || (revealForegroundOverlay
+  const primaryInsideSafeScene = passiveReveal ? finitePrimary : within(currentPrimary, liveBounds)
+    && currentPrimary.bottom <= Math.min(liveBounds.bottom, consoleBounds.top)
+    && (!pacRect || !intersects(currentPrimary, pacRect))
+    && (!h4Rect || (revealForegroundOverlay
       ? publicStageHasVisibleAreaAfterForegroundOverlay(currentPrimary, h4Rect)
       : !intersects(currentPrimary, h4Rect)));
-  if (!passiveReveal && (h4Rect && (!within(h4Rect, liveBounds) || h4Rect.left < viewportBounds.left || h4Rect.right > viewportBounds.right
-    || h4Rect.top < viewportBounds.top || h4Rect.bottom > Math.min(viewportBounds.bottom, consoleBounds.top)) || !pacVisibleAndSafe
+  if (!passiveReveal && (h4Rect && (!within(h4Rect, liveBounds)
+    || h4Rect.bottom > Math.min(liveBounds.bottom, consoleBounds.top)) || !pacVisibleAndSafe
     || Math.abs(pacBand!.bottom - consoleBounds.top) > 2
     || !h4Matches || !pacReserveMatches
     || h4Rect && pacRect && intersects(h4Rect, pacRect)) || !retainedFrameClearance) return false;
@@ -970,14 +1035,10 @@ export function canPlaceRetainedPublicActivity(
   const activityBounds = activity;
   const intersects = (left: PublicStageRect, right: PublicStageRect) => left.left < right.right
     && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
-  const viewportLeft = Math.max(0, window.visualViewport?.offsetLeft ?? 0);
-  const viewportTop = Math.max(0, window.visualViewport?.offsetTop ?? 0);
-  const viewportRight = Math.min(window.innerWidth, viewportLeft + (window.visualViewport?.width ?? window.innerWidth));
-  const viewportBottom = Math.min(window.innerHeight, viewportTop + (window.visualViewport?.height ?? window.innerHeight));
-  const activityInsideStageCorridor = activityBounds.left >= Math.max(tableBounds.left, viewportLeft) + 1
-    && activityBounds.right <= Math.min(tableBounds.right, viewportRight) - 1
-    && activityBounds.top >= Math.max(tableBounds.top, viewportTop) + 1
-    && activityBounds.bottom <= Math.min(viewportBottom, consoleBounds.top) + 1;
+  const activityInsideStageCorridor = activityBounds.left >= tableBounds.left + 1
+    && activityBounds.right <= tableBounds.right - 1
+    && activityBounds.top >= tableBounds.top + 1
+    && activityBounds.bottom <= Math.min(tableBounds.bottom, consoleBounds.top) + 1;
   const h4InsideTable = h4Bounds.left >= tableBounds.left - 1 && h4Bounds.right <= tableBounds.right + 1
     && h4Bounds.top >= tableBounds.top - 1 && h4Bounds.bottom <= tableBounds.bottom + 1;
   if (!activityInsideStageCorridor || !passiveReveal && (!h4InsideTable

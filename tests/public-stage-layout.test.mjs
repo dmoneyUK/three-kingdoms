@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { findBattlefieldChoiceSafeTopOffset, harvestChoicePlacementPanelRect, isBattlefieldChoiceTopOffsetSafe } from "../app/battlefield-choice-stage.tsx";
-import { calculatePublicStageLayout, positionLabeledCardAboveBand, publicEffectFrameLanePreferredTop, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard } from "../game/public-stage-layout.ts";
+import { calculatePublicStageLayout, checkpointPublicStageVisibleHold, createPublicStageVisibleHoldPolicy, positionLabeledCardAboveBand, publicStationaryLanePreferredTop, publicStageCoordinateFromTableLocal, publicStageCoordinateToTableLocal, publicStageEffectFrameRevealTargetMatches, publicStageFailedRevealMatchesScene, publicStageJourneyPhaseReady, publicStageLengthToTableLocal, publicStageMeasuredBandClearanceSatisfied, publicStagePrimaryOriginFromVisualRect, publicStageRectFromTableLocal, publicStageRectToTableLocal, publicStageRevealCanRetire, publicStageRevealNeedsOwnedRemeasure, publicStageSceneIdentity, publicStageSceneMatchesCard, publicStageStaticAnnouncementMatchesReveal, publicStageVisibleHoldCanComplete, publicStageVisibleHoldPolicyMatches } from "../game/public-stage-layout.ts";
 
 const scene = {
   semantics: "PROVEN",
@@ -16,7 +17,7 @@ const scene = {
 };
 
 function input(overrides = {}) {
-  return {
+  const value = {
     scene,
     viewport: { left: 0, top: 0, right: 390, bottom: 844 },
     table: { left: 8, top: 100, right: 382, bottom: 780 },
@@ -27,6 +28,14 @@ function input(overrides = {}) {
     obstacles: [],
     ...overrides,
   };
+  if (value.scene.phase === "REVEAL" && !("fixedBands" in overrides) && !("upperH4" in overrides)) {
+    value.fixedBands = {
+      h4: h4Geometry(75, 120, 240, 52),
+      pac: { left: 85, top: 690, right: 305, bottom: 734 },
+    };
+    if (!("activityBottom" in overrides)) value.activityBottom = 734;
+  }
+  return value;
 }
 
 function h4Geometry(left, top, width, reserveHeight, paintHeight = reserveHeight) {
@@ -36,6 +45,108 @@ function h4Geometry(left, top, width, reserveHeight, paintHeight = reserveHeight
     overlapPolicy: "PASSIVE_REVEAL_FOREGROUND",
   };
 }
+
+test("a static replacement H4 may retain the pending reveal anchor only for exact room, event, card and viewer identity", () => {
+  const identity = { roomId: "room-1", rootEventId: "root-1", interactionId: "interaction-1",
+    eventId: "replacement-1", cardId: "replacement-card-1", viewerId: "viewer-1" };
+  assert.equal(publicStageStaticAnnouncementMatchesReveal({ phase: "static", expected: identity, actual: identity }), true);
+  assert.equal(publicStageStaticAnnouncementMatchesReveal({ phase: "reveal", expected: identity, actual: identity }), false,
+    "ordinary moving/revealing copy keeps its existing placement path");
+  for (const key of Object.keys(identity)) {
+    assert.equal(publicStageStaticAnnouncementMatchesReveal({ phase: "static", expected: identity,
+      actual: { ...identity, [key]: `wrong-${key}` } }), false, `${key} mismatch fails closed`);
+  }
+});
+
+test("visible-hold checkpoint accrues only the visible segment and resumes the remainder", () => {
+  const pausedAt235 = checkpointPublicStageVisibleHold({ elapsedMs: 0, remainingMs: 4000, startedAtMs: 0, nowMs: 235 });
+  assert.deepEqual(pausedAt235, { elapsedMs: 235, remainingMs: 3765, segmentMs: 235, startedAtMs: null });
+  const recoveredAt4000 = checkpointPublicStageVisibleHold({ elapsedMs: pausedAt235.elapsedMs,
+    remainingMs: pausedAt235.remainingMs, startedAtMs: null, nowMs: 4000 });
+  assert.equal(recoveredAt4000.remainingMs, 3765, "hidden wall time is not charged");
+  const completed = checkpointPublicStageVisibleHold({ elapsedMs: recoveredAt4000.elapsedMs,
+    remainingMs: recoveredAt4000.remainingMs, startedAtMs: 4000, nowMs: 7765 });
+  assert.equal(completed.elapsedMs, 4000);
+  assert.equal(completed.remainingMs, 0);
+  assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
+    startedAtMs: 4000, nowMs: 7764, safePainted: true }), false, "one millisecond before the remainder expires cannot complete");
+  assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
+    startedAtMs: 4000, nowMs: 7765, safePainted: false }), false, "unsafe paint cannot complete at the deadline");
+  assert.equal(publicStageVisibleHoldCanComplete({ remainingMs: recoveredAt4000.remainingMs,
+    startedAtMs: 4000, nowMs: 7765, safePainted: true }), true, "the safe remaining visible budget completes once due");
+});
+
+test("shared visible-hold runtime retires Guicai-only lifecycle and JSX gates", () => {
+  const display = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const equipment = readFileSync(new URL("../app/public-equipment-transition.ts", import.meta.url), "utf8");
+  assert.match(display, /function publicVisibleHoldPolicyFor\(/);
+  assert.match(display, /publicVisibleHoldPaintIdentity\(visibleHoldPolicy\)/);
+  assert.match(display, /pendingVisibleHoldPolicy/);
+  assert.doesNotMatch(display, /sima_yi_guicai|verifiedGuicaiVisibleHold|requiresPublicH4VisibleHold|zoneTransitionPaintIdentity|allowPendingVerifiedReveal|revealCompletionPolicy|pendingRevealIdentity/);
+  assert.match(equipment, /createPublicStageVisibleHoldPolicy\(/);
+  assert.doesNotMatch(equipment, /revealCompletionPolicy/);
+});
+
+test("the shared visible-hold policy binds Judgement and Equipment to exact proof and endpoints", () => {
+  const frame = { eventId: "judgement-event", activationEventId: "activation-event", rootEventId: "root-event",
+    rootResolutionId: "resolution-1", effectId: "public-effect", effectClass: "JUDGEMENT",
+    activationOwnerId: "actor-1", materialCardIds: ["judgement-card"], materialOwnerIds: ["actor-1"] };
+  const judgementInput = { semantics: "PROVEN", identity: { roomId: "room-1", rootEventId: "judgement-event",
+    interactionId: "interaction-1", eventId: "judgement-event", cardId: "judgement-card", viewerId: "viewer-1",
+    rootFrameId: "frame-1", h4EventId: "judgement-event", phase: "REVEAL", materialCardIds: ["judgement-card"], frame },
+  completion: { kind: "CENTRE_RETIRE" } };
+  const judgement = createPublicStageVisibleHoldPolicy(judgementInput);
+  assert.ok(judgement);
+  assert.equal(publicStageVisibleHoldPolicyMatches(judgement, createPublicStageVisibleHoldPolicy(judgementInput)), true);
+  for (const [field, value] of [["viewerId", "viewer-2"], ["rootFrameId", "frame-2"], ["h4EventId", "other-h4"]]) {
+    const altered = createPublicStageVisibleHoldPolicy({ ...judgementInput,
+      identity: { ...judgementInput.identity, [field]: value } });
+    assert.equal(publicStageVisibleHoldPolicyMatches(judgement, altered), false, `${field} mismatch fails closed`);
+  }
+  const wrongMaterial = createPublicStageVisibleHoldPolicy({ ...judgementInput,
+    identity: { ...judgementInput.identity, cardId: "other-card", materialCardIds: ["judgement-card"] } });
+  assert.equal(wrongMaterial, null, "the displayed physical card must be proven as a material");
+
+  const equipmentInput = { semantics: "PROVEN", identity: { roomId: "room-1", rootEventId: "equip-event",
+    interactionId: "interaction-2", eventId: "equip-event", cardId: "weapon-card", viewerId: "viewer-1",
+    rootFrameId: "frame-2", h4EventId: "equip-event", phase: "REVEAL", materialCardIds: ["weapon-card"], frame: null },
+  completion: { kind: "EQUIPMENT_ARRIVAL", claimId: "claim-1", eventId: "equip-event", physicalCardId: "weapon-card",
+    ownerId: "owner-1", destination: "EQUIPMENT", slot: "weapon" } };
+  const equipment = createPublicStageVisibleHoldPolicy(equipmentInput);
+  assert.ok(equipment);
+  assert.equal(publicStageVisibleHoldPolicyMatches(equipment, createPublicStageVisibleHoldPolicy(equipmentInput)), true);
+  const wrongSlot = createPublicStageVisibleHoldPolicy({ ...equipmentInput,
+    completion: { ...equipmentInput.completion, slot: "armor" } });
+  assert.equal(publicStageVisibleHoldPolicyMatches(equipment, wrongSlot), false, "the actual arrival slot is part of the identity");
+});
+
+test("table-local H4, PAC and CardFace coordinates stay fixed when the visible viewport changes", () => {
+  const stationaryPublicElements = {
+    h4: { left: 24, top: 40, right: 342, bottom: 96 },
+    pac: { left: 38, top: 520, right: 352, bottom: 574 },
+    cardFace: { left: 150, top: 278, right: 240, bottom: 413 },
+  };
+  const spaces = [
+    { originLeft: 12, originTop: 28, borderLeft: 2, borderTop: 3, scaleX: 1, scaleY: 1 },
+    { originLeft: -90, originTop: 140, borderLeft: 2, borderTop: 3, scaleX: 1.5, scaleY: 1.5 },
+    { originLeft: 260, originTop: -35, borderLeft: 2, borderTop: 3, scaleX: 0.8, scaleY: 0.8 },
+  ];
+  for (const space of spaces) {
+    for (const [owner, tableLocal] of Object.entries(stationaryPublicElements)) {
+      const client = publicStageRectFromTableLocal(tableLocal, space);
+      assert.ok(client, `${owner} projects into client coordinates`);
+      const roundTrip = publicStageRectToTableLocal(client, space);
+      assert.ok(roundTrip, `${owner} round-trips into table coordinates`);
+      for (const edge of ["left", "top", "right", "bottom"]) {
+        assert.ok(Math.abs(roundTrip[edge] - tableLocal[edge]) < 1e-8, `${owner} keeps ${edge} at its table anchor`);
+      }
+    }
+    assert.ok(Math.abs(publicStageCoordinateToTableLocal(
+      publicStageCoordinateFromTableLocal(stationaryPublicElements.h4.left, "x", space), "x", space,
+    ) - stationaryPublicElements.h4.left) < 1e-8);
+  }
+  assert.equal(publicStageLengthToTableLocal(180, "y", spaces[1]), 120);
+});
 
 test("public stage identity is scoped to proven event, physical card, viewer, phase and generation", () => {
   const identity = publicStageSceneIdentity(scene);
@@ -176,6 +287,22 @@ test("a public reveal cannot retire before safe paint and a measured target for 
   ]) assert.equal(publicStageRevealCanRetire({ ...ready, ...change }), false);
 });
 
+test("a centre-only reveal can complete after safe visible hold without a parking target", () => {
+  const reveal = {
+    phase: "REVEAL",
+    layoutPending: false,
+    safePainted: true,
+    viewerId: "viewer-1",
+    parkingTargetViewerId: undefined,
+    parkingTarget: null,
+    requireParkingTarget: false,
+  };
+  assert.equal(publicStageRevealCanRetire(reveal), true);
+  assert.equal(publicStageRevealCanRetire({ ...reveal, safePainted: false }), false);
+  assert.equal(publicStageRevealCanRetire({ ...reveal, layoutPending: true }), false);
+  assert.equal(publicStageRevealCanRetire({ ...reveal, requireParkingTarget: true }), false);
+});
+
 test("only the matching pending REVEAL schedules a remeasure after owned placement styles land", () => {
   const pendingCurrentReveal = { phase: "REVEAL", revealReady: false, identityMatches: true };
   assert.equal(publicStageRevealNeedsOwnedRemeasure(pendingCurrentReveal), true);
@@ -296,7 +423,7 @@ test("a cached Harvest top is reused only while the full reserved panel clears m
     "actor-select growth cannot reuse a cached read-only location without reserved height");
 });
 
-test("reveal layout keeps H4, full-size card and PAC in order with the measured minimum gap", () => {
+test("reveal layout keeps full-size card on its nominal anchor with independently placed H4 and PAC", () => {
   const result = calculatePublicStageLayout(input());
   assert.equal(result.status, "placed");
   if (result.status !== "placed") return;
@@ -313,7 +440,7 @@ test("reveal layout keeps H4, full-size card and PAC in order with the measured 
   }
 });
 
-test("REVEAL anchors the shared PAC to the measured Console top without moving H4 or the full card over it", () => {
+test("REVEAL anchors the shared PAC to the measured Console top without rejecting overlay geometry", () => {
   const consoleTop = 482;
   const result = calculatePublicStageLayout(input({
     viewport: { left: 0, top: 0, right: 390, bottom: 700 },
@@ -333,30 +460,33 @@ test("REVEAL anchors the shared PAC to the measured Console top without moving H
   assert.equal(activity.top < 560 && activity.bottom > consoleTop, false);
 });
 
-test("obstacle reflow avoids the obstacle without resizing or reordering the reveal", () => {
+test("passive REVEAL keeps the exact nominal placement through Seat, choice and Console overlap", () => {
   const obstacle = { id: "countdown", rect: { left: 132, top: 310, right: 258, bottom: 374 } };
-  const result = calculatePublicStageLayout(input({ obstacles: [obstacle] }));
+  const canonical = calculatePublicStageLayout(input());
+  const result = calculatePublicStageLayout(input({
+    obstacles: [obstacle, { id: "seat", rect: { left: 0, top: 0, right: 390, bottom: 120 } },
+      { id: "choice", rect: { left: 40, top: 250, right: 350, bottom: 430 } }],
+  }));
   assert.equal(result.status, "placed");
-  if (result.status !== "placed") return;
-  for (const rect of [result.layout.announcement, result.layout.card, result.layout.activity]) {
-    assert.equal(rect.left < obstacle.rect.right && rect.right > obstacle.rect.left
-      && rect.top < obstacle.rect.bottom && rect.bottom > obstacle.rect.top, false);
-  }
-  assert.ok(result.layout.announcement.bottom <= result.layout.card.top);
-  assert.ok(result.layout.card.bottom <= result.layout.activity.top);
-  assert.deepEqual([result.layout.card.right - result.layout.card.left, result.layout.card.bottom - result.layout.card.top], [90, 135]);
-  assert.deepEqual(result.layout.protectedRects, [obstacle]);
+  assert.equal(canonical.status, "placed");
+  if (result.status !== "placed" || canonical.status !== "placed") return;
+  assert.deepEqual(result.layout, canonical.layout);
+  assert.deepEqual(result.layout.protectedRects, []);
 });
 
-test("impossible reveal geometry fails closed", () => {
-  const impossible = calculatePublicStageLayout(input({
-    table: { left: 0, top: 0, right: 150, bottom: 180 },
+test("a browser viewport crop does not reject a proven reveal, while malformed bands still fail closed", () => {
+  const cropped = calculatePublicStageLayout(input({
+    viewport: { left: 0, top: 100, right: 390, bottom: 300 },
   }));
-  assert.deepEqual(impossible, {
-    status: "unavailable",
-    identity: JSON.stringify(["room-1", "root-event-1", null, "event-1", "card-1", "viewer-1", "REVEAL", 1]),
-    reason: "NO_SAFE_STACK",
-  });
+  assert.equal(cropped.status, "placed");
+  if (cropped.status === "placed") assert.deepEqual(cropped.layout.card,
+    { left: 150, top: 350, right: 240, bottom: 485 });
+
+  const malformed = calculatePublicStageLayout(input({
+    fixedBands: { h4: h4Geometry(75, 120, 240, 52), pac: { left: 85, top: 690, right: 305, bottom: Number.NaN } },
+  }));
+  assert.equal(malformed.status, "unavailable");
+  if (malformed.status === "unavailable") assert.equal(malformed.reason, "INVALID_GEOMETRY");
 });
 
 test("MOVE preserves the validated reveal H4 band until the card leaves its 380ms route", () => {
@@ -476,38 +606,40 @@ test("PARKED centres PAC even when it covers the real parked miniature", () => {
   assert.deepEqual(result.layout.card, card);
 });
 
-test("short mobile stage fits a measured wrapped announcement beside the full card", () => {
+test("short mobile stage keeps the canonical full-size reveal despite foreground overlap", () => {
   const result = calculatePublicStageLayout(input({
     viewport: { left: 0, top: 0, right: 390, bottom: 700 },
     table: { left: 0, top: 0, right: 390, bottom: 360 },
+    activityBottom: 352,
     preferredCard: { left: 110, top: 100 },
     card: { width: 168, height: 190 },
     announcement: { width: 366, height: 48 },
-    compactAnnouncement: { width: 198, height: 100 },
     activity: { width: 340, height: 57 },
     obstacles: [{ id: "seats", rect: { left: 0, top: 0, right: 390, bottom: 94 } }],
   }));
   assert.equal(result.status, "placed");
   if (result.status !== "placed") return;
   const { card, announcement, activity, variant } = result.layout;
-  assert.equal(variant, "compact-split");
+  assert.equal(variant, "fixed-bands");
   assert.equal(card.right - card.left, 168);
-  assert.ok(card.right <= announcement.left || announcement.right <= card.left);
-  assert.ok(activity.top >= card.bottom + 8);
+  assert.deepEqual(card, { left: 110, top: 100, right: 278, bottom: 290 });
+  assert.ok(announcement.bottom > card.top || card.bottom > announcement.top,
+    "a measured long H4 may be foreground over the passive card");
+  assert.ok(activity.top < card.bottom + 8 || activity.bottom > card.top,
+    "PAC overlap remains an independent foreground layer");
   assert.equal((activity.left + activity.right) / 2, 195);
-  assert.ok(card.top >= 94 && activity.bottom <= result.layout.safeBounds.bottom);
+  assert.equal(activity.bottom, 352, "the PAC remains anchored to the real table/Console seam");
 });
 
 test("measured upper H4 paint can grow across a passive reveal and PAC without moving the fixed card", () => {
-  const shortPaint = h4Geometry(50, 150.15625, 340, 70.5, 70.5).paint;
   const geometry = { viewport: { left: 0, top: 0, right: 440, bottom: 766 }, table: { left: 0, top: 0, right: 440, bottom: 474 }, activityBottom: 479,
     preferredCard: { left: 175, top: 200 }, card: { width: 90, height: 135 },
     upperH4: { ...h4Geometry(50, 150.15625, 340, 70.5, 70.5), gap: 8 },
     activity: { width: 340, height: 67 }, obstacles: [] };
-  const short = calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 30 }, announcementPaint: shortPaint }));
-  const longPaint = { ...shortPaint, bottom: 245 };
+  const short = calculatePublicStageLayout(input({ ...geometry, announcement: { width: 340, height: 30 } }));
+  const longPaint = { ...geometry.upperH4.paint, bottom: 245 };
   const long = calculatePublicStageLayout(input({ ...geometry,
-    upperH4: { ...geometry.upperH4, paint: longPaint }, announcementPaint: longPaint, announcement: { width: 340, height: 95 } }));
+    upperH4: { ...geometry.upperH4, paint: longPaint }, announcement: { width: 340, height: 95 } }));
   assert.equal(short.status, "placed"); assert.equal(long.status, "placed");
   assert.equal(short.layout.announcement.top, 150.15625);
   assert.deepEqual(short.layout.card, long.layout.card);
@@ -515,14 +647,12 @@ test("measured upper H4 paint can grow across a passive reveal and PAC without m
   assert.ok(long.layout.announcement.bottom > long.layout.card.top, "long H4 paint may cover the passive CardFace");
   assert.ok(long.layout.card.bottom + 8 <= long.layout.activity.top);
   const overlapsPac = calculatePublicStageLayout(input({ ...geometry,
-    upperH4: { ...geometry.upperH4, paint: { ...longPaint, bottom: 420 } },
-    announcementPaint: { ...longPaint, bottom: 420 },
-    activityPaint: { left: 50, top: 412, right: 390, bottom: 479 } }));
+    upperH4: { ...geometry.upperH4, paint: { ...longPaint, bottom: 420 } } }));
   assert.equal(overlapsPac.status, "placed", "H4/PAC overlap is paint order, not a passive reveal gate");
   if (overlapsPac.status === "placed") assert.deepEqual(overlapsPac.layout.card, long.layout.card);
 });
 
-test("fixed-band Effect Frame preserves its position across passive reserve overlap while protecting actual obstacles", () => {
+test("fixed-band Effect Frame preserves its position across passive reserve and Seat overlap", () => {
   const geometry = {
     viewport: { left: 0, top: 0, right: 390, bottom: 844 },
     table: { left: 0, top: 0, right: 390, bottom: 700 },
@@ -535,7 +665,6 @@ test("fixed-band Effect Frame preserves its position across passive reserve over
       h4: h4Geometry(25, 100, 340, 52),
       pac: { left: 25, top: 405, right: 365, bottom: 500 },
     },
-    announcementPaint: h4Geometry(25, 100, 340, 52).paint,
     stationarySurface: "effect-frame",
     obstacles: [],
   };
@@ -543,7 +672,6 @@ test("fixed-band Effect Frame preserves its position across passive reserve over
   const long = calculatePublicStageLayout(input({
     ...geometry,
     fixedBands: { ...geometry.fixedBands, h4: h4Geometry(25, 100, 340, 52, 220) },
-    announcementPaint: h4Geometry(25, 100, 340, 52, 220).paint,
     announcement: { width: 340, height: 120 },
   }));
   assert.equal(short.status, "placed");
@@ -559,18 +687,20 @@ test("fixed-band Effect Frame preserves its position across passive reserve over
     ...geometry,
     obstacles: [{ id: "seat", rect: { left: 150, top: 320, right: 180, bottom: 340 } }],
   }));
-  assert.equal(overlapsSeat.status, "unavailable", "the actual seat remains a hard obstacle for the card itself");
+  assert.equal(overlapsSeat.status, "placed", "the seat is resolved by foreground layers, never alternate placement");
+  if (overlapsSeat.status === "placed") {
+    assert.deepEqual(overlapsSeat.layout.card, short.layout.card);
+    assert.deepEqual(overlapsSeat.layout.protectedRects, []);
+  }
   const overlapsPac = calculatePublicStageLayout(input({
     ...geometry,
     fixedBands: { ...geometry.fixedBands, h4: h4Geometry(25, 100, 340, 52, 310) },
-    announcementPaint: h4Geometry(25, 100, 340, 52, 310).paint,
-    activityPaint: geometry.fixedBands.pac,
   }));
   assert.equal(overlapsPac.status, "placed", "H4/PAC overlap remains an independent foreground paint case");
   if (overlapsPac.status === "placed") assert.deepEqual(overlapsPac.layout.card, short.layout.card);
 });
 
-test("full effect frame preserves its canonical position and reports impossible geometry", () => {
+test("full effect frame preserves its canonical position when the browser crops the viewport", () => {
   const geometry = {
     viewport: { left: 0, top: 0, right: 390, bottom: 844 },
     table: { left: 0, top: 0, right: 390, bottom: 620 },
@@ -591,13 +721,13 @@ test("full effect frame preserves its canonical position and reports impossible 
   assert.equal(wrapped.layout.card.top, geometry.preferredCard.top);
   assert.deepEqual(wrapped.layout.card, rewrapped.layout.card);
 
-  const noFit = calculatePublicStageLayout(input({
+  const cropped = calculatePublicStageLayout(input({
     ...geometry,
-    activityBottom: 280,
-    table: { ...geometry.table, bottom: 280 },
+    viewport: { left: 0, top: 0, right: 390, bottom: 280 },
   }));
-  assert.equal(noFit.status, "unavailable");
-  if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
+  assert.equal(cropped.status, "placed");
+  if (cropped.status === "placed") assert.deepEqual(cropped.layout.card,
+    { left: 111, top: 300, right: 279, bottom: 490 });
 });
 
 test("fixed H4 and PAC reserves pin the same stationary card while either message is absent or wraps", () => {
@@ -636,11 +766,15 @@ test("fixed H4 and PAC reserves pin the same stationary card while either messag
     ...geometry,
     obstacles: [{ id: "seat-projection", rect: { left: 150, top: 260, right: 290, bottom: 410 } }],
   }));
-  assert.equal(blocked.status, "unavailable", "the card stays at its canonical point instead of routing around a hard obstacle");
+  assert.equal(blocked.status, "placed", "passive Seat overlap cannot alter or suppress the canonical reveal");
+  if (blocked.status === "placed") {
+    assert.deepEqual(blocked.layout.card, placed.layout.card);
+    assert.deepEqual(blocked.layout.protectedRects, []);
+  }
 
-  const noFit = calculatePublicStageLayout(input({ ...geometry, card: { width: 90, height: 370 } }));
-  assert.equal(noFit.status, "unavailable");
-  if (noFit.status === "unavailable") assert.equal(noFit.reason, "NO_SAFE_STAGE_BAND");
+  const invalid = calculatePublicStageLayout(input({ ...geometry, card: { width: 0, height: 370 } }));
+  assert.equal(invalid.status, "unavailable", "invalid card dimensions still fail closed");
+  if (invalid.status === "unavailable") assert.equal(invalid.reason, "INVALID_GEOMETRY");
 });
 
 test("fixed reveal keeps its canonical position through actual H4 and PAC overlap", () => {
@@ -661,31 +795,32 @@ test("fixed reveal keeps its canonical position through actual H4 and PAC overla
   const frame = calculatePublicStageLayout(input({
     ...frameGeometry,
     stationarySurface: "effect-frame",
-    cardActivityGap: 5,
   }));
   assert.equal(frame.status, "placed", "the canonical full-size Effect Frame may occupy unused H4/PAC reserves");
   if (frame.status === "placed") assert.deepEqual(frame.layout.card,
     { left: 111, top: 250, right: 279, bottom: 444 }, "soft gap preferences do not move or shrink the frame");
 
-  const ordinary = calculatePublicStageLayout(input({ ...frameGeometry, cardActivityGap: 5 }));
+  const ordinary = calculatePublicStageLayout(input(frameGeometry));
   assert.equal(ordinary.status, "placed", "ordinary CardFaces also keep their canonical reveal position");
 
   const actualPacCollision = calculatePublicStageLayout(input({
     ...frameGeometry,
-    activityPaint: { left: 100, top: 300, right: 290, bottom: 410 },
+    obstacles: [{ id: "pac-paint", rect: { left: 100, top: 300, right: 290, bottom: 410 } }],
   }));
   assert.equal(actualPacCollision.status, "placed", "visible PAC is an independent foreground layer");
   if (actualPacCollision.status === "placed") assert.deepEqual(actualPacCollision.layout.card, frame.layout.card);
 
   const partialH4Overlay = calculatePublicStageLayout(input({
     ...frameGeometry,
-    announcementPaint: { left: 100, top: 220, right: 280, bottom: 310 },
+    fixedBands: { ...frameGeometry.fixedBands,
+      h4: { ...frameGeometry.fixedBands.h4, paint: { left: 100, top: 220, right: 280, bottom: 310 } } },
   }));
   assert.equal(partialH4Overlay.status, "placed", "H4 may cover part of a passive frame while preserving visible card area");
 
   const fullH4Occlusion = calculatePublicStageLayout(input({
     ...frameGeometry,
-    announcementPaint: { left: 100, top: 240, right: 290, bottom: 450 },
+    fixedBands: { ...frameGeometry.fixedBands,
+      h4: { ...frameGeometry.fixedBands.h4, paint: { left: 100, top: 240, right: 290, bottom: 450 } } },
   }));
   assert.equal(fullH4Occlusion.status, "placed", "H4 remains an independent foreground layer even when it covers the frame");
   if (fullH4Occlusion.status === "placed") assert.deepEqual(fullH4Occlusion.layout.card, frame.layout.card);
@@ -701,7 +836,6 @@ test("fixed reveal keeps its canonical position through actual H4 and PAC overla
       h4: h4Geometry(50, 150, 340, 52),
       pac: { left: 50, top: 435, right: 390, bottom: 479 },
     },
-    activityPaint: { left: 50, top: 412, right: 390, bottom: 456 },
   }));
   assert.equal(observedPhoneGeometry.status, "placed", "the observed 23px PAC target mismatch and 74px card gap do not veto reveal");
   if (observedPhoneGeometry.status === "placed") assert.deepEqual(observedPhoneGeometry.layout.card,
@@ -721,14 +855,50 @@ test("fixed reveal keeps its canonical position through actual H4 and PAC overla
 test("full Effect Frame top centers in nominal H4-to-PAC lane without using live copy height", () => {
   const h4Reserve = { left: 50, top: 150, right: 390, bottom: 216 };
   const pacReserve = { left: 50, top: 412, right: 390, bottom: 456 };
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 202), 213,
-    "the observed complete frame is centered between fixed band edges");
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 202, 8), 221,
-    "the Frost-only preference shifts the shared lane anchor down by eight CSS pixels");
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 220), 204,
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 202), 213,
+    "the observed stationary card is centered between fixed band edges");
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 202, 8), 221,
+    "an existing approved effect offset remains unchanged");
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 220), 204,
     "a different full frame footprint changes only its centered top");
-  assert.equal(publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, 0), null);
-  assert.equal(publicEffectFrameLanePreferredTop({ ...h4Reserve, bottom: Number.NaN }, pacReserve, 202), null);
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 0), null);
+  assert.equal(publicStationaryLanePreferredTop({ ...h4Reserve, bottom: Number.NaN }, pacReserve, 202), null);
+});
+
+test("the complete stationary footprint stays on one nominal centre across face and Frame sizes", () => {
+  const h4Reserve = { left: 25, top: 120, right: 365, bottom: 184 };
+  const pacReserve = { left: 25, top: 424, right: 365, bottom: 476 };
+  const laneCenter = (h4Reserve.bottom + pacReserve.top) / 2;
+  for (const height of [135, 156, 202, 236]) {
+    assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, height) + height / 2, laneCenter,
+      `complete ${height}px footprint keeps the same centre`);
+  }
+  assert.equal(publicStationaryLanePreferredTop(h4Reserve, pacReserve, 202, 8) + 202 / 2, laneCenter + 8,
+    "the existing explicit Frame offset applies to the complete footprint only");
+});
+
+test("production stationary callers seed from nominal table-local geometry and retire duplicate centre paths", () => {
+  const display = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const context = readFileSync(new URL("../app/public-stage-layout-context.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const resultLayout = readFileSync(new URL("../app/public-result-layout.ts", import.meta.url), "utf8");
+  const resultCallers = page.slice(page.indexOf("function publicResultNominalCenter"), page.indexOf("function PublicHandRevealCardTransition"));
+  const stageLayout = readFileSync(new URL("../game/public-stage-layout.ts", import.meta.url), "utf8");
+  assert.match(display, /publicStationaryCardPlacement\(table, size, coordinates/);
+  assert.doesNotMatch(display, /requireProtectedClearance|respectFixedUpperH4|fixedPublicBands|centerRevealCardInSafeBattlefield|singleTargetBattlefieldRevealCard/);
+  assert.match(context, /publicStationaryCardPlacement\(table, cardSize, tableCoordinates/);
+  assert.match(context, /nominalPlacement\.tableLocalRect\.top/);
+  assert.match(context, /const protectedGeometryElements = phase === "REVEAL"\s*\?\s*\[\]\s*:\s*\[\.\.\.document\.querySelectorAll/);
+  assert.match(context, /obstacles: phase === "REVEAL" \? \[\] : obstacles/);
+  assert.doesNotMatch(context, /compactWidth|compactAnnouncement/);
+  assert.doesNotMatch(context, /localVisualPrimary|\?\? visualPrimary\.left|\?\? visualPrimary\.top/);
+  assert.match(page, /publicResultNominalCenter\(table\)/);
+  assert.match(page, /preferredCenter/);
+  assert.doesNotMatch(page, /PUBLIC_RESULT_PROTECTED_SELECTORS|publicResultObstacles|PublicResultObstacle/);
+  assert.doesNotMatch(resultCallers, /MutationObserver|obstacle|intersects|PublicResultObstacle/);
+  assert.doesNotMatch(page, /requestedCardTop|plannedH4Bottom|publicRevealH4Route|public-hand-reveal-width|public-hand-reveal-height/);
+  assert.doesNotMatch(resultLayout, /PublicResultObstacle|intersects|candidateScore|candidatePositions|bounds\.height\s*\*\s*\.48/);
+  assert.doesNotMatch(stageLayout, /cardObstacles|compact-split|NO_SAFE_STACK/);
 });
 
 test("the upper-H4 fallback keeps the canonical Effect Frame position despite reserve overlap", () => {
@@ -785,61 +955,24 @@ test("measured upper H4 remains fixed during move and parked phases", () => {
   }
 });
 
-test("only a proven same-root Harvest CardFace may overlap its pool; H4/PAC remain independent paint", () => {
-  const harvestScene = { ...scene, interactionId: "interaction-1", eventId: "root-event-1" };
-  const pool = { id: "harvest-choice-panel", rect: { left: 66, top: 237, right: 374, bottom: 365 } };
-  const rootPoolProof = {
-    semantics: "PROVEN", scopeId: "root-event-1", rootEventId: "root-event-1", poolRootEventId: "root-event-1",
-    interactionId: "interaction-1", eventId: "root-event-1", cardId: "card-1", phase: "REVEAL",
-  };
-  const geometry = {
-    scene: harvestScene,
-    viewport: { left: 0, top: 0, right: 440, bottom: 766 },
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    activityBottom: 479,
-    preferredCard: { left: 175, top: 265 },
-    card: { width: 90, height: 135 },
-    announcement: { width: 340, height: 40 },
-    activity: { width: 340, height: 60 },
-    upperH4: { ...h4Geometry(50, 160, 340, 40), gap: 8 },
-    obstacles: [pool],
-  };
-  const placed = calculatePublicStageLayout(input({ ...geometry, harvestRootPoolOverlap: rootPoolProof }));
-  assert.equal(placed.status, "placed");
-  if (placed.status !== "placed") return;
-  assert.equal(placed.layout.card.top, geometry.preferredCard.top);
-  assert.equal(placed.layout.card.bottom, geometry.preferredCard.top + geometry.card.height);
-  assert.equal(placed.layout.card.left < pool.rect.right && placed.layout.card.right > pool.rect.left
-    && placed.layout.card.top < pool.rect.bottom && placed.layout.card.bottom > pool.rect.top, true);
-  assert.equal(placed.layout.announcement.top < pool.rect.bottom && placed.layout.announcement.bottom > pool.rect.top, false);
-  assert.equal(placed.layout.activity.top < pool.rect.bottom && placed.layout.activity.bottom > pool.rect.top, false);
-  assert.deepEqual(placed.layout.protectedRects, [pool]);
-
-  for (const proof of [undefined, { ...rootPoolProof, rootEventId: "other-root", poolRootEventId: "other-root" }]) {
-    const rejected = calculatePublicStageLayout(input({ ...geometry, harvestRootPoolOverlap: proof }));
-    assert.equal(rejected.status, "unavailable");
-    if (rejected.status === "unavailable") assert.equal(rejected.reason, "NO_SAFE_STAGE_BAND");
-  }
-
-  const responseCard = calculatePublicStageLayout(input({
-    ...geometry,
-    scene: { ...harvestScene, eventId: "negation-event", cardId: "negation-card", phase: "REVEAL" },
-    harvestRootPoolOverlap: rootPoolProof,
-  }));
-  assert.equal(responseCard.status, "unavailable", "the original root exception cannot exempt a Negation response");
-
-  for (const { rect, protectedPaint } of [
-    { rect: { left: 66, top: 160, right: 374, bottom: 220 }, protectedPaint: { announcementPaint: geometry.upperH4.paint } },
-    { rect: { left: 66, top: 420, right: 374, bottom: 480 },
-      protectedPaint: { activityPaint: { left: 50, top: 419, right: 390, bottom: 479 } } },
-  ]) {
-    const layered = calculatePublicStageLayout(input({
-      ...geometry,
-      obstacles: [{ id: "harvest-choice-panel", rect }],
-      ...protectedPaint,
-      harvestRootPoolOverlap: rootPoolProof,
-    }));
-    assert.equal(layered.status, "placed", "passive H4/PAC overlap cannot veto the proven stationary reveal");
-    if (layered.status === "placed") assert.deepEqual(layered.layout.card, placed.layout.card);
+test("all proven passive CardFaces use the same nominal placement over Seat, choice, H4 and PAC overlays", () => {
+  const overlays = [
+    { id: "seat", rect: { left: 0, top: 0, right: 440, bottom: 180 } },
+    { id: "choice-pool", rect: { left: 66, top: 237, right: 374, bottom: 365 } },
+    { id: "active-inspector", rect: { left: 80, top: 240, right: 360, bottom: 380 } },
+  ];
+  const cards = [
+    { scene: { ...scene, interactionId: "interaction-1", eventId: "root-event-1", cardId: "root-card" }, card: { width: 90, height: 135 } },
+    { scene: { ...scene, interactionId: "interaction-1", eventId: "negation-event", cardId: "negation-card" }, card: { width: 90, height: 135 } },
+    { scene: { ...scene, interactionId: "interaction-1", eventId: "frame-event", cardId: "frame-card" }, card: { width: 168, height: 194 }, stationarySurface: "effect-frame" },
+  ];
+  for (const { scene: cardScene, card, stationarySurface } of cards) {
+    const baseline = calculatePublicStageLayout(input({ scene: cardScene, card, stationarySurface }));
+    const overlapped = calculatePublicStageLayout(input({ scene: cardScene, card, stationarySurface, obstacles: overlays }));
+    assert.equal(baseline.status, "placed");
+    assert.equal(overlapped.status, "placed");
+    if (baseline.status !== "placed" || overlapped.status !== "placed") continue;
+    assert.deepEqual(overlapped.layout.card, baseline.layout.card);
+    assert.deepEqual(overlapped.layout.protectedRects, []);
   }
 });

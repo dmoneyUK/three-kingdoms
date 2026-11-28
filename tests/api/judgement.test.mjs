@@ -3,17 +3,25 @@ import test from "node:test";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
 import { cardDefinition } from "../../game/cards.ts";
 import { derivePublicActivityStatus, derivePublicInteractionNarration } from "../../game/public-activity.ts";
+import { publicJudgementNarrationForPresentation } from "../../game/public-judgement-presentation.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 function stauchnessNarration(room) {
   const snapshot = room.presentationSnapshot;
+  const judgement = (snapshot?.publicJudgementPresentations ?? []).filter((entry) => entry.purpose === "ganglie").at(-1);
   const factsById = new Map([...(snapshot?.retainedPublicEventFacts ?? []), ...(snapshot?.publicEventFacts ?? [])]
     .filter((fact) => fact.label === "Stauchness" || fact.committedOutcome?.source.label === "Stauchness")
     .map((fact) => [fact.eventId, fact]));
   const facts = [...factsById.values()].sort((left, right) => left.order - right.order);
-  const fact = facts.at(-1);
+  const committedConsequence = facts.filter((fact) => fact.committedOutcome?.source.label === "Stauchness").at(-1);
+  if (judgement && (!committedConsequence || committedConsequence.order <= judgement.order)) {
+    const narration = publicJudgementNarrationForPresentation(judgement);
+    assert.ok(narration, "the canonical public Judgement record owns Judgement-stage H4");
+    return { fact: judgement, narration };
+  }
+  const fact = committedConsequence ?? facts.at(-1);
   assert.ok(fact?.rootEventId && fact.identity?.interactionId && fact.identity?.rootFrameId, "Stauchness H4 fact is linked to its proven public root");
   return {
     fact,
@@ -43,6 +51,16 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   });
   const accepted = await requestAndSettle("trigger", { code: resolved.code, token: resolved.targetMember.token, providerId: "xiahou_dun_ganglie" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const stauchnessActivation = accepted.data.room.timeline.find((event) => event.type === "message"
+    && event.effectNotice === true && event.publicFact?.category === "SKILL_USED"
+    && event.publicFact?.actorId === resolved.target.id
+    && event.publicFact?.effect?.effectId === "xiahou_dun_ganglie");
+  const stauchnessOriginal = accepted.data.room.timeline.find((event) => event.type === "card"
+    && event.action === "reveal" && event.judgement === true
+    && event.publicJudgementPresentation?.purpose === "ganglie");
+  assert.ok(stauchnessActivation && stauchnessOriginal, "the committed activation and original Judgement are both public facts");
+  assert.equal(stauchnessOriginal.publicJudgementPresentation.activationEventId, stauchnessActivation.id,
+    "the exact server-created Stauchness activation is linked to its original Judgement");
   const damageResumeEnvelope = accepted.data.room.causalEnvelope;
   assert.ok(damageResumeEnvelope, "Stauchness Judgement resumes into the live Damage interaction");
   assert.equal(damageResumeEnvelope.frames[0].stage, "DAMAGE");
@@ -54,8 +72,10 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.ok(sourceView.currentAction.presentation?.readyAfterEventId, "the mandatory source choice retains its presentation barrier");
   const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
   const pendingStauchness = stauchnessNarration(accepted.data.room);
+  assert.equal(pendingStauchness.narration?.headline, pendingStauchness.fact.copy.message,
+    "the final original Judgement H4 uses the canonical typed public copy");
   assert.equal(pendingStauchness.narration?.headline,
-    `${resolved.target.name} used Stauchness. Judgement: [7♠] — not a Heart.`);
+    `${resolved.target.name} used Stauchness. Judgement: [7♠]. Match.`);
   const pendingPac = derivePublicActivityStatus({
     status: accepted.data.room.status,
     phase: accepted.data.room.phase,
@@ -87,7 +107,8 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.doesNotMatch(JSON.stringify(accepted.data.room.presentationSnapshot?.publicNextDecision), /hand:\d|ganglie-cost/,
     "the public decision carries no private hand positions or card identities");
   const attackRoot = accepted.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-discard-attack");
-  assert.equal(pendingStauchness.fact.rootEventId, attackRoot?.id);
+  assert.equal(pendingStauchness.fact.originatingAction?.eventId, attackRoot?.id,
+    "the canonical Judgement copy links to the exact committed Attack root");
   const pendingResultEvent = accepted.data.room.timeline.find((event) => event.id === pendingStauchness.fact.eventId);
   assert.equal(pendingResultEvent?.resolutionId, pendingStauchness.fact.resolutionId,
     "the projected decision result retains its committed event resolution identity");
@@ -152,6 +173,17 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.equal(stauchnessDiscardCopy?.headline,
     `${resolved.target.name} used Stauchness, causing ${resolved.source.name} to discard 2 cards: ${stauchnessCardList}.`,
     "the actual committed identities, true activator and material owner feed one detailed public H4 copy");
+  const canonicalStauchnessH4 = derivePublicInteractionNarration({
+    snapshot: discarded.data.room.presentationSnapshot,
+    players: discarded.data.room.players,
+    rootEventId: discardedStauchness.fact.rootEventId,
+    interactionId: discardedStauchness.fact.identity.interactionId,
+    rootFrameId: discardedStauchness.fact.identity.rootFrameId,
+    eventId: stauchnessCost.id,
+    canonicalDiscardCopy: stauchnessDiscardCopy,
+  });
+  assert.equal(canonicalStauchnessH4?.headline, stauchnessDiscardCopy?.headline,
+    "the shared interaction H4 consumes the exact canonical Stauchness discard copy");
   const observerDiscardedView = (await state(resolved.code, resolved.members[3].token)).data;
   const observerStauchnessDiscard = normalizePublicDiscardSettlements({
     timeline: observerDiscardedView.timeline,
@@ -193,10 +225,11 @@ test("real Judgement replacement rejects stale and duplicate submissions without
   const openJudgementPresentation = revealed.data.presentationSnapshot?.publicJudgementPresentations ?? [];
   assert.equal(openJudgementPresentation.length, 1, "the public original reveal has one typed provisional presentation");
   assert.equal(openJudgementPresentation[0].judgementId, originalJudgement?.id);
-  assert.equal(openJudgementPresentation[0].originatingAction?.eventId, originalJudgement?.publicFact?.rootEventId,
-    "the public Judgement fact preserves the exact committed Attack root separately from the reveal event");
-  assert.ok(openJudgementPresentation[0].originatingAction?.resolutionId,
-    "the originating action keeps its own committed resolution identity");
+  const originatingAction = revealed.data.timeline.find((event) => event.id === openJudgementPresentation[0].originatingAction?.eventId);
+  assert.equal(originatingAction?.type, "card");
+  assert.equal(originatingAction?.action, "play");
+  assert.equal(originatingAction?.resolutionId, openJudgementPresentation[0].originatingAction?.resolutionId,
+    "the canonical presentation links to the exact committed Attack event and its resolution");
   assert.equal(openJudgementPresentation[0].status, "PROVISIONAL");
   assert.equal(openJudgementPresentation[0].replacement, undefined);
   assert.doesNotMatch(openJudgementPresentation[0].copy.message, /\b(?:Not )?Match\.$/,
@@ -205,15 +238,9 @@ test("real Judgement replacement rejects stale and duplicate submissions without
     "the public snapshot does not expose the unconfirmed Hand card identity");
   const originalFact = [...(revealed.data.presentationSnapshot?.publicEventFacts ?? []), ...(revealed.data.presentationSnapshot?.retainedPublicEventFacts ?? [])]
     .find((fact) => fact.eventId === originalJudgement?.id);
-  assert.ok(originalFact, "the genuine original reveal owns a public H4 fact");
-  const originalNarration = derivePublicInteractionNarration({
-    snapshot: revealed.data.presentationSnapshot,
-    players: revealed.data.players,
-    rootEventId: originalFact.rootEventId,
-    interactionId: originalFact.identity.interactionId,
-    rootFrameId: originalFact.identity.rootFrameId,
-    eventId: originalFact.eventId,
-  });
+  assert.ok(originalFact, "the original reveal retains its generic event proof");
+  assert.notEqual(originalFact.label, "Stauchness", "the reveal has no duplicate per-skill H4 copy");
+  const originalNarration = publicJudgementNarrationForPresentation(openJudgementPresentation[0]);
   assert.equal(originalNarration?.headline, `${game.target.name} used Stauchness. Judgement: [9♠].`);
   assert.deepEqual(originalNarration?.headlineSegments?.filter((segment) => segment.kind === "player").map((segment) => segment.playerId), [game.target.id]);
   const otherViewer = (await state(game.code, game.targetMember.token)).data;
@@ -297,7 +324,7 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(accepted.data.room.phase, "play-struck");
   assert.ok(accepted.data.room.log.some((entry) => entry.includes(`${game.target.name} used Stauchness. Judgement: 2♥ — no effect`)));
   assert.equal(stauchnessNarration(accepted.data.room).narration?.headline,
-    `${game.target.name} used Stauchness. Judgement: [2♥] — no effect.`);
+    `${game.target.name} used Stauchness. Judgement: [2♥]. Not Match.`);
   assert.ok(discardIds(game.code).includes("dodge-ganglie-heart-judge"));
 
   const guicai = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-original"), suit: "♠", rank: "9" } });
@@ -334,8 +361,8 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
   assert.equal(reverseReplaced.data.room.currentAction.actorId, guicaiToNonHeart.source.id);
   const replacedStauchness = stauchnessNarration(reverseReplaced.data.room);
   assert.equal(replacedStauchness.narration?.headline,
-    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: [7♠] — not a Heart.`,
-    "after Necromancy commits, H4 names the actual effective card and only then states its result");
+    `${guicaiToNonHeart.target.name} used Stauchness. Judgement: [2♥].\n${sima2.name} used Necromancy to replace the Judgement card with [7♠]. Match.`,
+    "after Necromancy commits, canonical H4 names the actual effective card and its final result");
   const reverseChoice = await requestAndSettle("trigger", { code: guicaiToNonHeart.code, token: guicaiToNonHeart.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
   assert.equal(reverseChoice.status, 200, JSON.stringify(reverseChoice.data));
   assert.equal(reverseChoice.data.room.players.find((player) => player.id === guicaiToNonHeart.source.id).hp, 3);

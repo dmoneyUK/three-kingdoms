@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { centerRevealCardInSafeBattlefield, publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicDismantleCardFaceH4, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
+import { publicCardAnnouncementCopy, publicCardCommittedFactCopy, publicCardMotionForCommittedCard, PublicCardDisplay, PublicDismantleCardFaceH4, PublicH4Text, PublicInteractionAnnouncementLayer, publicCardAnnouncement, publicCardJourneyOwnershipIdentity, shouldDirectParkPublicJourney } from "../app/public-card-display.tsx";
 import {
   canClearPublicJourneyOwnership,
   publicAnnouncementEventCopyKey,
@@ -94,6 +94,21 @@ test("H4 candidate measurement confines text DOM changes to its marked copy", ()
   assert.match(source.slice(measurementHelperStart, h4RendererStart), /measurementCopy\.dataset\.h4MeasurementCopy = "true"/);
   assert.match(h4Renderer, /measureAnnouncementCopy\(/);
   assert.doesNotMatch(h4Renderer, /(?:\.replaceChildren\(|(?:textElement|supportElement)\.textContent\s*=)/);
+});
+
+test("passive REVEAL H4 keeps its own anchor above passive card faces", () => {
+  const source = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
+  const start = source.indexOf("function PublicCardAnnouncement(");
+  const end = source.indexOf("export function PublicSkillEventAnnouncementLayer(", start);
+  const renderer = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(renderer, /const passiveStationaryReveal = phase === "reveal";/);
+  assert.match(renderer, /protectFirstParkedMiniature && !passiveStationaryReveal/,
+    "parked passive CardFaces do not enter the reveal H4 obstacle set");
+  assert.match(renderer, /if \(!passiveStationaryReveal\) for \(const slot of upperHistoryAnchor\?\.slots \?\? \[\]\)/,
+    "passive card slots remain H4 anchors but are not collision obstacles");
+  assert.match(renderer, /const centerCardStillOccupiesStage = !passiveStationaryReveal && keepCenterAnchorClear/,
+    "a stationary revealed CardFace or Frame cannot push or hide H4");
 });
 
 test("PublicCardDisplay fails closed instead of falling back to a static card", () => {
@@ -194,34 +209,6 @@ test("Steal/Dismantle PAC lower edge follows the table while the measured timer 
   assert.equal(fixedLowerActivityEdge(474, 450), 442);
   assert.equal(fixedLowerActivityEdge(474, 894, 492), 492);
   assert.equal(fixedLowerActivityEdge(474, 450, 492), 450);
-});
-
-test("Steal/Dismantle genuine reveal is centred inside measured Seat-to-PAC battlefield bounds", () => {
-  const reveal = centerRevealCardInSafeBattlefield({
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
-    size: { width: 90, height: 135 },
-    topSeatBottom: 125,
-    lowerBoundary: 425,
-  });
-  assert.deepEqual(reveal, { left: 175, top: 207.5, width: 90, height: 135 });
-  const constrained = centerRevealCardInSafeBattlefield({
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
-    size: { width: 90, height: 135 },
-    topSeatBottom: 125,
-    leftSideSeatRights: [100],
-    rightSideSeatLefts: [340],
-    lowerBoundary: 425,
-  });
-  assert.deepEqual(constrained, { left: 175, top: 207.5, width: 90, height: 135 });
-  assert.equal(centerRevealCardInSafeBattlefield({
-    table: { left: 0, top: 0, right: 440, bottom: 474 },
-    viewport: { left: 0, top: 0, right: 440, bottom: 894 },
-    size: { width: 90, height: 135 },
-    topSeatBottom: 300,
-    lowerBoundary: 425,
-  }), null, "insufficient usable battlefield fails closed");
 });
 
 const action = (overrides = {}) => ({
@@ -355,7 +342,7 @@ test("same-event proven conversion copy outranks its generic root narration but 
 test("committed outcomes from existing and synthetic providers use the same H4 layer", () => {
   for (const [eventId, headline] of [
     ["retaliation", "Test Player 2 used Retaliation and obtained one card."],
-    ["stauchness", "Test Player 2 used Stauchness and started a Judgement."],
+    ["stauchness", "Test Player 2 used Stauchness."],
     ["synthetic", "Test Player 2 used a new skill and resolved a public effect."],
   ]) {
     const narration = { eventId, rootEventId: "root", interactionId: "interaction", rootFrameId: "frame",
@@ -1112,8 +1099,10 @@ test("generic committed H4 forwards producer-verified player fragments to the sh
   assert.equal(matchingPublicH4Segments(mismatched.message, mismatched.segments), undefined);
 });
 
-test("verified Axe cost has compact factual H4 without premature damage and keeps full accessibility", async () => {
+test("Axe cost copy is built once by the shared canonical discard Action factory", async () => {
   const { verifiedRockCleavingAxeCostFrameForEvent } = await import("../app/page.tsx");
+  const { resolveCanonicalPublicDiscardPresentation } = await import("../app/public-discard-presentation-owner.ts");
+  const { publicDiscardSettlementCopy } = await import("../app/public-discard-settlement.ts");
   const actor = { id: "a", name: "ACTOR" }, target = { id: "b", name: "TARGET" };
   const cards = [{ id: "cost1", kind: "Peach", rank: "A", suit: "♥" }, { id: "cost2", kind: "Dodge", rank: "2", suit: "♣" }];
   const effect = { semantics: "PROVEN", eventId: "cost", effectId: "rock_cleaving_axe_attack_dodged", effectClass: "COST",
@@ -1125,14 +1114,31 @@ test("verified Axe cost has compact factual H4 without premature damage and keep
     card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "7" }, player: "ACTOR", target: "TARGET" };
   const proof = verifiedRockCleavingAxeCostFrameForEvent([root, cost], [effect], [actor, target], "cost");
   assert.ok(proof);
-  assert.equal(proof.h4Copy.message, "ACTOR used [Rock Cleaving Axe]; TARGET's [Dodge] was bypassed.");
-  assert.doesNotMatch(proof.h4Copy.message, /took damage|hit|damage applied/i);
-  const action = { sourceId: "a", targetId: "b", rootEventId: "cost", cardLabel: "COST",
-    publicNotice: proof.h4Copy.message, publicNoticeSegments: proof.h4Copy.segments,
-    publicCardEffectFrame: { effectClass: "COST", accessibleLabel: "ACTOR paid exactly two of their own Hand or Equipment cards. The original Attack on TARGET continued to damage resolution after Dodge." } };
-  const copy = publicCardAnnouncementCopy(action, "", "ACTOR", "a", "ACTOR", "TARGET", {}, "cost");
-  assert.equal(copy.message, proof.h4Copy.message);
-  assert.match(copy.accessibleLabel, /paid exactly two/);
+  assert.equal("h4Copy" in proof, false, "proof validation does not create a competing H4 copy");
+  const settlement = {
+    semantics: "PROVEN", visibility: "PUBLIC", eventId: "cost", order: 3, rootEventId: "attack",
+    resolutionId: "root-resolution", interactionId: "interaction", frameId: "frame", activationOwnerId: "a",
+    affectedPlayerIds: ["a"], source: { kind: "equipment", label: "RockCleavingAxe" }, mode: "cost",
+    materials: cards.map((card) => ({ card, physicalCardId: card.id, ownerId: "a", fromZone: "HAND", toZone: "DISCARD" })),
+    presentation: "eligible",
+  };
+  const canonicalCopy = publicDiscardSettlementCopy({ settlement, players: [actor, target] });
+  assert.equal(canonicalCopy?.headline, "ACTOR used [Rock Cleaving Axe] and discarded 2 cards: [A♥ Peach] · [2♣ Dodge].");
+  assert.doesNotMatch(canonicalCopy?.headline ?? "", /took damage|hit|damage applied|damage resolution/i);
+  const ownerNamesById = { a: actor.name, b: target.name };
+  const seed = { effect, key: "axe-cost", sourceId: "a", targetId: "b", cardLabel: "ROCK CLEAVING AXE · TWO CARD COST",
+    visualTitle: "ROCK CLEAVING AXE · FORCE HIT", motionScopeKey: "axe-cost", freshEventIds: ["cost"], ownerNamesById };
+  const selected = resolveCanonicalPublicDiscardPresentation({
+    cursorEventId: "cost", heroActions: [], effectFrameSeeds: [seed], timelineEventIds: ["cost"], effects: [effect],
+    presentationsByEvent: new Map([["cost", { settlement, copy: canonicalCopy }]]),
+    journeySeenEventIds: new Set(), presentedTransitionEventIds: new Set(),
+  });
+  const canonicalAction = selected.actionOwner;
+  assert.ok(canonicalAction);
+  const copy = publicCardAnnouncementCopy(canonicalAction, "", "ACTOR", "a", "ACTOR", "TARGET", {}, "cost");
+  assert.equal(copy.message, canonicalCopy.headline);
+  assert.equal(copy.accessibleLabel, canonicalCopy.accessibleLabel);
+  assert.ok(canonicalAction.publicCardEffectFrame.accessibleLabel.endsWith(canonicalCopy.accessibleLabel));
   assert.equal(copy.segments.map((part) => part.text).join(""), copy.message);
   assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, cost], [{ ...effect, targetId: "wrong" }], [actor, target], "cost"), null);
   assert.equal(verifiedRockCleavingAxeCostFrameForEvent([root, { ...cost, cards: [cards[0]] }], [effect], [actor, target], "cost"), null);

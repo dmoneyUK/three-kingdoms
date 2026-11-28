@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanSetupGame, createTestGame, openBorrowedSwordScenario, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state,
+  assert, card, createHumanSetupGame, createTestGame, createTestLobby, openBorrowedSwordScenario, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
 
 function setHeroes(room, heroes) {
@@ -91,6 +91,94 @@ test("Quick Test keeps Stargazing cards private to the acting controlled seat", 
   const privateView = (await state(room.code, token)).data;
   assert.equal(privateView.currentAction.kind, "deck_reorder");
   assert.deepEqual(privateView.currentAction.deckReorder.cards.map((item) => item.id), ["attack-quick-star-a", "dodge-quick-star-b", "peach-quick-star-c", "duel-quick-star-d"]);
+});
+
+test("first-turn Stargazing is committed before Draw or ordinary Play becomes available", { timeout: 60_000 }, async () => {
+  const lobby = await createTestLobby();
+  const { token } = lobby.data;
+  const { code } = lobby.data.room;
+  const players = [...lobby.data.room.players].sort((left, right) => left.seat - right.seat);
+  const lord = players[0];
+  const heroBySeat = ["zhuge-liang", "guan-yu", "simayi", "zhao-yun"];
+  const roleBySeat = ["Lord", "Loyalist", "Rebel", "Renegade"];
+  players.forEach((player, index) => {
+    sql(`UPDATE players SET role=${quote(roleBySeat[index])}, hero_options_json=${quote(JSON.stringify([heroBySeat[index]]))} WHERE id=${quote(player.id)}`);
+  });
+
+  let room = (await state(code, token)).data;
+  while (room.status === "heroes") {
+    const actor = room.players.find((player) => player.id === room.meId);
+    assert.ok(actor, "the host-controlled selector is projected");
+    const heroId = heroBySeat[actor.seat];
+    const lastSelection = query(`SELECT COUNT(*) FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND hero IS NULL`) === "1";
+    const [selected, concurrentDraw] = await Promise.all([
+      request("choose_hero", { code, token, heroId }),
+      ...(lastSelection ? [request("draw", { code, token })] : []),
+    ]);
+    assert.equal(selected.status, 200, JSON.stringify(selected.data));
+    if (lastSelection) assert.equal(concurrentDraw.status, 409, JSON.stringify(concurrentDraw.data));
+    room = selected.data.room;
+  }
+
+  const firstTurn = await state(code, token);
+  assert.equal(firstTurn.data.status, "playing");
+  assert.equal(firstTurn.data.turnSeat, lord.seat);
+  assert.equal(firstTurn.data.phase, "response");
+  assert.equal(firstTurn.data.currentAction?.kind, "trigger");
+  assert.equal(firstTurn.data.currentAction?.actorId, lord.id);
+  assert.ok(firstTurn.data.currentAction?.triggerOptions?.some((option) => option.effectId === "zhuge_liang_stargazing"));
+  const openingHand = firstTurn.data.myHand;
+  assert.ok(openingHand.length > 0, "the authorized viewer receives their own opening hand");
+  const beforeRejectedActions = query(`SELECT json_object('phase',phase,'pending',pending_json,'deck',deck_json,'discard',discard_json,'log',log_json,'hand',(SELECT hand_json FROM players WHERE id=${quote(lord.id)}),'hp',(SELECT hp FROM players WHERE id=${quote(lord.id)})) FROM rooms WHERE code=${quote(code)}`);
+  const rejected = await Promise.all([
+    request("draw", { code, token }),
+    request("play_card", { code, token, cardId: openingHand[0].id }),
+    request("serpent_spear_attack", { code, token, cardIds: [openingHand[0].id, openingHand[1]?.id].filter(Boolean), targetId: players[1].id }),
+    request("end_turn", { code, token }),
+  ]);
+  assert.deepEqual(rejected.map((result) => result.status), [409, 409, 409, 409]);
+  assert.equal(query(`SELECT json_object('phase',phase,'pending',pending_json,'deck',deck_json,'discard',discard_json,'log',log_json,'hand',(SELECT hand_json FROM players WHERE id=${quote(lord.id)}),'hp',(SELECT hp FROM players WHERE id=${quote(lord.id)})) FROM rooms WHERE code=${quote(code)}`), beforeRejectedActions, "rejected ordinary actions have no game-state side effects");
+
+  const stargazing = await request("trigger", { code, token, providerId: "zhuge_liang_stargazing" });
+  assert.equal(stargazing.status, 200, JSON.stringify(stargazing.data));
+  const privateChoice = await state(code, token);
+  assert.equal(privateChoice.data.currentAction?.kind, "deck_reorder", "the legitimate pre-Draw skill remains available");
+  const orderedCards = privateChoice.data.currentAction.deckReorder.cards.map((item) => item.id);
+  const completedSkill = await request("trigger", { code, token, providerId: "private_deck_reorder", topCardIds: orderedCards, bottomCardIds: [] });
+  assert.equal(completedSkill.status, 200, JSON.stringify(completedSkill.data));
+  assert.equal((await state(code, token)).data.phase, "draw", "Draw starts only after the real turn-start skill settles");
+
+  const beforeDraw = query(`SELECT json_object('phase',phase,'pending',pending_json,'deck',deck_json,'discard',discard_json,'log',log_json,'hand',(SELECT hand_json FROM players WHERE id=${quote(lord.id)}),'hp',(SELECT hp FROM players WHERE id=${quote(lord.id)})) FROM rooms WHERE code=${quote(code)}`);
+  const beforeDrawHand = (await state(code, token)).data.myHand;
+  const rejectedDuringDraw = await Promise.all([
+    request("play_card", { code, token, cardId: beforeDrawHand[0].id }),
+    request("serpent_spear_attack", { code, token, cardIds: beforeDrawHand.slice(0, 2).map((item) => item.id), targetId: players[1].id }),
+    request("trigger", { code, token, providerId: "zhuge_liang_stargazing" }),
+    request("end_turn", { code, token }),
+  ]);
+  assert.deepEqual(rejectedDuringDraw.map((result) => result.status), [409, 409, 409, 409]);
+  assert.equal(query(`SELECT json_object('phase',phase,'pending',pending_json,'deck',deck_json,'discard',discard_json,'log',log_json,'hand',(SELECT hand_json FROM players WHERE id=${quote(lord.id)}),'hp',(SELECT hp FROM players WHERE id=${quote(lord.id)})) FROM rooms WHERE code=${quote(code)}`), beforeDraw, "ordinary actions have no side effects while Draw is unresolved");
+
+  const drawn = await request("draw", { code, token });
+  assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
+  const afterDraw = await state(code, token);
+  assert.ok(afterDraw.data.phase?.startsWith("play"), "the committed Draw advances to the Play phase");
+  setHand(lord.id, [card("Attack", "fresh-after-draw")], lord.hp ?? 4, lord.maxHp ?? 4);
+  const freshView = await state(code, token);
+  assert.ok(freshView.data.currentAction?.legalActions?.includes("play_card"));
+  const actionContext = { actionRevision: freshView.data.actionRevision, meId: lord.id, phase: freshView.data.phase, pendingKind: null, actorId: lord.id };
+  const target = players.find((player) => player.id !== lord.id);
+  const beforeStalePlay = query(`SELECT json_object('phase',phase,'pending',pending_json,'deck',deck_json,'discard',discard_json,'log',log_json,'hand',(SELECT hand_json FROM players WHERE id=${quote(lord.id)}),'hp',(SELECT hp FROM players WHERE id=${quote(lord.id)})) FROM rooms WHERE code=${quote(code)}`);
+  sql(`UPDATE rooms SET turn_epoch=turn_epoch+1 WHERE code=${quote(code)}`);
+  const stalePlay = await request("play_card", { code, token, cardId: "attack-fresh-after-draw", targetId: target.id, context: actionContext });
+  assert.equal(stalePlay.status, 409);
+  assert.equal(stalePlay.data.stale, true);
+  assert.equal(query(`SELECT json_object('phase',phase,'pending',pending_json,'deck',deck_json,'discard',discard_json,'log',log_json,'hand',(SELECT hand_json FROM players WHERE id=${quote(lord.id)}),'hp',(SELECT hp FROM players WHERE id=${quote(lord.id)})) FROM rooms WHERE code=${quote(code)}`), beforeStalePlay, "a pre-epoch Play is rejected without changing cards or game state");
+  const refreshed = await state(code, token);
+  assert.notEqual(refreshed.data.actionRevision, actionContext.actionRevision, "turn epoch changes the public action revision");
+  const freshContext = { actionRevision: refreshed.data.actionRevision, meId: lord.id, phase: refreshed.data.phase, pendingKind: null, actorId: lord.id };
+  const played = await request("play_card", { code, token, cardId: "attack-fresh-after-draw", targetId: target.id, context: freshContext });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
 });
 
 test("Stargazing is offered only to Zhuge Liang and decline resumes Draw", async () => {

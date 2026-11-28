@@ -72,7 +72,7 @@ For the active task:
 4. Add focused regression proof that would fail on the previous broken behavior where practical.
 5. Run only focused local validation needed for that proof.
 6. Update HANDOVER with a concise implementation result and exact validation actually run.
-7. Commit and push to `ux-v2`. Complete a small bounded correction in one delivery, not artificial stages or separate approvals. When Owner explicitly requires one combined delivery, do not split it. For §10.78 specifically both remaining defects are one implementation and delivery.
+7. Check the mandatory task identifier in the commit subject as required by `AGENTS.md` and §5, then commit and push to `ux-v2`. Complete a small bounded correction in one delivery, not artificial stages or separate approvals. When Owner explicitly requires one combined delivery, do not split it. For §10.78 specifically both remaining defects are one implementation and delivery.
 
 ### Local UI-test time limit
 
@@ -81,6 +81,8 @@ For each bounded task, cap the **combined local UI/browser testing time at five 
 Prefer behavioral/semantic assertions over source-shape assertions. For layout, use real browser geometry and normal hit/click behavior. Screenshots supplement, but do not replace, measurable assertions.
 
 ## 5. Commit-time CI gate
+
+**Mandatory task ID check before every commit (including CI repairs and HANDOVER-only updates):** Follow the canonical commit-message contract in `AGENTS.md`: `[<task-id>] <type>: <concise description>`, e.g. `[10.81-B] fix: preserve Necromancy visible hold`. Use the exact stable current task/subsection ID, retain it across all repairs and delivery commits, and check staged scope. Record the same ID and exact pushed SHA in HANDOVER. Explicitly authorized non-numbered work uses its stable identifier; do not invent or borrow a design number. Missing task ID must be resolved before committing. No history rewrite, additional CI job or change to the existing CI gate.
 
 GitHub Actions is the full validation gate.
 

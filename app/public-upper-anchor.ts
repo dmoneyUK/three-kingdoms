@@ -1,5 +1,13 @@
 import { publicH4WidthLimit } from "../game/public-h4-copy";
-import type { PublicStageH4Geometry, PublicStageRect } from "../game/public-stage-layout";
+import {
+  publicStageLengthToTableLocal,
+  publicStageRectFromTableLocal,
+  publicStageRectToTableLocal,
+  publicStationaryLanePreferredTop,
+  type PublicStageH4Geometry,
+  type PublicStageRect,
+  type PublicStageTableCoordinateSpace,
+} from "../game/public-stage-layout";
 
 type CardRect = { left: number; top: number; width: number; height: number };
 const PARKED_CARD = { width: 48, height: 72 };
@@ -248,6 +256,67 @@ export function fixedPublicActivityBand(
   const left = tableRect.left + (tableRect.width - metrics.pacWidth) / 2;
   return { left, top: consoleRect.top - height, right: left + metrics.pacWidth, bottom: consoleRect.top,
     width: metrics.pacWidth, height };
+}
+
+export type FixedPublicStationaryLane = {
+  width: number;
+  height: number;
+  h4Reserve: PublicStageRect;
+  pacReserve: PublicStageRect;
+  centerX: number;
+  centerY: number;
+};
+
+/** Fixed, message-independent public-card lane in .play-table local CSS coordinates. */
+export function fixedPublicStationaryLane(
+  table: HTMLElement,
+  coordinates: PublicStageTableCoordinateSpace,
+): FixedPublicStationaryLane | null {
+  const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
+  const h4 = fixedPublicH4Band(table);
+  const pac = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance) : null;
+  const h4Reserve = h4 && publicStageRectToTableLocal(h4, coordinates);
+  const pacReserve = pac && publicStageRectToTableLocal(pac, coordinates);
+  if (!h4Reserve || !pacReserve || table.clientWidth <= 0 || table.clientHeight <= 0) return null;
+  return {
+    width: table.clientWidth,
+    height: table.clientHeight,
+    h4Reserve,
+    pacReserve,
+    centerX: (h4Reserve.left + h4Reserve.right) / 2,
+    centerY: (h4Reserve.bottom + pacReserve.top) / 2,
+  };
+}
+
+export type PublicStationaryCardPlacement = {
+  tableLocalRect: PublicStageRect;
+  clientRect: PublicStageRect;
+  lane: FixedPublicStationaryLane;
+};
+
+/** Places a complete stationary public footprint at the canonical nominal lane centre. */
+export function publicStationaryCardPlacement(
+  table: HTMLElement,
+  size: { width: number; height: number },
+  coordinates: PublicStageTableCoordinateSpace,
+  preferredTopOffset = 0,
+): PublicStationaryCardPlacement | null {
+  const lane = fixedPublicStationaryLane(table, coordinates);
+  const width = publicStageLengthToTableLocal(size.width, "x", coordinates);
+  const height = publicStageLengthToTableLocal(size.height, "y", coordinates);
+  if (!lane || width === null || height === null) return null;
+  const top = publicStationaryLanePreferredTop(lane.h4Reserve, lane.pacReserve, height, preferredTopOffset);
+  if (top === null) return null;
+  const tableLocalRect = {
+    left: lane.centerX - width / 2,
+    top,
+    right: lane.centerX + width / 2,
+    bottom: top + height,
+  };
+  if (tableLocalRect.left < 8 || tableLocalRect.right > lane.width - 8
+    || tableLocalRect.top < 0 || tableLocalRect.bottom > lane.height) return null;
+  const clientRect = publicStageRectFromTableLocal(tableLocalRect, coordinates);
+  return clientRect ? { tableLocalRect, clientRect, lane } : null;
 }
 
 /** Reserve the measured worst supported H4: two headline lines and one support line. */

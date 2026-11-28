@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PUBLIC_PRESENTATION_EVENT_COVERAGE,
+  coalesceLinkedJudgementActivationQueue,
   coalescePresentationQueue,
   presentationEventBlocksActions,
   publicH4FactAtPresentationCursor,
@@ -225,6 +226,35 @@ test("presentation queue keeps validated H4 facts in public order across resolut
     "unvalidated informational messages do not gain the H4 exception");
 });
 
+test("a proven Judgement activation is coalesced only when its exact original reveal is queued", () => {
+  const activation = { id: "stauchness-activation", type: "message" };
+  const original = { id: "stauchness-original", type: "card" };
+  const linked = [{ activationEventId: activation.id, originalEventId: original.id }];
+
+  const sameSnapshot = coalesceLinkedJudgementActivationQueue(null, [], [activation, original], linked);
+  assert.deepEqual(sameSnapshot.queue.map(({ id }) => id), [original.id]);
+  assert.deepEqual(sameSnapshot.incoming.map(({ id }) => id), [original.id]);
+  assert.deepEqual(sameSnapshot.retiredActivationEventIds, [activation.id]);
+
+  const splitSnapshot = coalesceLinkedJudgementActivationQueue(activation, [], [original], linked);
+  assert.equal(splitSnapshot.activeEvent.id, original.id, "an active redundant activation hands off to the exact original reveal");
+  assert.deepEqual(splitSnapshot.queue, []);
+
+  const alreadyQueuedOriginal = coalesceLinkedJudgementActivationQueue(activation, [original], [], linked);
+  assert.equal(alreadyQueuedOriginal.activeEvent.id, original.id, "a newly validated link also hands off when the reveal is already queued");
+  assert.deepEqual(alreadyQueuedOriginal.queue, []);
+  assert.deepEqual(alreadyQueuedOriginal.incoming, []);
+
+  const withIndependentEvent = coalesceLinkedJudgementActivationQueue(activation,
+    [{ id: "independent", type: "card" }], [original], linked);
+  assert.equal(withIndependentEvent.activeEvent.id, "independent", "intervening committed events keep their order");
+  assert.deepEqual(withIndependentEvent.queue.map(({ id }) => id), [original.id]);
+
+  const missingProof = coalesceLinkedJudgementActivationQueue(activation, [], [original], []);
+  assert.equal(missingProof.activeEvent.id, activation.id, "without an exact projected link the ordinary activation stays visible");
+  assert.equal(missingProof.queue[0].id, original.id);
+});
+
 test("H4 cursor selection never jumps ahead of the event currently being presented", () => {
   const facts = [
     { eventId: "fact-1", order: 11 },
@@ -270,8 +300,8 @@ test("Judgement H4 selects one owner, with the replacement frame claiming only i
       presentation: { ...replacement, resolutionId: "judgement-resolution" },
       isActive: false, replacementFrameMatches: true,
     },
-  }), { eventId: "replacement-1", owner: "PublicCardDisplay" },
-  "a same-resolution terminal Judgement fact cannot take H4 away from the exact replacement frame");
+  }), { eventId: "stauchness-judgement-result", owner: "PublicInteractionAnnouncementLayer" },
+  "a later committed event advances H4 by event order instead of resolution-wide override");
   assert.deepEqual(selectPublicH4AnnouncementOwner({
     fact: fact("stauchness-consequence", 13, "judgement-1", "source-1", {
       resolutionId: "judgement-resolution", effect: { kind: "skill_result", label: "Stauchness" },
@@ -372,7 +402,7 @@ test("equipment and later discard transitions for one physical card have separat
   };
   const equip = routePublicPresentation(equipInput);
   assert.equal(equip.kind, "zone-transition");
-  assert.equal(equip.claimedBy, "PublicPhysicalCardTransition");
+  assert.equal(equip.claimedBy, "PublicCardDisplay");
   assert.deepEqual(equip.shadowComparison, { status: "mismatch", currentOwners: ["PriorRenderer"] });
 
   const discardIdentity = { interactionId: "discard-interaction", rootFrameId: "discard-frame", checkpointId: "discard-checkpoint", presentationRevision: 1 };

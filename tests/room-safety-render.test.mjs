@@ -889,7 +889,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /title="After you take damage, you may obtain the card that caused damage on you\."/);
   assert.doesNotMatch(html, /private-opponent-card/);
   assert.doesNotMatch(gameRoomSource, /function TableResolutionSequence|player-played-cards|table-played-card/, "the retired centre/settled-card renderer has no production owner");
-  assert.match(gameRoomSource, /function PublicEquipmentCardTransition/);
+  assert.doesNotMatch(gameRoomSource, /function PublicEquipmentCardTransition/, "equipment has no duplicate physical-transition renderer");
   assert.match(gameRoomSource, /function PublicJudgementCardTransition/);
   assert.match(gameRoomSource, /function PublicDiscardCardTransition/);
   assert.match(gameRoomSource, /function PublicHandRevealCardTransition/);
@@ -897,7 +897,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(publicCardDisplaySource, /static-fallback|public-card-display-static-card/, "public CardFace display fails closed without a typed Journey owner");
   assert.doesNotMatch(globalStyleSource, /player-played-cards|table-played-card|public-card-display-static-card|activeCardJourney|sequenceCardsToDiscard/);
   assert.doesNotMatch(sequenceStyleSource, /player-played-cards|table-played-card|sequenceCardToOwner|sequenceCardsToDiscard/);
-  assert.match(sequenceStyleSource, /\.active-table-reveal\.equipment-flight/);
+  assert.doesNotMatch(sequenceStyleSource, /equipment-flight|--equipment-[xy]/, "the retired equipment-only flight animation and coordinates are deleted");
   assert.match(sequenceStyleSource, /\.active-table-reveal\.judgement-flight/);
   assert.match(sequenceStyleSource, /\.active-table-reveal\.direct-discard/);
   assert.match(sequenceStyleSource, /\.active-table-reveal\.public-hand-transfer/);

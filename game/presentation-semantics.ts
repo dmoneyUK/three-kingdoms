@@ -29,7 +29,7 @@ export const PUBLIC_PRESENTATION_EVENT_CATEGORIES = [
 
 export type PublicPresentationEventCategory = typeof PUBLIC_PRESENTATION_EVENT_CATEGORIES[number];
 
-export type PublicEffectDescriptor = { kind: string; label?: string };
+export type PublicEffectDescriptor = { kind: string; label?: string; effectId?: string };
 
 export type PublicOutcomeSourceKind = "card" | "skill" | "phase" | "damage" | "recovery" | "equipment" | "judgement" | "group" | "other";
 

@@ -8,9 +8,9 @@ import {
   publicH4WidthLimit,
   type PublicH4Segment,
 } from "../game/public-h4-copy";
-import { fixedPublicActivityBand, fixedPublicH4Band, fixedUpperHistoryAnnouncementAnchor, measuredPublicH4PaintRect, parkedCardSize } from "./public-upper-anchor";
+import { fixedUpperHistoryAnnouncementAnchor, measuredPublicH4PaintRect, parkedCardSize, publicStationaryCardPlacement } from "./public-upper-anchor";
 
-import { publicCorridorWidth } from "./public-corridor";
+import { tableLocalPublicCorridorWidth } from "./public-corridor";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Card, CardKind } from "../game/model";
@@ -21,14 +21,25 @@ import type { PublicDiscardAnnouncement } from "./public-discard-transition";
 import type { PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { publicCardEffectFrameLayout, type PublicCardEffectFrameTitleLayout } from "../game/public-card-effect-frame-layout";
 import {
-  publicEffectFrameLanePreferredTop,
   positionLabeledCardAboveBand,
   publicStageEffectFrameRevealTargetMatches,
+  publicStageCoordinateFromTableLocal,
   publicStageJourneyPhaseReady,
   publicStageJourneyTargetReady,
   publicStagePrimaryOriginFromVisualRect,
+  publicStageRectToTableLocal,
+  publicStageRectFromTableLocal,
+  publicStageCoordinateToTableLocal,
+  publicStageLengthToTableLocal,
   publicStageRevealCanRetire,
   publicStageSceneMatchesCard,
+  checkpointPublicStageVisibleHold,
+  publicStageVisibleHoldCanComplete,
+  publicStageStaticAnnouncementMatchesReveal,
+  createPublicStageVisibleHoldPolicy,
+  publicStageVisibleHoldPolicyMatches,
+  type PublicStageVisibleHoldPolicy,
+  type PublicStageVisibleHoldPolicyInput,
   type PublicStageStationarySurface,
 } from "../game/public-stage-layout";
 import { cardDefinition } from "../game/cards";
@@ -42,6 +53,8 @@ import {
   publicStageLayoutCandidateMatchesElement,
   sharedPublicStageMatchesElement,
   publicEffectFrameVisualFootprint,
+  publicStageCoordinateSpaceForTable,
+  usePublicStageCoordinates,
   usePublicStageLayout,
   type SharedPublicStageLayout,
 } from "./public-stage-layout-context";
@@ -93,6 +106,11 @@ type PublicCardDisplayMotion = {
 } | {
   type: "lust-cost";
   /** The paired activation/cost IDs keep this public frame event-scoped. */
+  scopeKey: string;
+  freshEventIds: readonly string[];
+} | {
+  type: "zone-transition";
+  /** Exact committed equipment event claim; it supplies the physical endpoint. */
   scopeKey: string;
   freshEventIds: readonly string[];
 };
@@ -168,6 +186,17 @@ export type PublicCardDisplayAction = {
   /** Public participant proven to be affected by the active Bumper Harvest Negation. */
   harvestEffectRecipient?: { participantId: string; participantName: string };
   motion?: PublicCardDisplayMotion;
+  /** Narrow adapter for one exact committed equipment-zone destination. */
+  zoneTransition?: {
+    claimId: string;
+    eventId: string;
+    physicalCardId: string;
+    ownerId: string;
+    slot: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
+    h4EventId: string;
+  };
+  /** Exact proof-bound shared visible hold and real completion endpoint. */
+  visibleHoldPolicy?: PublicStageVisibleHoldPolicy;
   settlement?: {
     eventId: string;
     /** Authenticated root proof used to match an actor-private Steal result. */
@@ -383,35 +412,6 @@ export type PublicSkillEventAnnouncement = {
 };
 
 type CardRect = { left: number; top: number; width: number; height: number };
-type PublicBattlefieldBounds = { left: number; top: number; right: number; bottom: number };
-
-export function centerRevealCardInSafeBattlefield(input: {
-  table: PublicBattlefieldBounds;
-  viewport: PublicBattlefieldBounds;
-  size: { width: number; height: number };
-  topSeatBottom?: number;
-  leftSideSeatRights?: readonly number[];
-  rightSideSeatLefts?: readonly number[];
-  lowerBoundary?: number;
-  gap?: number;
-}): CardRect | null {
-  const gap = input.gap ?? 8;
-  const left = Math.max(input.table.left + gap, input.viewport.left + gap,
-    ...(input.leftSideSeatRights ?? []).map((right) => right + gap));
-  const right = Math.min(input.table.right - gap, input.viewport.right - gap,
-    ...(input.rightSideSeatLefts ?? []).map((seatLeft) => seatLeft - gap));
-  const top = Math.max(input.table.top + gap, input.viewport.top + gap,
-    (input.topSeatBottom ?? Number.NEGATIVE_INFINITY) + gap);
-  const bottom = Math.min(input.table.bottom - gap, input.viewport.bottom - gap,
-    (input.lowerBoundary ?? Number.POSITIVE_INFINITY) - gap);
-  if (right - left < input.size.width || bottom - top < input.size.height) return null;
-  return {
-    left: left + (right - left - input.size.width) / 2,
-    top: top + (bottom - top - input.size.height) / 2,
-    width: input.size.width,
-    height: input.size.height,
-  };
-}
 
 type JourneyCard = {
   eventId: string;
@@ -488,6 +488,7 @@ function PublicJourneyCard({
   lustCostFrame,
   publicCardEffectFrame,
   sharedStageIdentity,
+  visibleHoldPolicy,
   parkedEffectLabel,
   onInspectCard,
 }: {
@@ -508,10 +509,12 @@ function PublicJourneyCard({
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   publicCardEffectFrame?: PublicCardEffectFrameView;
   sharedStageIdentity?: { roomId: string; scopeId: string; interactionId?: string | null; viewerId: string };
+  visibleHoldPolicy?: PublicStageVisibleHoldPolicy;
   parkedEffectLabel?: string;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const sharedPublicStage = usePublicStageLayout();
+  const coordinateSpace = usePublicStageCoordinates();
   const sharesCurrentStageIdentity = Boolean(sharedPublicStage && primary && !visualPlacementUnavailable
     && sharedStageIdentity
     && publicStageSceneMatchesCard(sharedPublicStage.layout.scene, {
@@ -521,23 +524,60 @@ function PublicJourneyCard({
       phase: card.phase.toUpperCase() as "REVEAL" | "MOVE" | "PARKED",
     }));
   const usesSharedRevealLayout = sharesCurrentStageIdentity && card.phase === "reveal";
+  const pendingVisibleHoldLayout = Boolean(visibleHoldPolicy && primary && usesSharedRevealLayout
+    && visibleHoldPolicy.identity.roomId === sharedStageIdentity?.roomId
+    && visibleHoldPolicy.identity.rootEventId === sharedStageIdentity?.scopeId
+    && visibleHoldPolicy.identity.interactionId === sharedStageIdentity?.interactionId
+    && visibleHoldPolicy.identity.viewerId === sharedStageIdentity?.viewerId
+    && visibleHoldPolicy.identity.phase === "REVEAL"
+    && visibleHoldPolicy.identity.eventId === card.eventId
+    && visibleHoldPolicy.identity.cardId === card.cardFace.id
+    && visibleHoldPolicy.identity.h4EventId === card.eventId
+    && !sharedPublicStage?.revealReady
+    && publicStageEffectFrameRevealTargetMatches({
+      layout: sharedPublicStage?.layout,
+      roomId: visibleHoldPolicy.identity.roomId,
+      rootEventId: visibleHoldPolicy.identity.rootEventId,
+      interactionId: visibleHoldPolicy.identity.interactionId,
+      eventId: card.eventId,
+      cardId: card.cardFace.id,
+      viewerId: visibleHoldPolicy.identity.viewerId,
+      primaryEventId: sharedPublicStage?.primaryEventId ?? "",
+      primaryCardId: sharedPublicStage?.primaryCardId ?? "",
+      announcementEventId: sharedPublicStage?.announcementEventId ?? "",
+      announcementAnchorEventId: sharedPublicStage?.announcementAnchorEventId ?? null,
+    }));
   const journeyLeft = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.left - sharedPublicStage.primaryOffset.left
     : card.rect.left;
   const journeyTop = usesSharedRevealLayout && sharedPublicStage
     ? sharedPublicStage.layout.card.top - sharedPublicStage.primaryOffset.top
     : card.rect.top;
+  const tableLocalCardRect = coordinateSpace ? publicStageRectToTableLocal({
+    left: journeyLeft,
+    top: journeyTop,
+    right: journeyLeft + card.rect.width,
+    bottom: journeyTop + card.rect.height,
+  }, coordinateSpace) : null;
+  const usesTableLocalPosition = card.phase === "reveal";
+  const localCardRect = usesTableLocalPosition ? tableLocalCardRect : null;
   const placementUnavailable = visualPlacementUnavailable
     || !parkingTargetKnown && card.phase === "parked" && !preservePendingParking;
   const sharedRevealReadinessPending = Boolean(primary && card.phase === "reveal" && sharedStageIdentity
     && (!sharesCurrentStageIdentity || !sharedPublicStage?.revealReady));
-  const positionUnavailable = placementUnavailable || sharedRevealReadinessPending;
+  const positionUnavailable = placementUnavailable || (sharedRevealReadinessPending && !pendingVisibleHoldLayout)
+    || usesTableLocalPosition && !localCardRect;
   const inspectable = !positionUnavailable && !passive && card.phase === "parked" && Boolean(onInspectCard);
   const publicFrameAccessible = !positionUnavailable && Boolean(publicCardEffectFrame && card.phase !== "move");
   const frameMaterials = publicCardEffectFrame?.materials ?? [];
   const frameLayout = publicCardEffectFrame && typeof window !== "undefined"
     ? publicCardEffectFrameLayout(frameMaterials.length, window.innerWidth, window.innerHeight, publicCardEffectFrame)
     : null;
+  // publicCardEffectFrameLayout returns CSS dimensions, already in the same
+  // local coordinate space as the positioned CardFace. Only measured DOMRects
+  // are converted through the table scale; dividing these values again would
+  // shrink the authored Frame geometry under a transformed ancestor.
+  const renderedFrameLayout = frameLayout;
   const physicalCards = card.cardFaces ?? [card.cardFace];
   const definition = cardDefinition(card.cardFace.kind);
   const groupDescription = physicalCards.map((face) => {
@@ -569,6 +609,11 @@ function PublicJourneyCard({
     data-public-card-journey-event-id={card.eventId}
     data-public-card-journey-actor-id={card.actorId}
     data-public-card-journey-card-id={card.cardFace.id}
+    data-public-zone-transition-event-id={action.zoneTransition?.eventId === card.eventId ? card.eventId : undefined}
+    data-public-zone-transition-card-id={action.zoneTransition?.physicalCardId === card.cardFace.id ? card.cardFace.id : undefined}
+    data-public-zone-transition-destination={action.zoneTransition?.eventId === card.eventId ? "EQUIPMENT" : undefined}
+    data-public-zone-transition-owner-id={action.zoneTransition?.ownerId}
+    data-public-zone-transition-slot={action.zoneTransition?.slot}
     data-public-card-journey-card-ids={(card.cardFaces ?? [card.cardFace]).map((face) => face.id).join(",")}
     data-public-card-journey-role={card.role}
     data-public-card-journey-preserve-authentic-position={preservePendingParking ? "true" : undefined}
@@ -600,15 +645,15 @@ function PublicJourneyCard({
     data-public-card-inspectable={inspectable ? "true" : "false"}
     data-public-card-copy-anchor-event-id={card.eventId}
     style={{
-      left: journeyLeft,
-      top: journeyTop,
-      width: card.rect.width,
-      height: card.rect.height,
+      left: localCardRect?.left ?? journeyLeft,
+      top: localCardRect?.top ?? journeyTop,
+      width: localCardRect ? localCardRect.right - localCardRect.left : card.rect.width,
+      height: localCardRect ? localCardRect.bottom - localCardRect.top : card.rect.height,
       ["--public-card-journey-move-duration"]: `${Math.max(0, Math.round(card.moveRemainingMs ?? MOVE_DURATION_MS))}ms`,
       ...(positionUnavailable ? { visibility: "hidden", pointerEvents: "none" } : {}),
     } as CSSProperties}
   >
-    {publicCardEffectFrame && frameLayout && card.phase !== "parked" && <span
+    {publicCardEffectFrame && renderedFrameLayout && card.phase !== "parked" && <span
       className={`public-card-effect-frame-panel public-card-lust-cost-frame-panel${card.phase === "move" ? " is-moving" : ""}`}
       aria-hidden="true"
       data-public-card-frame-kind={publicCardEffectFrame.effectId === "diao_chan_lust" ? "DIAO_CHAN_LUST_COST" : publicCardEffectFrame.effectClass}
@@ -620,15 +665,16 @@ function PublicJourneyCard({
       data-public-card-frame-material-count={frameMaterials.length}
       data-public-card-frame-event-id={publicCardEffectFrame.activationEventId ?? publicCardEffectFrame.eventId}
       data-public-card-frame-card-event-id={card.eventId}
+      data-public-card-frame-preferred-lane-top-offset={publicCardEffectFrame.preferredLaneTopOffset ?? 0}
       data-public-card-frame-root-event-id={publicCardEffectFrame.rootEventId}
       data-public-card-frame-root-resolution-id={publicCardEffectFrame.rootResolutionId}
       style={{
-        left: -frameLayout.cardOffsetLeft,
-        top: -frameLayout.cardOffsetTop,
-        width: frameLayout.frameWidth,
-        height: frameLayout.frameHeight,
-        transform: `scale(${card.rect.width / REVEAL_CARD.width})`,
-        transformOrigin: `${frameLayout.cardOffsetLeft}px ${frameLayout.cardOffsetTop}px`,
+        left: -renderedFrameLayout.cardOffsetLeft,
+        top: -renderedFrameLayout.cardOffsetTop,
+        width: renderedFrameLayout.frameWidth,
+        height: renderedFrameLayout.frameHeight,
+        transform: `scale(${(localCardRect ? localCardRect.right - localCardRect.left : card.rect.width) / REVEAL_CARD.width})`,
+        transformOrigin: `${renderedFrameLayout.cardOffsetLeft}px ${renderedFrameLayout.cardOffsetTop}px`,
         opacity: card.phase === "move" ? 0 : 1,
       }}
     >
@@ -636,15 +682,16 @@ function PublicJourneyCard({
       <PublicCardEffectFrameMaterialCount frame={publicCardEffectFrame} materialCount={frameMaterials.length} />
       <span
         className="public-card-effect-frame-materials"
-        data-public-card-frame-grid-columns={frameLayout.columns}
+        data-public-card-frame-grid-columns={renderedFrameLayout.columns}
         style={{
-          left: frameLayout.cardOffsetLeft,
-          top: frameLayout.cardOffsetTop,
-          width: frameLayout.gridWidth,
-          height: frameLayout.gridHeight,
-          gridTemplateColumns: `repeat(${frameLayout.columns}, minmax(0, 1fr))`,
-          gridAutoRows: frameLayout.cardHeight,
-          gap: frameLayout.gap,
+          left: renderedFrameLayout.cardOffsetLeft,
+          top: renderedFrameLayout.cardOffsetTop,
+          width: renderedFrameLayout.gridWidth,
+          height: renderedFrameLayout.gridHeight,
+          gridTemplateColumns: `repeat(${renderedFrameLayout.columns}, minmax(0, 1fr))`,
+          gridAutoRows: renderedFrameLayout.cardHeight,
+          columnGap: renderedFrameLayout.gap,
+          rowGap: renderedFrameLayout.gap,
         }}
       >
         {frameMaterials.map(({ card: face, ownerId }, index) => <span
@@ -746,6 +793,7 @@ export function shouldDirectParkPublicJourney(
   return phoneViewport
     && hasProvenParkingTarget
     && (role === "root" || role === "response")
+    && action.motion?.type !== "zone-transition"
     && action.cardFace?.kind !== "BumperHarvest"
     && !action.publicCardEffectFrame
     && !action.lustCostFrame
@@ -773,181 +821,41 @@ function boundCardRect(left: number, top: number, width: number, height: number)
 }
 
 type BattlefieldCenterCardSafety = {
-  reserveSeatHistoryDepth?: number;
-  reservePlayerIds?: readonly string[];
-  respectFixedUpperH4?: boolean;
-  fixedPublicBands?: boolean;
   stationarySurface?: PublicStageStationarySurface;
   preferredEffectFrameTopOffset?: number;
 };
-type ProtectedBattlefieldCenterCardSafety = BattlefieldCenterCardSafety & { requireProtectedClearance: true };
 
-function battlefieldCenterCard(size?: { width: number; height: number }, safety?: BattlefieldCenterCardSafety): CardRect;
-function battlefieldCenterCard(size: { width: number; height: number }, safety: ProtectedBattlefieldCenterCardSafety): CardRect | null;
+function committedEquipmentSlotTarget(action: PublicCardDisplayAction, event: JourneyCard): CardRect | null {
+  const claim = action.zoneTransition;
+  if (!claim || claim.eventId !== event.eventId || claim.physicalCardId !== event.cardFace.id
+    || event.actorId !== action.sourceId) return null;
+  const slot = [...document.querySelectorAll<HTMLElement>("[data-player-equipment-slot-owner][data-slot]")]
+    .find((candidate) => candidate.dataset.playerEquipmentSlotOwner === claim.ownerId
+      && candidate.dataset.slot === claim.slot);
+  if (!slot || ![...slot.querySelectorAll<HTMLElement>("[data-equipment-id]")]
+    .some((face) => face.dataset.equipmentId === claim.physicalCardId)) return null;
+  const rect = slot.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+}
+
 function battlefieldCenterCard(
   size: { width: number; height: number } = REVEAL_CARD,
-  safety: BattlefieldCenterCardSafety & { requireProtectedClearance?: boolean } = {},
+  safety: BattlefieldCenterCardSafety = {},
 ): CardRect | null {
   const table = document.querySelector<HTMLElement>(".play-table");
-  if (!table) return safety.requireProtectedClearance
-    ? null
-    : boundCardRect((window.innerWidth - size.width) / 2, (window.innerHeight - size.height) / 2, size.width, size.height);
-  const bounds = table.getBoundingClientRect();
-  if (safety.fixedPublicBands || safety.respectFixedUpperH4) {
-    const viewport = window.visualViewport;
-    const viewportLeft = viewport?.offsetLeft ?? 0;
-    const viewportTop = viewport?.offsetTop ?? 0;
-    const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth);
-    const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
-    const safeLeft = Math.max(8, bounds.left + 8, viewportLeft + 8);
-    const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8, viewportRight - 8);
-    const safeTop = Math.max(8, bounds.top + 8, viewportTop + 8);
-    const safeBottom = Math.min(bounds.bottom - 8, window.innerHeight - 8, viewportBottom - 8);
-    if (safeRight - safeLeft < size.width) return null;
-    const preferredLeft = safeLeft + (safeRight - safeLeft - size.width) / 2;
-    const fixedFrameLaneTop = safety.stationarySurface === "effect-frame"
-      ? (() => {
-        const h4Reserve = fixedPublicH4Band(table);
-        const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
-        const pacReserve = consoleGuidance ? fixedPublicActivityBand(table, consoleGuidance) : null;
-        return h4Reserve && pacReserve
-          ? publicEffectFrameLanePreferredTop(h4Reserve, pacReserve, size.height, safety.preferredEffectFrameTopOffset ?? 0)
-          : null;
-      })()
-      : null;
-    const preferredTop = Math.max(safeTop, Math.min(safeBottom - size.height,
-      fixedFrameLaneTop ?? bounds.top + (bounds.height - size.height) / 2));
-    if (safeBottom - safeTop < size.height) return null;
-    const obstacles = [...document.querySelectorAll<HTMLElement>(
-      ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .card-details-panel, .hero-details-panel, .interaction-stage-dying, .dying-handoff-compact, .card-pool-target-stage, .battlefield-choice-stage, .local-player-dock, .local-hand-rail, .local-hand, .console-guidance",
-    )].filter((element) => {
-      const style = window.getComputedStyle(element);
-      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0;
-    }).map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-    const cardRect = { left: preferredLeft, top: preferredTop, right: preferredLeft + size.width, bottom: preferredTop + size.height };
-    const intersects = (rect: DOMRect) => cardRect.left < rect.right && cardRect.right > rect.left
-      && cardRect.top < rect.bottom && cardRect.bottom > rect.top;
-    if (cardRect.left < safeLeft || cardRect.right > safeRight || cardRect.top < safeTop || cardRect.bottom > safeBottom
-      || obstacles.some(intersects)) return null;
-    return { left: preferredLeft, top: preferredTop, width: size.width, height: size.height };
-  }
-  const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
-  const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
-  const obstacles = [...document.querySelectorAll<HTMLElement>(
-    ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster",
-  )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
-  if (safety.requireProtectedClearance || safety.respectFixedUpperH4) {
-    const protectedSelectors = [
-      ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
-      ".interaction-stage-dying", ".dying-handoff-compact", ".card-pool-target-stage", ".battlefield-choice-stage",
-      ".local-player-dock", ".local-hand-rail", ".local-hand", ".console-guidance",
-    ].join(", ");
-    for (const element of document.querySelectorAll<HTMLElement>(protectedSelectors)) {
-      const style = window.getComputedStyle(element);
-      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) continue;
-      const rect = element.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) obstacles.push(rect);
-    }
-  }
-  const playerIds = new Set(safety.reservePlayerIds ?? []);
-  if (safety.reserveSeatHistoryDepth && safety.reserveSeatHistoryDepth > 0) {
-    document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => {
-      if (anchor.dataset.playerAnchor) playerIds.add(anchor.dataset.playerAnchor);
-    });
-  }
-  const historyDepth = Math.max(0, Math.floor(safety.reserveSeatHistoryDepth ?? (playerIds.size ? 1 : 0)));
-  for (const playerId of playerIds) {
-    for (let cardIndex = 0; cardIndex < historyDepth; cardIndex += 1) {
-      const reserved = seatHistoryCardParking(playerId, cardIndex, [])?.rect;
-      if (reserved) obstacles.push(new DOMRect(reserved.left, reserved.top, reserved.width, reserved.height));
-    }
-  }
-  const offsets: Array<[number, number]> = [[0, 0]];
-  for (let distance = 8; distance <= 200; distance += 8) {
-    offsets.push([0, -distance], [0, distance]);
-  }
-  for (const distance of [24, 48, 72, 96, 120, 144, 168, 192]) {
-    offsets.push([-distance, 0], [distance, 0], [-distance, -24], [distance, -24], [-distance, 24], [distance, 24]);
-  }
-  const candidates = offsets.map(([x, y]) => ({
-    left: preferredLeft + x,
-    top: preferredTop + y,
-    width: size.width,
-    height: size.height,
-  }));
-  const cardFits = (candidate: CardRect) => candidate.left >= bounds.left + 8
-      && candidate.left + candidate.width <= bounds.right - 8
-      && candidate.top >= bounds.top + 8
-      && candidate.top + candidate.height <= bounds.bottom
-      && candidate.left >= 8
-      && candidate.left + candidate.width <= window.innerWidth - 8
-      && candidate.top >= 8
-      && candidate.top + candidate.height <= window.innerHeight - 8
-      && obstacles.every((obstacle) => candidate.left + candidate.width + 8 <= obstacle.left
-        || candidate.left - 8 >= obstacle.right
-        || candidate.top + candidate.height + 8 <= obstacle.top
-        || candidate.top - 8 >= obstacle.bottom);
-  const safe = candidates.find(cardFits);
-  return safe ?? (safety.requireProtectedClearance ? null : boundCardRect(preferredLeft, preferredTop, size.width, size.height));
+  const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+  if (!table || !coordinates) return null;
+  const placement = publicStationaryCardPlacement(table, size, coordinates,
+    safety.stationarySurface === "effect-frame" ? safety.preferredEffectFrameTopOffset ?? 0 : 0);
+  if (!placement) return null;
+  const { clientRect } = placement;
+  return { left: clientRect.left, top: clientRect.top, width: size.width, height: size.height };
 }
 
-/** Full-size public reveal placement that clears the real upper H4 and protected controls. */
-export function h4SafeBattlefieldCardRect(size: { width: number; height: number }) {
-  return battlefieldCenterCard(size, { requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
-}
-
-function singleTargetBattlefieldRevealCard(size: { width: number; height: number }): CardRect | null {
-  const table = document.querySelector<HTMLElement>(".play-table");
-  if (!table) return null;
-  const tableRect = table.getBoundingClientRect();
-  const visualViewport = window.visualViewport;
-  const viewportTop = visualViewport?.offsetTop ?? 0;
-  const viewportLeft = visualViewport?.offsetLeft ?? 0;
-  const viewportRight = viewportLeft + (visualViewport?.width ?? window.innerWidth);
-  const viewportBottom = Math.min(window.innerHeight, viewportTop + (visualViewport?.height ?? window.innerHeight));
-  const visibleSeats = [...table.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")]
-    .flatMap((seat) => {
-      const rect = seat.getBoundingClientRect();
-      const style = window.getComputedStyle(seat);
-      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
-        ? [{ side: seat.dataset.sideColumn, rect }]
-        : [];
-    });
-  const topSeatBottom = Math.max(...visibleSeats.filter((seat) => !seat.side).map((seat) => seat.rect.bottom));
-  const leftSideSeatRights = visibleSeats.filter((seat) => seat.side === "left").map((seat) => seat.rect.right);
-  const rightSideSeatLefts = visibleSeats.filter((seat) => seat.side === "right").map((seat) => seat.rect.left);
-  const pac = table.querySelector<HTMLElement>("[data-public-activity-chip='true']");
-  const pacStyle = pac ? window.getComputedStyle(pac) : null;
-  const pacRect = pac?.getBoundingClientRect();
-  const lowerBoundary = pacRect && pacStyle?.display !== "none" && pacStyle?.visibility !== "hidden"
-    && pacRect.width > 0 && pacRect.height > 0
-    && pacRect.top > tableRect.top && pacRect.top < tableRect.bottom
-    ? pacRect.top
-    : tableRect.bottom;
-  const candidate = centerRevealCardInSafeBattlefield({
-    table: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom },
-    viewport: { left: viewportLeft, top: viewportTop, right: viewportRight, bottom: viewportBottom },
-    size,
-    topSeatBottom,
-    leftSideSeatRights,
-    rightSideSeatLefts,
-    lowerBoundary,
-  });
-  if (!candidate) return null;
-  const protectedSelectors = [
-    ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster",
-    ".card-details-panel", ".hero-details-panel",
-    ".interaction-stage-dying", ".dying-handoff-compact", ".card-pool-target-stage",
-    ".battlefield-choice-stage", ".local-player-dock", ".local-hand-rail", ".local-hand",
-    ".console-guidance", "[data-public-activity-hit-target='true']",
-  ].join(", ");
-  const overlapsProtectedControl = [...document.querySelectorAll<HTMLElement>(protectedSelectors)].some((element) => {
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
-      && rectsOverlap(candidate, rect, 4);
-  });
-  return overlapsProtectedControl ? null : candidate;
+/** Full-size public reveal placement at the canonical nominal table-local centre. */
+export function stationaryBattlefieldCardRect(size: { width: number; height: number }) {
+  return battlefieldCenterCard(size);
 }
 
 function battlefieldPublicEffectFrameCard(): CardRect | null;
@@ -997,17 +905,14 @@ function battlefieldPublicEffectFrameCard(frame?: PublicCardEffectFrameView): Ca
     ? renderedCardRect.left - measuredFrame.left : frameLayout.cardOffsetLeft;
   const cardOffsetTop = measuredFrame && renderedCardRect
     ? renderedCardRect.top - measuredFrame.top : frameLayout.cardOffsetTop;
-  const safeFrame = battlefieldCenterCard({ width: frameWidth, height: frameHeight }, {
-    requireProtectedClearance: true,
-    respectFixedUpperH4: true,
-    fixedPublicBands: true,
+  const canonicalFrame = battlefieldCenterCard({ width: frameWidth, height: frameHeight }, {
     stationarySurface: "effect-frame",
     preferredEffectFrameTopOffset: frame?.preferredLaneTopOffset ?? 0,
   });
-  if (!safeFrame) return null;
+  if (!canonicalFrame) return null;
   return {
-    left: safeFrame.left + cardOffsetLeft,
-    top: safeFrame.top + cardOffsetTop,
+    left: canonicalFrame.left + cardOffsetLeft,
+    top: canonicalFrame.top + cardOffsetTop,
     width: REVEAL_CARD.width,
     height: REVEAL_CARD.height,
   };
@@ -1092,19 +997,29 @@ function battlefieldLustDuelAnnouncementAnchor(card: CardRect): CardRect {
 function hasPaintedLargePublicEffectFrame(
   eventId: string,
   frame: PublicCardEffectFrameView,
-  identity: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
+  identity: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string;
+    allowPendingSameEventLayout?: boolean; requireVisibleH4?: { eventId: string; owner: string } },
   element: HTMLElement,
   onFailure?: (reason: string) => void,
+  allowPendingSameEventLayout = false,
 ): boolean {
   const fail = (reason: string) => {
     onFailure?.(reason);
     return false;
   };
+  const paintEnabledThroughAncestors = (node: HTMLElement) => {
+    for (let current: HTMLElement | null = node; current; current = current.parentElement) {
+      const style = window.getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
+        || Number(style.opacity) <= 0 || style.contentVisibility === "hidden") return false;
+    }
+    return node.isConnected && node.getClientRects().length > 0;
+  };
   const table = element.closest<HTMLElement>(".play-table");
   if (!table) return fail("missing-play-table");
   const shared = committedPublicStageLayout(table);
   if (!shared) return fail("missing-shared-layout");
-  if (!shared.revealReady) return fail("shared-reveal-not-ready");
+  if (!shared.revealReady && !allowPendingSameEventLayout) return fail("shared-reveal-not-ready");
   const expectedCardIds = frame.materials.map(({ card }) => card.id).join(",");
   const expectedOwnerIds = frame.materials.map(({ ownerId }) => ownerId ?? "deck").join(",");
   const panels = [...element.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")];
@@ -1112,9 +1027,12 @@ function hasPaintedLargePublicEffectFrame(
   const primaryStyle = window.getComputedStyle(element);
   const footprint = panel ? publicEffectFrameVisualFootprint(element) : null;
   const display = element.closest<HTMLElement>(".public-card-display");
-  const announcement = display && shared ? [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
-    .find((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared?.announcementEventId
-      && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : null;
+  const announcements = display && shared ? [...display.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+    .filter((candidate) => candidate.dataset.publicCardAnnouncementEventId === shared?.announcementEventId
+      && (candidate.dataset.publicCardAnnouncementCopyKey ?? "") === shared.announcementCopyKey) : [];
+  const announcement = identity.requireVisibleH4
+    ? announcements.length === 1 ? announcements[0] : null
+    : announcements[0] ?? null;
   if (!panel || !footprint
     || !display || !announcement
     || frame.eventId !== eventId
@@ -1128,6 +1046,11 @@ function hasPaintedLargePublicEffectFrame(
     || panel.dataset.publicCardFrameMaterialCardIds !== expectedCardIds
     || panel.dataset.publicCardFrameMaterialOwnerIds !== expectedOwnerIds
     || Number(panel.dataset.publicCardFrameMaterialCount) !== frame.materials.length
+    || identity.requireVisibleH4 !== undefined
+      && (announcement?.dataset.publicCardAnnouncementEventId !== identity.requireVisibleH4.eventId
+        || announcement?.dataset.publicH4EventId !== identity.requireVisibleH4.eventId
+        || announcement?.dataset.publicH4Owner !== identity.requireVisibleH4.owner
+        || announcement?.dataset.publicCardAnnouncementDelivery !== "VISIBLE")
     || !publicStageEffectFrameRevealTargetMatches({
       layout: shared.layout,
       roomId: identity.roomId,
@@ -1147,12 +1070,11 @@ function hasPaintedLargePublicEffectFrame(
   const layoutCard = shared.layout.card;
   const announcementStyle = window.getComputedStyle(announcement);
   const announcementPaint = measuredPublicH4PaintRect(announcement);
-  const visibleViewport = window.visualViewport;
-  const viewportLeft = visibleViewport?.offsetLeft ?? 0;
-  const viewportTop = visibleViewport?.offsetTop ?? 0;
-  const viewportRight = viewportLeft + (visibleViewport?.width ?? window.innerWidth);
-  const viewportBottom = viewportTop + (visibleViewport?.height ?? window.innerHeight);
   const tableRect = table.getBoundingClientRect();
+  const tableCoordinates = publicStageCoordinateSpaceForTable(table);
+  const localPrimaryRect = tableCoordinates ? publicStageRectToTableLocal({
+    left: primaryRect.left, top: primaryRect.top, right: primaryRect.right, bottom: primaryRect.bottom,
+  }, tableCoordinates) : null;
   const withinOnePixel = (left: number, right: number) => Math.abs(left - right) <= 1;
   const consoleGuidance = document.querySelector<HTMLElement>(".local-player-dock .console-guidance");
   if (!consoleGuidance) return fail("missing-console-boundary");
@@ -1162,31 +1084,126 @@ function hasPaintedLargePublicEffectFrame(
     || consoleRect.width <= 0 || consoleRect.height <= 0) return fail("console-boundary-not-paint-enabled");
   const consoleTop = consoleRect.top;
   if (!element.isConnected || element.getClientRects().length === 0
-    || primaryStyle.display === "none" || primaryStyle.visibility === "hidden" || Number(primaryStyle.opacity) <= 0) {
+    || primaryStyle.display === "none" || primaryStyle.visibility === "hidden" || Number(primaryStyle.opacity) <= 0
+    || !paintEnabledThroughAncestors(element) || !paintEnabledThroughAncestors(panel)) {
     return fail("frame-not-paint-enabled");
   }
   if (!announcement.isConnected || announcement.getClientRects().length === 0
     || announcementStyle.display === "none" || announcementStyle.visibility === "hidden"
-    || Number(announcementStyle.opacity) <= 0 || !announcementPaint) return fail("matching-h4-not-paint-enabled");
-  if (!withinOnePixel(primaryRect.width, REVEAL_CARD.width) || !withinOnePixel(primaryRect.height, REVEAL_CARD.height)) {
+    || Number(announcementStyle.opacity) <= 0 || !announcementPaint
+    || !paintEnabledThroughAncestors(announcement)) return fail("matching-h4-not-paint-enabled");
+  if (!localPrimaryRect
+    || !withinOnePixel(localPrimaryRect.right - localPrimaryRect.left, REVEAL_CARD.width)
+    || !withinOnePixel(localPrimaryRect.bottom - localPrimaryRect.top, REVEAL_CARD.height)) {
     return fail("card-face-size-mismatch");
   }
   if (!withinOnePixel(visualRect.left, layoutCard.left) || !withinOnePixel(visualRect.top, layoutCard.top)
     || !withinOnePixel(visualRect.right, layoutCard.right) || !withinOnePixel(visualRect.bottom, layoutCard.bottom)) {
     return fail("frame-not-at-canonical-anchor");
   }
-  if (visualRect.left < Math.max(viewportLeft, tableRect.left)
-    || visualRect.right > Math.min(viewportRight, tableRect.right)
-    || visualRect.top < Math.max(viewportTop, tableRect.top)
-    || visualRect.bottom > Math.min(viewportBottom, tableRect.bottom, consoleTop)) return fail("frame-outside-safe-scene");
+  if (visualRect.left < tableRect.left || visualRect.right > tableRect.right
+    || visualRect.top < tableRect.top || visualRect.bottom > Math.min(tableRect.bottom, consoleTop)) return fail("frame-outside-safe-scene");
   return true;
+}
+
+type PublicCardPaintIdentity = {
+  roomId: string;
+  rootEventId: string;
+  interactionId?: string | null;
+  viewerId: string;
+  allowPendingSameEventLayout?: boolean;
+  requireVisibleH4?: { eventId: string; owner: string };
+} | {
+  viewerId: string;
+  requireVisibleH4: { eventId: string; owner: string };
+};
+
+function publicVisibleHoldPolicyFor(
+  action: PublicCardDisplayAction,
+  roomId: string,
+  viewerId: string,
+  eventId: string,
+  cardId: string,
+): PublicStageVisibleHoldPolicy | null {
+  const expected = action.visibleHoldPolicy;
+  if (!expected || action.rootEventId !== eventId || action.cardFace?.id !== cardId) return null;
+  const frame = action.publicCardEffectFrame;
+  let completion: PublicStageVisibleHoldPolicyInput["completion"] | null = null;
+  if (action.motion?.type === "zone-transition" && hasExactZoneTransitionClaim(action, eventId, cardId)) {
+    const claim = action.zoneTransition!;
+    completion = { kind: "EQUIPMENT_ARRIVAL", claimId: claim.claimId, eventId: claim.eventId,
+      physicalCardId: claim.physicalCardId, ownerId: claim.ownerId, destination: "EQUIPMENT", slot: claim.slot };
+  } else if (action.motion?.type === "single-target" && !action.zoneTransition) {
+    completion = { kind: "CENTRE_RETIRE" };
+  }
+  if (!completion) return null;
+  const actual = createPublicStageVisibleHoldPolicy({
+    semantics: "PROVEN",
+    identity: {
+      roomId,
+      rootEventId: action.rootEventId,
+      interactionId: action.interactionId ?? "",
+      eventId,
+      cardId,
+      viewerId,
+      rootFrameId: action.rootFrameId ?? "",
+      h4EventId: action.zoneTransition?.h4EventId ?? action.rootEventId,
+      phase: "REVEAL",
+      materialCardIds: frame?.materials.map(({ card }) => card.id) ?? [cardId],
+      frame: frame ? {
+        eventId: frame.eventId,
+        activationEventId: frame.activationEventId ?? null,
+        rootEventId: frame.rootEventId ?? null,
+        rootResolutionId: frame.rootResolutionId ?? null,
+        effectId: frame.effectId,
+        effectClass: frame.effectClass,
+        activationOwnerId: frame.activationOwnerId,
+        materialCardIds: frame.materials.map(({ card }) => card.id),
+        materialOwnerIds: frame.materials.map(({ ownerId }) => ownerId),
+      } : null,
+    },
+    completion,
+  });
+  return actual && publicStageVisibleHoldPolicyMatches(expected, actual) ? expected : null;
+}
+
+function publicVisibleHoldPaintIdentity(policy: PublicStageVisibleHoldPolicy): PublicCardPaintIdentity {
+  return {
+    roomId: policy.identity.roomId,
+    rootEventId: policy.identity.rootEventId,
+    interactionId: policy.identity.interactionId,
+    viewerId: policy.identity.viewerId,
+    allowPendingSameEventLayout: true,
+    requireVisibleH4: { eventId: policy.identity.h4EventId, owner: "PublicCardDisplay" },
+  };
+}
+
+function publicVisibleHoldFrameMatchesElement(
+  policy: PublicStageVisibleHoldPolicy,
+  card: HTMLElement,
+  framePanel: HTMLElement | null,
+): boolean {
+  const { frame, materialCardIds } = policy.identity;
+  if (card.dataset.publicCardJourneyCardIds !== materialCardIds.join(",")) return false;
+  if (!frame) return framePanel === null;
+  return Boolean(framePanel
+    && framePanel.dataset.publicCardFrameEffectId === frame.effectId
+    && framePanel.dataset.publicCardFrameClass === frame.effectClass
+    && framePanel.dataset.publicCardFrameActivationOwnerId === frame.activationOwnerId
+    && framePanel.dataset.publicCardFrameEventId === (frame.activationEventId ?? frame.eventId)
+    && framePanel.dataset.publicCardFrameCardEventId === frame.eventId
+    && (framePanel.dataset.publicCardFrameRootEventId ?? "") === (frame.rootEventId ?? "")
+    && (framePanel.dataset.publicCardFrameRootResolutionId ?? "") === (frame.rootResolutionId ?? "")
+    && framePanel.dataset.publicCardFrameMaterialCardIds === frame.materialCardIds.join(",")
+    && framePanel.dataset.publicCardFrameMaterialOwnerIds === frame.materialOwnerIds.map((ownerId) => ownerId ?? "deck").join(",")
+    && Number(framePanel.dataset.publicCardFrameMaterialCount) === frame.materialCardIds.length);
 }
 
 function hasPaintedLargePublicCard(
   eventId: string,
   size: Pick<CardRect, "width" | "height">,
   effectFrame?: PublicCardEffectFrameView,
-  identity?: { roomId: string; rootEventId: string; interactionId?: string | null; viewerId: string },
+  identity?: PublicCardPaintIdentity,
   onFailure?: (reason: string) => void,
 ) {
   const elements = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
@@ -1196,19 +1213,57 @@ function hasPaintedLargePublicCard(
     return false;
   }
   const element = elements[0];
-  if (effectFrame || identity) return Boolean(effectFrame && identity
-    && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element, onFailure));
+  if (effectFrame) return Boolean(identity && "roomId" in identity
+    && hasPaintedLargePublicEffectFrame(eventId, effectFrame, identity, element, onFailure, identity.allowPendingSameEventLayout === true));
   const face = element?.querySelector<HTMLElement>(".played-card");
   const rect = element?.getBoundingClientRect();
+  const table = element?.closest<HTMLElement>(".play-table");
+  const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+  const localRect = rect && coordinates ? publicStageRectToTableLocal({
+    left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+  }, coordinates) : null;
   const elementStyle = element ? window.getComputedStyle(element) : null;
   const faceStyle = face ? window.getComputedStyle(face) : null;
-  const painted = Boolean(element && face && rect && elementStyle && faceStyle
+  const matchingH4 = identity?.requireVisibleH4
+    ? [...document.querySelectorAll<HTMLElement>("[data-public-h4-event-id]")].filter((candidate) =>
+      candidate.dataset.publicH4EventId === identity.requireVisibleH4?.eventId
+      && candidate.dataset.publicH4Owner === identity.requireVisibleH4.owner
+      && candidate.dataset.publicCardAnnouncementDelivery === "VISIBLE"
+      && candidate.isConnected && candidate.getClientRects().length > 0
+      && paintEnabledThroughAncestors(candidate)
+      && window.getComputedStyle(candidate).visibility !== "hidden"
+      && window.getComputedStyle(candidate).display !== "none"
+      && Number(window.getComputedStyle(candidate).opacity) > 0).length === 1
+    : true;
+  const shared = table && identity?.requireVisibleH4 && "roomId" in identity
+    ? committedPublicStageLayout(table) : null;
+  const sharedIdentityMatches = Boolean(shared && identity && "roomId" in identity
+    && publicStageEffectFrameRevealTargetMatches({
+      layout: shared.layout,
+      roomId: identity.roomId,
+      rootEventId: identity.rootEventId,
+      interactionId: identity.interactionId,
+      eventId,
+      cardId: element.dataset.publicCardJourneyCardId ?? "",
+      viewerId: identity.viewerId,
+      primaryEventId: shared.primaryEventId,
+      primaryCardId: shared.primaryCardId,
+      announcementEventId: shared.announcementEventId,
+      announcementAnchorEventId: shared.announcementAnchorEventId,
+    }));
+  const sharedAnchorMatches = !identity?.requireVisibleH4 || Boolean(sharedIdentityMatches && localRect && shared
+    && Math.abs(localRect.left - shared.layout.card.left) <= 1
+    && Math.abs(localRect.top - shared.layout.card.top) <= 1
+    && Math.abs(localRect.right - shared.layout.card.right) <= 1
+    && Math.abs(localRect.bottom - shared.layout.card.bottom) <= 1);
+  const painted = Boolean(element && face && rect && elementStyle && faceStyle && matchingH4 && sharedAnchorMatches
     && element.isConnected && element.getClientRects().length > 0
     && elementStyle.display !== "none" && elementStyle.visibility !== "hidden" && Number(elementStyle.opacity) > 0
     && faceStyle.display !== "none" && faceStyle.visibility !== "hidden" && Number(faceStyle.opacity) > 0
-    && Math.abs(rect.width - size.width) < 1 && Math.abs(rect.height - size.height) < 1
-    && rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight);
-  if (!painted) onFailure?.("card-face-not-paint-enabled");
+    && Boolean(localRect)
+    && Math.abs((localRect?.right ?? 0) - (localRect?.left ?? 0) - size.width) < 1
+    && Math.abs((localRect?.bottom ?? 0) - (localRect?.top ?? 0) - size.height) < 1);
+  if (!painted) onFailure?.(matchingH4 ? "card-face-not-paint-enabled" : "matching-h4-not-paint-enabled");
   return painted;
 }
 
@@ -1237,10 +1292,7 @@ function observeUntilPublicCardFirstPaint(table: HTMLElement | null, check: () =
     mutationObserver?.disconnect();
     resizeObserver?.disconnect();
     window.removeEventListener("resize", schedule);
-    window.removeEventListener("scroll", schedule, true);
     document.removeEventListener("visibilitychange", onVisibilityChange);
-    window.visualViewport?.removeEventListener("resize", schedule);
-    window.visualViewport?.removeEventListener("scroll", schedule);
   };
   const runCheck = () => {
     scheduled = false;
@@ -1275,10 +1327,7 @@ function observeUntilPublicCardFirstPaint(table: HTMLElement | null, check: () =
   observeCurrentNodes();
   mutationObserver?.observe(table!, { attributes: true, childList: true, subtree: true, characterData: true });
   window.addEventListener("resize", schedule);
-  window.addEventListener("scroll", schedule, true);
   document.addEventListener("visibilitychange", onVisibilityChange);
-  window.visualViewport?.addEventListener("resize", schedule);
-  window.visualViewport?.addEventListener("scroll", schedule);
   schedule();
   return stop;
 }
@@ -2912,6 +2961,7 @@ function PublicCardAnnouncement({
   compactSupportingMessage,
   presentationNarration,
   negationNarration,
+  pendingVisibleHoldPolicy,
   fallbackCardRect,
   phaseNotice,
   outcome,
@@ -2949,6 +2999,7 @@ function PublicCardAnnouncement({
   compactSupportingMessage?: string;
   presentationNarration?: PublicNegationNarration | PublicInteractionNarration;
   negationNarration?: PublicNegationNarration;
+  pendingVisibleHoldPolicy?: PublicStageVisibleHoldPolicy | null;
   fallbackCardRect: CardRect | null;
   phaseNotice?: string;
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
@@ -3023,6 +3074,7 @@ function PublicCardAnnouncement({
     eventId, anchorEventId, eventCopyKey, announcementIdentity, geometryKey, copyLifecycleStage, placementKey, viewerLayoutKey,
     phase, heading, message, compactMessage, accessibleLabel, dismantleCardFace, segments, supportingMessage, compactSupportingMessage,
     presentationNarration, negationNarration, fallbackCardRect: stableFallbackCardRect, phaseNotice, outcome, negationWaiting,
+    pendingVisibleHoldPolicy,
     stableCenterAnchor, keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, clearCenterAnchorWhenParked,
     viewerGeometryReady, preferredVerticalMode, privateDrawAware, protectFirstParkedMiniature,
   };
@@ -3100,7 +3152,28 @@ function PublicCardAnnouncement({
     let placementFailureTimer: number | null = null;
     let revealAnchorFollowTimer: number | null = null;
     let currentGeometryIdentity = "";
-    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : []), ...(protectFirstParkedMiniature ? ['.public-card-journey-card[data-public-card-journey-phase="parked"]'] : [])].join(", ");
+    let currentTableCoordinates: ReturnType<typeof publicStageCoordinateSpaceForTable> = null;
+    const clientCardRectToTableLocal = (rect: CardRect): CardRect | null => {
+      if (!currentTableCoordinates) return null;
+      const local = publicStageRectToTableLocal({
+        left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height,
+      }, currentTableCoordinates);
+      return local ? { left: local.left, top: local.top, width: local.right - local.left, height: local.bottom - local.top } : null;
+    };
+    const tableLocalCardRectToClient = (rect: CardRect): CardRect | null => {
+      if (!currentTableCoordinates) return null;
+      const client = publicStageRectFromTableLocal({
+        left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height,
+      }, currentTableCoordinates);
+      return client ? { left: client.left, top: client.top, width: client.right - client.left, height: client.bottom - client.top } : null;
+    };
+    const lastValidPlacementInClientSpace = () => {
+      const placement = lastValidPlacementRef.current;
+      const rect = placement ? tableLocalCardRectToClient(placement) : null;
+      return placement && rect ? { ...placement, ...rect } : null;
+    };
+    const passiveStationaryReveal = phase === "reveal";
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-row"] : []), ...(protectFirstParkedMiniature && !passiveStationaryReveal ? ['.public-card-journey-card[data-public-card-journey-phase="parked"]'] : [])].join(", ");
     const setData = (name: string, value: string | undefined) => {
       const current = copy.getAttribute(name);
       if (value === undefined) {
@@ -3116,8 +3189,15 @@ function PublicCardAnnouncement({
       setData("data-public-card-announcement-delivery", stage);
     };
     const setPx = (property: "left" | "top" | "width", value: number) => {
+      const table = display.closest<HTMLElement>(".play-table");
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      const localValue = coordinates ? property === "width"
+        ? publicStageLengthToTableLocal(value, "x", coordinates)
+        : publicStageCoordinateToTableLocal(value, property === "left" ? "x" : "y", coordinates)
+        : null;
+      if (localValue === null) return;
       const current = Number.parseFloat(copy.style[property]);
-      if (!Number.isFinite(current) || Math.abs(current - value) > 1) copy.style[property] = `${value}px`;
+      if (!Number.isFinite(current) || Math.abs(current - localValue) > 1) copy.style[property] = `${localValue}px`;
     };
     const commitDisplayedCopy = (next: DisplayedPublicCardAnnouncement) => {
       const previous = displayedCopyRef.current!;
@@ -3158,7 +3238,7 @@ function PublicCardAnnouncement({
     };
 
     const retainLastValidPlacement = (layoutEpoch: string) => {
-      const previous = lastValidPlacementRef.current;
+      const previous = lastValidPlacementInClientSpace();
       const sustainedFailure = notePlacementFailure(layoutEpoch);
       if (sustainedFailure || !previous || previous.geometryIdentity !== currentGeometryIdentity
         || previous.layoutEpoch !== layoutEpoch) return false;
@@ -3186,6 +3266,7 @@ function PublicCardAnnouncement({
         eventId, eventCopyKey, geometryKey, viewerLayoutKey, phase, message, compactMessage,
         heading,
         accessibleLabel, supportingMessage, compactSupportingMessage, presentationNarration, negationNarration,
+        pendingVisibleHoldPolicy,
         fallbackCardRect: currentFallbackCardRect, outcome, stableCenterAnchor,
         keepCenterAnchorClear, stableHarvestAnchor, ignoreJourneyLayoutPending, viewerGeometryReady, preferredVerticalMode,
     privateDrawAware, protectFirstParkedMiniature, dismantleCardFace, segments,
@@ -3235,8 +3316,11 @@ function PublicCardAnnouncement({
         setData("data-public-card-announcement-positioned", "true");
         const sharedUpper = sharedTable ? fixedUpperHistoryAnnouncementAnchor(sharedTable) : null;
         const matchesUpper = sharedUpper && Math.abs(sharedUpper.top - rect.top) <= 0.5;
+        const sharedCoordinates = sharedTable ? publicStageCoordinateSpaceForTable(sharedTable) : null;
+        const sharedUpperLocalTop = matchesUpper && sharedCoordinates
+          ? publicStageCoordinateToTableLocal(rect.top, "y", sharedCoordinates) : null;
         setData("data-public-card-announcement-fixed-upper", matchesUpper ? "true" : undefined);
-        setData("data-public-card-announcement-fixed-upper-top", matchesUpper ? `${Math.round(rect.top * 2) / 2}` : undefined);
+        setData("data-public-card-announcement-fixed-upper-top", sharedUpperLocalTop === null ? undefined : `${Math.round(sharedUpperLocalTop * 2) / 2}`);
         setData("data-public-card-announcement-width", `${Math.round(rect.right - rect.left)}`);
         const text = copy.querySelector("b");
         if (text) {
@@ -3269,29 +3353,89 @@ function PublicCardAnnouncement({
             copy.dataset.publicCardAnnouncementAnchorEventId ?? "",
           ],
         }));
-      if (sharedStageCandidate && sharedTable && (phase === "reveal" || phase === "move")) {
+      const pendingRevealCardNodes = pendingVisibleHoldPolicy && sharedTable
+        ? [...sharedTable.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")].filter((candidate) =>
+          candidate.dataset.publicCardJourneyEventId === pendingVisibleHoldPolicy.identity.eventId
+          && candidate.dataset.publicCardJourneyCardId === pendingVisibleHoldPolicy.identity.cardId)
+        : [];
+      const pendingRevealCard = pendingRevealCardNodes?.length === 1 ? pendingRevealCardNodes[0] : null;
+      const pendingRevealFrameNodes = pendingRevealCard
+        ? [...pendingRevealCard.querySelectorAll<HTMLElement>(".public-card-effect-frame-panel")] : [];
+      const pendingRevealFrame = pendingRevealFrameNodes.length === 1 ? pendingRevealFrameNodes[0] : null;
+      const pendingStaticRevealMatches = Boolean(pendingVisibleHoldPolicy && pendingRevealCard
+        && pendingRevealFrameNodes.length === (pendingVisibleHoldPolicy.identity.frame ? 1 : 0)
+        && publicStageStaticAnnouncementMatchesReveal({
+          phase,
+          expected: { ...pendingVisibleHoldPolicy.identity, eventId: pendingVisibleHoldPolicy.identity.h4EventId },
+          actual: {
+            roomId: display.dataset.publicCardRoomId ?? "",
+            rootEventId: display.dataset.publicCardRootEventId ?? "",
+            interactionId: display.dataset.publicCardInteractionId ?? "",
+            eventId: copy.dataset.publicCardAnnouncementEventId ?? "",
+            cardId: pendingRevealCard.dataset.publicCardJourneyCardId ?? "",
+            viewerId: display.dataset.publicCardViewerId ?? "",
+          },
+        })
+        && display.dataset.publicCardEventId === pendingVisibleHoldPolicy.identity.eventId
+        && display.dataset.publicCardViewerId === display.dataset.publicCardLayoutViewerId
+        && pendingRevealCard.dataset.publicCardJourneyPhase === "reveal"
+        && publicVisibleHoldFrameMatchesElement(pendingVisibleHoldPolicy, pendingRevealCard, pendingRevealFrame));
+      const sharedPendingReveal = phase === "reveal" || phase === "move" || pendingStaticRevealMatches;
+      if (sharedStageCandidate && sharedTable && sharedPendingReveal) {
         // Keep the independently anchored factual H4 paint-enabled while the
         // same-event shared card geometry is being measured. Passive card/H4
         // intersections and parked-slot reservations never suppress copy.
         const tableBounds = sharedTable.getBoundingClientRect();
-        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
-        const viewportTop = window.visualViewport?.offsetTop ?? 0;
-        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
         const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
         const band = fixedPublicH4Band(sharedTable);
-        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
-        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const safeLeft = tableBounds.left + 8;
+        const safeRight = tableBounds.right - 8;
         const width = Math.max(1, Math.min(band?.width ?? tableBounds.width - 16, safeRight - safeLeft));
         const left = band && width >= band.width - 1 ? band.left : (safeLeft + safeRight - width) / 2;
-        const top = upper?.top ?? band?.top ?? Math.max(tableBounds.top + 8, viewportTop + 8);
+        const top = upper?.top ?? band?.top ?? tableBounds.top + 8;
         setPx("left", left);
         setPx("top", top);
         setPx("width", width);
+        if (pendingStaticRevealMatches) {
+          const rect = copy.getBoundingClientRect();
+          const wrapper = sharedTable.querySelector<HTMLElement>(".battlefield-choice-stage.stauchness-choice-stage[data-stauchness-choice='true']");
+          const panel = wrapper?.querySelector<HTMLElement>(".stauchness-choice-panel") ?? null;
+          const consoleTop = document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableBounds.bottom;
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")]
+            .filter((element) => element !== wrapper);
+          if (panel && !controls.includes(panel)) controls.push(panel);
+          const collides = (element: HTMLElement) => {
+            const style = window.getComputedStyle(element);
+            const other = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+              && other.width > 0 && other.height > 0
+              && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
+          };
+          const safeUpper = Boolean(upper && rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5
+            && rect.top >= tableBounds.top && rect.bottom <= Math.min(tableBounds.bottom, consoleTop)
+            && upper.slots.every(({ rect: slot }) => rect.right <= slot.left || rect.left >= slot.left + slot.width
+              || rect.bottom <= slot.top || rect.top >= slot.top + slot.height)
+            && !controls.some(collides));
+          if (!safeUpper) {
+            if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
+            setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
+            setData("data-public-card-announcement-placement", undefined);
+            setData("data-public-card-announcement-positioned", undefined);
+            setData("data-public-card-announcement-stability", "verified-reveal-awaiting-hard-safe-upper-anchor");
+            reportH4Placement({ geometryEpoch: null, obstacleIds: ["actual-choice-or-control"], decision: "hide",
+              reason: "verified-replacement-upper-anchor-blocked-by-real-control", compact: null,
+              rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, visible: false,
+              text: copy.textContent ?? "" });
+            return;
+          }
+        }
         if (copy.style.visibility !== "visible") copy.style.visibility = "visible";
         setData("data-public-stage-layout-identity", undefined);
         setData("data-public-card-announcement-positioned", "true");
         setData("data-public-card-announcement-fixed-upper", "true");
-        setData("data-public-card-announcement-fixed-upper-top", `${Math.round(top * 2) / 2}`);
+        const sharedCoordinates = publicStageCoordinateSpaceForTable(sharedTable);
+        const topLocal = sharedCoordinates ? publicStageCoordinateToTableLocal(top, "y", sharedCoordinates) : null;
+        setData("data-public-card-announcement-fixed-upper-top", topLocal === null ? undefined : `${Math.round(topLocal * 2) / 2}`);
         setData("data-public-card-announcement-width", `${Math.round(width)}`);
         setData("data-public-card-announcement-placement", "independent-upper-anchor-shared-pending");
         setData("data-public-card-announcement-stability", "canonical-anchor-during-shared-measurement");
@@ -3310,35 +3454,38 @@ function PublicCardAnnouncement({
         // upper anchor, the current real card and every visible control.
         const upper = fixedUpperHistoryAnnouncementAnchor(sharedTable);
         const tableBounds = sharedTable.getBoundingClientRect();
-        const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
-        const viewportRight = viewportLeft + (window.visualViewport?.width ?? window.innerWidth);
-        const safeLeft = Math.max(tableBounds.left, viewportLeft) + 8;
-        const safeRight = Math.min(tableBounds.right, viewportRight) - 8;
+        const safeLeft = tableBounds.left + 8;
+        const safeRight = tableBounds.right - 8;
         const width = Math.min(copy.getBoundingClientRect().width, safeRight - safeLeft);
         if (upper && width > 0) {
           setPx("left", (safeLeft + safeRight - width) / 2);
           setPx("top", upper.top);
           setPx("width", width);
           const rect = copy.getBoundingClientRect();
-          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")];
+          const wrapper = pendingStaticRevealMatches
+            ? sharedTable.querySelector<HTMLElement>(".battlefield-choice-stage.stauchness-choice-stage[data-stauchness-choice='true']")
+            : null;
+          const controls = [...sharedTable.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square, .public-activity-chip, [data-public-activity-chip], .visible-countdown, .stage-system-cluster, .card-pool-target-stage, .battlefield-choice-stage, .opponent-inspection-floating-shell")]
+            .filter((element) => element !== wrapper);
+          const choicePanel = wrapper?.querySelector<HTMLElement>(".stauchness-choice-panel");
+          if (choicePanel && !controls.includes(choicePanel)) controls.push(choicePanel);
           const collision = (element: HTMLElement) => {
             const style = window.getComputedStyle(element);
             const other = element.getBoundingClientRect();
             return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && other.width > 0 && other.height > 0
               && rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;
           };
-          const tableBottom = Math.min(tableBounds.bottom, (window.visualViewport?.offsetTop ?? 0)
-            + (window.visualViewport?.height ?? window.innerHeight));
+          const tableBottom = tableBounds.bottom;
           const consoleTop = document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableBottom;
-          const viewportTop = window.visualViewport?.offsetTop ?? 0;
-          const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
-          const safePaint = rect.top >= viewportTop && rect.bottom <= Math.min(tableBottom, consoleTop, viewportBottom)
+          const safePaint = rect.top >= tableBounds.top && rect.bottom <= Math.min(tableBottom, consoleTop)
             && upper.slots.every(({ rect: slot }) => rect.right <= slot.left || rect.left >= slot.left + slot.width
               || rect.bottom <= slot.top || rect.top >= slot.top + slot.height);
           if (rect.left >= safeLeft - 0.5 && rect.right <= safeRight + 0.5 && safePaint && !controls.some(collision)) {
             setData("data-public-card-announcement-positioned", "true");
             setData("data-public-card-announcement-fixed-upper", "true");
-            setData("data-public-card-announcement-fixed-upper-top", `${Math.round(upper.top * 2) / 2}`);
+            const tableCoordinates = publicStageCoordinateSpaceForTable(sharedTable);
+            const topLocal = tableCoordinates ? publicStageCoordinateToTableLocal(upper.top, "y", tableCoordinates) : null;
+            setData("data-public-card-announcement-fixed-upper-top", topLocal === null ? undefined : `${Math.round(topLocal * 2) / 2}`);
             setData("data-public-card-announcement-width", `${Math.round(rect.width)}`);
             setData("data-public-card-announcement-placement", "measured-upper-reflow");
             setDelivery("VISIBLE", currentEventCopyKey);
@@ -3374,8 +3521,10 @@ function PublicCardAnnouncement({
       setData("data-public-card-announcement-placement", undefined);
       const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
-      const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
-      if (!tableRect) {
+      const table = display.closest<HTMLElement>(".play-table");
+      const tableRect = table?.getBoundingClientRect() ?? null;
+      const tableCoordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      if (!table || !tableRect || !tableCoordinates) {
         if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
         reportH4Placement({
@@ -3384,26 +3533,24 @@ function PublicCardAnnouncement({
         });
         return;
       }
-      const table = display.closest<HTMLElement>(".play-table")!;
+      currentTableCoordinates = tableCoordinates;
+      const localRect = (rect: { left: number; top: number; right: number; bottom: number }) =>
+        publicStageRectToTableLocal(rect, tableCoordinates) ?? rect;
+      const localTableRect = localRect(tableRect);
       const upperHistoryAnchor = fixedUpperHistoryAnnouncementAnchor(table);
       const fixedUpperTop = upperHistoryAnchor?.top ?? null;
+      const fixedUpperLocalTop = fixedUpperTop === null
+        ? null : publicStageCoordinateToTableLocal(fixedUpperTop, "y", tableCoordinates);
       setData("data-public-card-announcement-fixed-upper", fixedUpperTop === null ? undefined : "true");
-      setData("data-public-card-announcement-fixed-upper-top", fixedUpperTop === null ? undefined : `${Math.round(fixedUpperTop * 2) / 2}`);
+      setData("data-public-card-announcement-fixed-upper-top", fixedUpperLocalTop === null ? undefined : `${Math.round(fixedUpperLocalTop * 2) / 2}`);
       // An announcement band and its measured centre card belong to the
       // viewer's current battlefield geometry. Reuse them across semantic
       // checkpoints only while that geometry remains materially unchanged.
       // A phone resize can shorten the battlefield by 100px while the old
       // centre remains barely inside safeBottom; keeping that band would hide
       // the next two-line public result behind the Local Player Dock.
-      const layoutEpoch = [tableRect.left, tableRect.top, tableRect.width, tableRect.height]
-        .map((value) => Math.round(value / 24) * 24)
-        .join(":");
-      const visualViewport = window.visualViewport;
+      const layoutEpoch = `${Math.round(tableRect.width / tableCoordinates.scaleX)}:${Math.round(tableRect.height / tableCoordinates.scaleY)}`;
       const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-      const viewportLeft = visualViewport?.offsetLeft ?? 0;
-      const viewportTop = visualViewport?.offsetTop ?? 0;
-      const viewportRight = viewportLeft + (visualViewport?.width ?? viewportWidth);
-      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
       const geometryNumber = (value: number) => Math.round(value * 2) / 2;
       const shell = display.closest<HTMLElement>(".game-shell") ?? document;
       const playerAnchorGeometry: PublicAnnouncementSeatGeometry[] = [...shell.querySelectorAll<HTMLElement>("[data-player-anchor]")]
@@ -3413,10 +3560,13 @@ function PublicCardAnnouncement({
           if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
           return [{
             anchorId: element.dataset.playerAnchor ?? "",
-            rect: {
-              left: geometryNumber(rect.left), top: geometryNumber(rect.top),
-              right: geometryNumber(rect.right), bottom: geometryNumber(rect.bottom),
-            },
+            rect: (() => {
+              const local = localRect(rect);
+              return {
+                left: geometryNumber(local.left), top: geometryNumber(local.top),
+                right: geometryNumber(local.right), bottom: geometryNumber(local.bottom),
+              };
+            })(),
           }];
         })
         .sort((left, right) => left.anchorId.localeCompare(right.anchorId)
@@ -3438,38 +3588,34 @@ function PublicCardAnnouncement({
           ? []
           : [{ element, rect }];
       });
-      for (const slot of upperHistoryAnchor?.slots ?? []) {
+      if (!passiveStationaryReveal) for (const slot of upperHistoryAnchor?.slots ?? []) {
         const rect = slot.rect;
         obstacles.push({ element: slot.element, rect: new DOMRect(rect.left, rect.top, rect.width, rect.height) });
       }
-      const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => ({
-        kind: element?.className?.toString() ?? "journey-target",
-        identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
-        rect: {
-          left: geometryNumber(rect.left), top: geometryNumber(rect.top),
-          right: geometryNumber(rect.right), bottom: geometryNumber(rect.bottom),
-        },
-      })).sort((left, right) => left.kind.localeCompare(right.kind)
+      const protectedGeometry: PublicAnnouncementProtectedGeometry[] = obstacles.map(({ element, rect }) => {
+        const local = localRect(rect);
+        return {
+          kind: element?.className?.toString() ?? "journey-target",
+          identity: element?.dataset.publicCardCopyAnchorEventId ?? element?.dataset.playerAnchor ?? "",
+          rect: {
+            left: geometryNumber(local.left), top: geometryNumber(local.top),
+            right: geometryNumber(local.right), bottom: geometryNumber(local.bottom),
+          },
+        };
+      }).sort((left, right) => left.kind.localeCompare(right.kind)
         || left.identity.localeCompare(right.identity)
         || left.rect.left - right.rect.left || left.rect.top - right.rect.top);
       const actualObstacleIds = protectedGeometry.map(({ kind, identity }) => identity ? `${kind}:${identity}` : kind).sort();
-      const anchorGeometry = actualRect && actualRect.width > 0 && actualRect.height > 0
-        ? {
-          left: geometryNumber(actualRect.left), top: geometryNumber(actualRect.top),
-          right: geometryNumber(actualRect.right), bottom: geometryNumber(actualRect.bottom),
-        }
-        : null;
+      const anchorLocalRect = actualRect && actualRect.width > 0 && actualRect.height > 0 ? localRect(actualRect) : null;
+      const anchorGeometry = anchorLocalRect ? {
+        left: geometryNumber(anchorLocalRect.left), top: geometryNumber(anchorLocalRect.top),
+        right: geometryNumber(anchorLocalRect.right), bottom: geometryNumber(anchorLocalRect.bottom),
+      } : null;
       currentGeometryIdentity = publicAnnouncementGeometryIdentity({
         viewerKey: geometryKey,
         layoutRevision: `${viewerLayoutKey}:${layoutEpoch}`,
-        viewport: {
-          left: geometryNumber(viewportLeft), top: geometryNumber(viewportTop),
-          right: geometryNumber(viewportRight), bottom: geometryNumber(viewportBottom),
-        },
-        table: {
-          left: geometryNumber(tableRect.left), top: geometryNumber(tableRect.top),
-          right: geometryNumber(tableRect.right), bottom: geometryNumber(tableRect.bottom),
-        },
+        viewport: localTableRect,
+        table: localTableRect,
         seats: playerAnchorGeometry,
         anchor: anchorGeometry,
         protectedRects: protectedGeometry,
@@ -3480,12 +3626,12 @@ function PublicCardAnnouncement({
       const bandKey = `${publicAnnouncementGeometryIdentity({
         viewerKey: geometryKey,
         layoutRevision: `${viewerLayoutKey}:${layoutEpoch}`,
-        viewport: { left: geometryNumber(viewportLeft), top: geometryNumber(viewportTop), right: geometryNumber(viewportRight), bottom: geometryNumber(viewportBottom) },
-        table: { left: geometryNumber(tableRect.left), top: geometryNumber(tableRect.top), right: geometryNumber(tableRect.right), bottom: geometryNumber(tableRect.bottom) },
+        viewport: localTableRect,
+        table: localTableRect,
         seats: playerAnchorGeometry,
         anchor: null,
         protectedRects: [],
-      })}:${stableHarvestAnchor ? "harvest" : "public"}${fixedUpperTop === null ? "" : `:upper-${Math.round(fixedUpperTop * 2) / 2}`}`;
+      })}:${stableHarvestAnchor ? "harvest" : "public"}${fixedUpperLocalTop === null ? "" : `:upper-${Math.round(fixedUpperLocalTop * 2) / 2}`}`;
       const geometryEpoch = `${layoutEpoch}:${publicAnnouncementTraceHash(currentGeometryIdentity)}`;
       if (!viewerGeometryReady && fixedUpperTop === null) {
         if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
@@ -3501,7 +3647,7 @@ function PublicCardAnnouncement({
         const retained = retainLastValidPlacement(layoutEpoch);
         if (!retained && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
         setDelivery(retained ? "VISIBLE" : "PENDING_PLACEMENT", currentEventCopyKey);
-        const previous = lastValidPlacementRef.current;
+        const previous = lastValidPlacementInClientSpace();
         reportH4Placement({
           geometryEpoch, obstacleIds: actualObstacleIds, decision: retained ? "reuse" : "hide",
           reason: retained ? "journey-layout-pending; retained-same-geometry-placement-until-layout-settles"
@@ -3512,19 +3658,34 @@ function PublicCardAnnouncement({
         });
         return;
       }
-      const safeLeft = Math.max(viewportLeft + 8, tableRect.left + 8);
-      const safeRight = Math.min(viewportRight - 8, tableRect.right - 8);
-      const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8);
-      const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
+      const safeLeft = tableRect.left + 8;
+      const safeRight = tableRect.right - 8;
+      const safeTop = tableRect.top + 8;
+      const safeBottom = Math.min(tableRect.bottom - 8,
+        document.querySelector<HTMLElement>(".local-player-dock .console-guidance")?.getBoundingClientRect().top ?? tableRect.bottom);
       const terminalLustResult = outcome === "LUST_DUEL_DAMAGE_APPLIED" || outcome === "LUST_DUEL_DAMAGE_PREVENTED";
       const lustDisplayAllowsNameWrapping = display.dataset.publicCardMotion === "lust-cost"
         || display.dataset.publicCardMotion === "lust-duel";
       const mobileLustFrame = !terminalLustResult && lustDisplayAllowsNameWrapping && viewportWidth <= 480;
-      const compactMobileLustFrame = mobileLustFrame && viewportBottom - viewportTop <= 860;
+      const compactMobileLustFrame = mobileLustFrame && (document.documentElement.clientHeight || window.innerHeight) <= 860;
       const availableAnnouncementWidth = mobileLustFrame
         ? Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, viewportWidth - 16)
         : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
-      const existingBand = fixedUpperTop === null ? publicCardAnnouncementBands.get(bandKey) : undefined;
+      const cachedBand = fixedUpperTop === null ? publicCardAnnouncementBands.get(bandKey) : undefined;
+      const existingBandPosition = cachedBand ? tableLocalCardRectToClient({
+        left: cachedBand.left, top: cachedBand.top, width: cachedBand.width, height: 1,
+      }) : null;
+      const existingBand = cachedBand && existingBandPosition
+        ? {
+          ...cachedBand,
+          left: existingBandPosition.left,
+          top: existingBandPosition.top,
+          width: existingBandPosition.width,
+          centerX: publicStageCoordinateFromTableLocal(cachedBand.centerX, "x", tableCoordinates) ?? existingBandPosition.left + existingBandPosition.width / 2,
+          centerY: publicStageCoordinateFromTableLocal(cachedBand.centerY, "y", tableCoordinates) ?? existingBandPosition.top,
+          centerCardRect: tableLocalCardRectToClient(cachedBand.centerCardRect) ?? cachedBand.centerCardRect,
+        }
+        : undefined;
       const defaultCenterY = stableHarvestAnchor
         ? tableRect.top + tableRect.height * 0.3
         : tableRect.top + tableRect.height * 0.45;
@@ -3535,11 +3696,17 @@ function PublicCardAnnouncement({
       // Reserve one fixed H4 stage band so text length and countdown mounting
       // cannot alter its width or horizontal center.
       const h4CorridorBand = { top: stableCenterY - 64, bottom: stableCenterY + 64 };
+      const h4CorridorTopLocal = publicStageCoordinateToTableLocal(h4CorridorBand.top, "y", tableCoordinates);
+      const h4CorridorBottomLocal = publicStageCoordinateToTableLocal(h4CorridorBand.bottom, "y", tableCoordinates);
+      const corridorWidth = h4CorridorTopLocal !== null && h4CorridorBottomLocal !== null
+        ? tableLocalPublicCorridorWidth(table, { top: h4CorridorTopLocal, bottom: h4CorridorBottomLocal })
+        : Math.max(1, table.clientWidth - 16);
+      const localSafeWidth = (safeRight - safeLeft) / tableCoordinates.scaleX;
       const maxWidth = Math.max(1, Math.min(
-        publicCorridorWidth(table, h4CorridorBand),
+        corridorWidth,
         availableAnnouncementWidth,
-        publicH4WidthLimit(viewportWidth, publicCorridorWidth(table, h4CorridorBand), safeRight - safeLeft),
-        safeRight - safeLeft,
+        publicH4WidthLimit(viewportWidth, corridorWidth, localSafeWidth),
+        localSafeWidth,
       ));
       const harvestPool = stableHarvestAnchor
         ? display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null
@@ -3551,8 +3718,13 @@ function PublicCardAnnouncement({
       let centerCardRect = stableHarvestAnchor
         ? stableHarvestPoolRect
         : isLargeRevealAnchor ? toCardRect(actualRect) : null;
-      if (centerCardRect) measuredCenterRef.current = { bandKey, rect: centerCardRect };
-      if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) centerCardRect = measuredCenterRef.current.rect;
+      if (centerCardRect) {
+        const localCenter = clientCardRectToTableLocal(centerCardRect);
+        if (localCenter) measuredCenterRef.current = { bandKey, rect: localCenter };
+      }
+      if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) {
+        centerCardRect = tableLocalCardRectToClient(measuredCenterRef.current.rect);
+      }
       if (!centerCardRect && currentFallbackCardRect) centerCardRect = currentFallbackCardRect;
       if (!centerCardRect) {
         centerCardRect = {
@@ -3581,7 +3753,7 @@ function PublicCardAnnouncement({
       const progress = timing?.progress;
       const isHandRevealFlight = Boolean(handReveal && (handReveal.classList.contains("public-hand-transfer-preflight")
         || (typeof progress === "number" && (progress < 0.08 || progress > 0.92))));
-      const centerCardStillOccupiesStage = keepCenterAnchorClear && !isHandRevealFlight
+      const centerCardStillOccupiesStage = !passiveStationaryReveal && keepCenterAnchorClear && !isHandRevealFlight
         && !(protectFirstParkedMiniature && Boolean(copyAnchorEventId) && !anchor && !currentFallbackCardRect);
 
       const gap = upperHistoryAnchor && window.matchMedia("(max-width: 700px)").matches
@@ -3599,7 +3771,7 @@ function PublicCardAnnouncement({
         : null;
       const staysAbovePrivateDraw = (top: number, height: number) => !privateDrawObstacle
         || top + height + 10 <= privateDrawObstacle.rect.top;
-      const previousPlacement = lastValidPlacementRef.current;
+      const previousPlacement = lastValidPlacementInClientSpace();
       const sameCopyAndGeometry = previousPlacement?.eventCopyKey === eventCopyKey
         && previousPlacement.copySignature === copySignature
         && previousPlacement.geometryIdentity === currentGeometryIdentity
@@ -3817,13 +3989,9 @@ function PublicCardAnnouncement({
         }
       }
 
-      const previousCopyRect = lastValidPlacementRef.current
-        ? new DOMRect(
-          lastValidPlacementRef.current.left,
-          lastValidPlacementRef.current.top,
-          lastValidPlacementRef.current.width,
-          lastValidPlacementRef.current.height,
-        )
+      const previousCopy = lastValidPlacementInClientSpace();
+      const previousCopyRect = previousCopy
+        ? new DOMRect(previousCopy.left, previousCopy.top, previousCopy.width, previousCopy.height)
         : null;
       const priorBandOverlapsProtectedCenter = keepCenterAnchorClear && (
         Boolean(existingBandRect && rectsOverlap(existingBandRect, centerCardRect, gap))
@@ -3971,7 +4139,7 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        const previous = lastValidPlacementRef.current;
+        const previous = lastValidPlacementInClientSpace();
         if (previous?.geometryIdentity === currentGeometryIdentity) setPx("width", previous.width);
         const retained = retainLastValidPlacement(layoutEpoch);
         if (!retained && copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
@@ -4012,16 +4180,30 @@ function PublicCardAnnouncement({
       setPx("left", selected.left);
       setPx("top", selected.top);
       setPx("width", selected.width);
-      rememberPublicCardAnnouncementBand(bandKey, {
-        left: selected.left,
-        top: selected.top,
-        width: selected.width,
-        centerX: hasNegationNarration && placementBand ? placementBand.centerX : selected.left + selected.width / 2,
-        centerY: fixedUpperTop !== null ? selected.top + selected.height / 2
-          : hasNegationNarration && placementBand ? placementBand.centerY : selected.top + selected.height / 2,
-        centerCardRect,
-        verticalMode,
+      const selectedLocal = clientCardRectToTableLocal({
+        left: selected.left, top: selected.top, width: selected.width, height: selected.height,
       });
+      const centerCardLocal = clientCardRectToTableLocal(centerCardRect);
+      if (selectedLocal && centerCardLocal) {
+        const localCenterX = hasNegationNarration && placementBand
+          ? publicStageCoordinateToTableLocal(placementBand.centerX, "x", tableCoordinates)
+          : selectedLocal.left + selectedLocal.width / 2;
+        const localCenterY = fixedUpperTop !== null ? selectedLocal.top + selectedLocal.height / 2
+          : hasNegationNarration && placementBand
+            ? publicStageCoordinateToTableLocal(placementBand.centerY, "y", tableCoordinates)
+            : selectedLocal.top + selectedLocal.height / 2;
+        if (localCenterX !== null && localCenterY !== null) {
+          rememberPublicCardAnnouncementBand(bandKey, {
+            left: selectedLocal.left,
+            top: selectedLocal.top,
+            width: selectedLocal.width,
+            centerX: localCenterX,
+            centerY: localCenterY,
+            centerCardRect: centerCardLocal,
+            verticalMode,
+          });
+        }
+      }
       const nextDisplayedCopy: DisplayedPublicCardAnnouncement = {
         message: selected.message,
         supporting: selected.supporting,
@@ -4035,7 +4217,7 @@ function PublicCardAnnouncement({
         segments: verifiedAnnouncementSegments(selected.message, narration?.headlineSegments, incomingDisplayedCopy.segments),
       };
       commitDisplayedCopy(nextDisplayedCopy);
-      const previous = lastValidPlacementRef.current;
+      const previous = lastValidPlacementInClientSpace();
       const sameBand = previous?.geometryIdentity === currentGeometryIdentity
         && previous.layoutEpoch === layoutEpoch
         && Math.abs(previous.left - selected.left) <= 1
@@ -4061,16 +4243,21 @@ function PublicCardAnnouncement({
         visible: true, text: selected.message,
       });
       lastGeometryKeyRef.current = geometryKey;
+      const selectedInTableLocal = clientCardRectToTableLocal({
+        left: selected.left, top: selected.top, width: selected.width, height: selected.height,
+      });
+      if (!selectedInTableLocal) {
+        if (copy.style.visibility !== "hidden") copy.style.visibility = "hidden";
+        setDelivery("PENDING_PLACEMENT", currentEventCopyKey);
+        return;
+      }
       lastValidPlacementRef.current = {
         geometryIdentity: currentGeometryIdentity,
         layoutEpoch,
         viewerLayoutKey,
         eventCopyKey,
         copySignature,
-        left: selected.left,
-        top: selected.top,
-        width: selected.width,
-        height: selected.height,
+        ...selectedInTableLocal,
         compact: selected.compact,
         message: selected.message,
         supporting: selected.supporting,
@@ -4111,9 +4298,6 @@ function PublicCardAnnouncement({
     const onResize = schedule;
     schedule();
     window.addEventListener("resize", onResize);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", onResize);
-    viewport?.addEventListener("scroll", onResize);
     resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
     const table = display.closest<HTMLElement>(".play-table");
     const playerBoard = document.querySelector<HTMLElement>(".player-board");
@@ -4158,8 +4342,6 @@ function PublicCardAnnouncement({
       if (placementGeneration === placementGenerationRef.current) placementGenerationRef.current += 1;
       if (schedulePlacementRef.current === schedule) schedulePlacementRef.current = null;
       window.removeEventListener("resize", onResize);
-      viewport?.removeEventListener("resize", onResize);
-      viewport?.removeEventListener("scroll", onResize);
       if (placementFailureTimer !== null) window.clearTimeout(placementFailureTimer);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
@@ -4474,12 +4656,12 @@ function AttackDodgeCardJourney({
       ? currentAction.publicCardEffectFrame : undefined;
     const center = currentPublicFrame
       ? battlefieldPublicEffectFrameCard(currentPublicFrame)
-      : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+      : battlefieldCenterCard(REVEAL_CARD);
     const previousState = journeyRef.current;
-    const centerPlacementUnavailable = center === null && currentAction.cardFace !== undefined;
-    const pendingRevealCenter = center ?? previousState.center
-      ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
     const sameInteraction = previousState.scopeKey === scopeKey;
+    const pendingRevealCenter = center ?? (sameInteraction ? previousState.center : null);
+    if (!pendingRevealCenter) return;
+    const centerPlacementUnavailable = center === null && currentAction.cardFace !== undefined;
     const viewerChanged = sameInteraction && previousState.viewerId !== viewerId;
     const previous = sameInteraction ? previousState.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
@@ -4965,6 +5147,7 @@ function AttackDodgeCardJourney({
     let previousLayoutSignature = "";
     let stableLayoutFrames = 0;
     let sampledLayoutFrames = 0;
+    let committedGeometrySignature = "";
     const observedAnchors = new WeakSet<Element>();
     const observePlayerAnchors = () => {
       const announcements = isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
@@ -4981,10 +5164,10 @@ function AttackDodgeCardJourney({
       const current = journeyRef.current;
       const center = currentAction.publicCardEffectFrame?.eventId === currentAction.rootEventId
         ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
-        : battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+        : battlefieldCenterCard(REVEAL_CARD);
       const framePlacementUnavailable = center === null && current.cards.some((card) => card.phase === "reveal");
-      const pendingCenter = center ?? current.center
-        ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
+      const pendingCenter = center ?? current.center;
+      if (!pendingCenter) return;
       const next = {
         ...current,
         center: center ?? (framePlacementUnavailable ? pendingCenter : center),
@@ -5017,7 +5200,29 @@ function AttackDodgeCardJourney({
       journeyRef.current = next;
       setJourney(next);
     };
-    const scheduleReposition = () => {
+    const readGeometrySignature = () => {
+      const table = document.querySelector<HTMLElement>(".play-table");
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      const anchors = [
+        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+        ...(isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
+          ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+          : []),
+      ];
+      return [table?.clientWidth ?? 0, table?.clientHeight ?? 0,
+        ...anchors.flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          const local = coordinates ? publicStageRectToTableLocal(rect, coordinates) : null;
+          const geometry = local ?? rect;
+          return [element.dataset.playerAnchor ?? "", element.className,
+            geometry.left, geometry.top, geometry.right, geometry.bottom];
+        })].map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value).join(":");
+    };
+    committedGeometrySignature = readGeometrySignature();
+    const scheduleReposition = (force = false) => {
+      const requestedSignature = readGeometrySignature();
+      if (!force && requestedSignature === committedGeometrySignature) return;
+      committedGeometrySignature = requestedSignature;
       window.cancelAnimationFrame(reflowFrame);
       const current = journeyRef.current;
       if (current.scopeKey === scopeKey && !current.layoutPending) {
@@ -5037,19 +5242,7 @@ function AttackDodgeCardJourney({
       stableLayoutFrames = 0;
       sampledLayoutFrames = 0;
       const repositionAfterLayoutSettles = () => {
-        const table = document.querySelector<HTMLElement>(".play-table");
-        const anchors = [
-          ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
-          ...(isKirinBowPublicEffectFrame(actionRef.current.publicCardEffectFrame)
-            ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
-            : []),
-        ];
-        const signature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
-          ...(table ? [table] : []), ...anchors].flatMap((elementOrValue) => {
-          if (typeof elementOrValue === "number") return [elementOrValue];
-          const rect = elementOrValue.getBoundingClientRect();
-          return [rect.left, rect.top, rect.width, rect.height];
-        }).map((value) => Math.round(value * 2) / 2).join(":");
+        const signature = readGeometrySignature();
         stableLayoutFrames = signature === previousLayoutSignature ? stableLayoutFrames + 1 : 0;
         previousLayoutSignature = signature;
         sampledLayoutFrames += 1;
@@ -5058,15 +5251,12 @@ function AttackDodgeCardJourney({
           return;
         }
         reflowFrame = 0;
+        committedGeometrySignature = signature;
         reposition();
       };
       reflowFrame = window.requestAnimationFrame(repositionAfterLayoutSettles);
     };
-    window.addEventListener("resize", scheduleReposition);
-    window.addEventListener("scroll", scheduleReposition, true);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", scheduleReposition);
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleReposition);
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleReposition());
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (shell) observer?.observe(shell);
     observePlayerAnchors();
@@ -5096,11 +5286,8 @@ function AttackDodgeCardJourney({
       attributeFilter: ["data-player-anchor", "style", "data-public-card-announcement-positioned",
         "data-public-card-announcement-fixed-upper", "data-public-card-announcement-lines"],
     });
-    scheduleReposition();
+    scheduleReposition(true);
     return () => {
-      window.removeEventListener("resize", scheduleReposition);
-      window.removeEventListener("scroll", scheduleReposition, true);
-      viewport?.removeEventListener("resize", scheduleReposition);
       observer?.disconnect();
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(reflowFrame);
@@ -5272,13 +5459,21 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
   return events.sort((left, right) => (left.globalOrdinal ?? 0) - (right.globalOrdinal ?? 0));
 }
 
-type SingleTargetJourneyMotion = Extract<PublicCardDisplayMotion, { type: "negation" | "single-target" | "group-root" | "lust-cost" }>;
+type SingleTargetJourneyMotion = Extract<PublicCardDisplayMotion, { type: "negation" | "single-target" | "group-root" | "lust-cost" | "zone-transition" }>;
 
 function singleTargetJourneyMotion(motion: PublicCardDisplayMotion | undefined): SingleTargetJourneyMotion | null {
   return motion?.type === "negation" || motion?.type === "single-target"
-    || motion?.type === "group-root" || motion?.type === "lust-cost"
+    || motion?.type === "group-root" || motion?.type === "lust-cost" || motion?.type === "zone-transition"
     ? motion
     : null;
+}
+
+function hasExactZoneTransitionClaim(action: PublicCardDisplayAction, eventId: string, cardId: string): boolean {
+  const claim = action.zoneTransition;
+  return action.motion?.type === "zone-transition" && action.rootEventId === eventId
+    && action.motion.scopeKey === claim?.claimId
+    && action.cardFace?.id === cardId && Boolean(claim?.claimId && claim.eventId === eventId
+      && claim.physicalCardId === cardId && claim.h4EventId === eventId && claim.ownerId && claim.slot);
 }
 
 function singleTargetParkingOptions(
@@ -5368,7 +5563,7 @@ function SingleTargetCardJourney({
   publicSequenceForEvent?: (eventId: string) => number | undefined;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
-  onJourneyEventParked?: (eventId: string) => void;
+  onJourneyEventParked?: (eventId: string, equipmentClaim?: NonNullable<PublicCardDisplayAction["zoneTransition"]>) => void;
   onJourneyRevealCompleted?: (eventId: string, physicalCardId: string) => void;
   onJourneyOwnershipChange?: (
     roomCode: string,
@@ -5403,7 +5598,8 @@ function SingleTargetCardJourney({
     && journey.scopeKey === scopeKey
     && journey.cards.some((card) => card.role === "root" && card.eventId === action.rootEventId
       && card.cardFace.id === action.cardFace?.id && card.actorId === action.sourceId);
-  const journeyEnabled = enabled || historyOnly || retainSingleTargetJourney;
+  const journeyEnabled = (enabled || historyOnly || retainSingleTargetJourney)
+    && (motion?.type !== "zone-transition" || hasExactZoneTransitionClaim(action, action.rootEventId, action.cardFace?.id ?? ""));
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
@@ -5425,7 +5621,7 @@ function SingleTargetCardJourney({
       const oldest = completedRevealNotifiedKeysRef.current.values().next().value;
       if (oldest) completedRevealNotifiedKeysRef.current.delete(oldest);
     }
-    onJourneyRevealCompleted?.(eventId, physicalCardId);
+    if (actionRef.current.motion?.type !== "zone-transition") onJourneyRevealCompleted?.(eventId, physicalCardId);
   }, [onJourneyRevealCompleted, roomCode, viewerId]);
   const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => {
     const currentAction = actionRef.current;
@@ -5501,17 +5697,8 @@ function SingleTargetCardJourney({
     const currentMotion = singleTargetJourneyMotion(currentAction.motion);
     const currentSourceName = sourceNameRef.current;
     if (!journeyEnabled || !currentMotion || !currentSourceName) return;
-    const hasSingleTargetReveal = Boolean((currentMotion.type === "single-target" || currentMotion.type === "negation")
-      && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle"));
-    const singleTargetReveal = hasSingleTargetReveal ? singleTargetBattlefieldRevealCard(REVEAL_CARD) : null;
     const previous = journeyRef.current;
-    const reservations = currentAction.showNegationChainOrdinals === true
-      || currentMotion.type === "negation" || currentMotion.type === "group-root"
-      ? { reserveSeatHistoryDepth: 2 }
-      : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) };
-    const fallbackCenter = hasSingleTargetReveal
-      ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true })
-      : battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+    const stationaryCenter = battlefieldCenterCard(REVEAL_CARD);
     const sharedFrameCenter = currentAction.publicCardEffectFrame
       ? effectFramePrimaryRectFromSharedLayout(sharedPublicStage, {
         roomId: roomCode,
@@ -5533,11 +5720,13 @@ function SingleTargetCardJourney({
       ? sharedFrameRejected ? null : battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
       : currentMotion.type === "lust-cost" && currentAction.lustCostFrame
         ? battlefieldLustCostCard()
-        : singleTargetReveal ?? fallbackCenter);
-    const frameCenterUnavailable = Boolean(currentAction.publicCardEffectFrame) && center === null;
-    const pendingCenter = center ?? previous.center
-      ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
+        : currentMotion.type === "zone-transition"
+          ? battlefieldCenterCard(REVEAL_CARD, { stationarySurface: "card" })
+          : stationaryCenter);
     const sameInteraction = previous.scopeKey === scopeKey;
+    const pendingCenter = center ?? (sameInteraction ? previous.center : null);
+    if (!pendingCenter) return;
+    const frameCenterUnavailable = center === null && journeyEvents.length > 0;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
     const hasNegationChainParking = currentAction.showNegationChainOrdinals === true
       || journeyEvents.some((event) => event.role === "response" && (event.globalOrdinal ?? 0) > 1);
@@ -5571,7 +5760,9 @@ function SingleTargetCardJourney({
         sameAuthorRects: measuredRectsByActor.get(parkingEvent.actorId) ?? [],
         ...placementFailureReporter(event),
       };
-      const measuredTarget = (old && !viewerChanged && !harvestLayoutChanged && !ordinalLayoutChanged && !hasNegationChainParking && !previous.layoutPending && !parkingOptions.protectInteractionControls
+      const measuredTarget = currentAction.zoneTransition
+        ? committedEquipmentSlotTarget(currentAction, event)
+        : (old && !viewerChanged && !harvestLayoutChanged && !ordinalLayoutChanged && !hasNegationChainParking && !previous.layoutPending && !parkingOptions.protectInteractionControls
         ? old.target
         : seatHistoryCardParking(parkingEvent.actorId, actorIndex, occupied, parkingOptions)?.rect
           ?? (!parkingOptions.protectInteractionControls
@@ -5815,49 +6006,81 @@ function SingleTargetCardJourney({
           const current = journeyRef.current;
           const completedCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
           if (current.scopeKey !== scopeKey || current.viewerId !== viewerIdRef.current || current.viewerId !== viewerId
-            || !completedCard || completedCard.phase !== "reveal") return;
+            || !completedCard || completedCard.phase !== "reveal"
+            || completedCard.revealStartedAtMs !== card.revealStartedAtMs) return;
           const latestAction = actionRef.current;
+          const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, current.viewerId,
+            completedCard.eventId, completedCard.cardFace.id);
+          const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+            && latestAction.visibleHoldPolicy.identity.eventId === completedCard.eventId
+            && latestAction.visibleHoldPolicy.identity.cardId === completedCard.cardFace.id);
+          if (visibleHoldClaim && !visibleHoldPolicy) return;
+          const requiresVisibleH4Hold = Boolean(visibleHoldPolicy);
+          const completesAtVisibleHold = visibleHoldPolicy?.completion.kind === "CENTRE_RETIRE";
           const expectedFrame = latestAction.publicCardEffectFrame?.eventId === completedCard.eventId
             ? latestAction.publicCardEffectFrame : undefined;
-          const safePainted = expectedFrame
-            ? hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD, expectedFrame, {
-              roomId: roomCode,
-              rootEventId: latestAction.rootEventId,
-              interactionId: latestAction.interactionId,
-              viewerId: current.viewerId,
-            })
-            : hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD);
+          const paintIdentity = visibleHoldPolicy
+            ? publicVisibleHoldPaintIdentity(visibleHoldPolicy)
+            : expectedFrame ? { roomId, rootEventId: latestAction.rootEventId,
+              interactionId: latestAction.interactionId, viewerId: current.viewerId } : undefined;
+          const currentPaintEnabled = hasPaintedLargePublicCard(completedCard.eventId, REVEAL_CARD,
+            expectedFrame, paintIdentity);
+          const safePainted = currentPaintEnabled && document.visibilityState === "visible" && documentVisibleRef.current;
+          const now = performance.now();
+          const visibleHoldComplete = requiresVisibleH4Hold && publicStageVisibleHoldCanComplete({
+            remainingMs: completedCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+            startedAtMs: completedCard.revealStartedAtMs ?? null,
+            nowMs: now,
+            safePainted,
+          });
           const canRetireReveal = publicStageRevealCanRetire({
             phase: "REVEAL",
-            layoutPending: completedCard.layoutPending === true,
+            layoutPending: completesAtVisibleHold ? false : completedCard.layoutPending === true,
             safePainted,
             viewerId: current.viewerId,
             parkingTargetViewerId: completedCard.parkingTargetViewerId,
             parkingTarget: completedCard.target,
+            requireParkingTarget: !completesAtVisibleHold,
           });
+          if (completesAtVisibleHold && visibleHoldComplete && canRetireReveal) {
+            notifyRevealCompletedOnce(completedCard.eventId, completedCard.cardFace.id);
+            return;
+          }
           setJourney((current) => {
             const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
-            if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
-            const now = performance.now();
+            if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal"
+              || currentCard.revealStartedAtMs !== card.revealStartedAtMs) return current;
             const currentCanRetireReveal = publicStageRevealCanRetire({
               phase: "REVEAL",
-              layoutPending: currentCard.layoutPending === true,
+              layoutPending: completesAtVisibleHold ? false : currentCard.layoutPending === true,
               safePainted,
               viewerId: current.viewerId,
               parkingTargetViewerId: currentCard.parkingTargetViewerId,
               parkingTarget: currentCard.target,
+              requireParkingTarget: !completesAtVisibleHold,
             });
-            if (!currentCanRetireReveal) {
+            if (!currentCanRetireReveal || requiresVisibleH4Hold && !visibleHoldComplete) {
+              const visibleHoldCheckpoint = requiresVisibleH4Hold ? checkpointPublicStageVisibleHold({
+                elapsedMs: currentCard.revealElapsedMs ?? 0,
+                remainingMs: currentCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+                startedAtMs: currentCard.revealStartedAtMs ?? null,
+                nowMs: now,
+              }) : null;
               const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
                 ? {
                   ...candidate,
                   revealStartedAtMs: null,
-                  revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
-                  revealRemainingMs: 0,
-                  awaitingParkingTarget: true,
-                  layoutPending: candidate.layoutPending || !safePainted || candidate.parkingTargetViewerId !== current.viewerId,
-                  layoutChangeReason: !safePainted ? "reveal-complete-awaiting-safe-effect-frame-paint"
-                    : "reveal-complete-awaiting-safe-author-slot",
+                  revealElapsedMs: visibleHoldCheckpoint?.elapsedMs
+                    ?? (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
+                  revealRemainingMs: visibleHoldCheckpoint?.remainingMs ?? 0,
+                  awaitingParkingTarget: !completesAtVisibleHold && safePainted && currentCard.layoutPending,
+                  layoutPending: candidate.layoutPending || !safePainted
+                    || !completesAtVisibleHold && safePainted && candidate.parkingTargetViewerId !== current.viewerId,
+                  layoutChangeReason: !safePainted ? requiresVisibleH4Hold
+                    ? "visible-hold-paused-awaiting-matching-frame-and-h4"
+                    : "reveal-complete-awaiting-safe-effect-frame-paint"
+                    : completesAtVisibleHold ? "visible-hold-paused-awaiting-completion-check"
+                      : "reveal-complete-awaiting-safe-author-slot",
                 }
                 : candidate);
               const next = { ...current, cards };
@@ -5932,23 +6155,126 @@ function SingleTargetCardJourney({
       }
       return [];
     });
+    const initialHoldAction = actionRef.current;
+    const initialHoldPolicy = publicVisibleHoldPolicyFor(initialHoldAction, roomCode, viewerId,
+      initialHoldAction.rootEventId, initialHoldAction.cardFace?.id ?? "");
+    const initialHoldCard = initialHoldPolicy
+      ? journey.cards.find((card) => card.eventId === initialHoldAction.rootEventId
+        && card.cardFace.id === initialHoldAction.cardFace?.id && card.phase === "reveal")
+      : null;
+    const initialHoldStartedAtMs = initialHoldCard?.revealStartedAtMs ?? null;
+    const holdTable = initialHoldCard ? document.querySelector<HTMLElement>(".play-table") : null;
+    const pauseVisibleHoldIfUnpainted = () => {
+      const latestAction = actionRef.current;
+      if (!initialHoldCard) return;
+      const current = journeyRef.current;
+      const card = current.scopeKey === scopeKey ? current.cards.find((candidate) => candidate.eventId === latestAction.rootEventId
+        && candidate.cardFace.id === latestAction.cardFace?.id && candidate.phase === "reveal") : null;
+      if (!card || card.revealStartedAtMs == null || card.revealStartedAtMs !== initialHoldStartedAtMs) return;
+      const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, current.viewerId,
+        card.eventId, card.cardFace.id);
+      const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+        && latestAction.visibleHoldPolicy.identity.eventId === card.eventId
+        && latestAction.visibleHoldPolicy.identity.cardId === card.cardFace.id);
+      if (!visibleHoldClaim) return;
+      const expectedFrame = visibleHoldPolicy?.identity.frame ? latestAction.publicCardEffectFrame : undefined;
+      const painted = Boolean(visibleHoldPolicy && hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame,
+        publicVisibleHoldPaintIdentity(visibleHoldPolicy)));
+      if (painted && document.visibilityState === "visible" && documentVisibleRef.current) return;
+      const now = performance.now();
+      setJourney((latest) => {
+        const currentCard = latest.scopeKey === scopeKey ? latest.cards.find((candidate) => candidate.eventId === card.eventId
+          && candidate.cardFace.id === card.cardFace.id && candidate.phase === "reveal") : null;
+        if (!currentCard || currentCard.revealStartedAtMs == null
+          || currentCard.revealStartedAtMs !== initialHoldStartedAtMs) return latest;
+        const checkpoint = checkpointPublicStageVisibleHold({
+          elapsedMs: currentCard.revealElapsedMs ?? 0,
+          remainingMs: currentCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+          startedAtMs: currentCard.revealStartedAtMs,
+          nowMs: now,
+        });
+        const next = { ...latest, cards: latest.cards.map((candidate) => candidate.eventId === currentCard.eventId
+          ? { ...candidate, revealStartedAtMs: null, revealElapsedMs: checkpoint.elapsedMs,
+            revealRemainingMs: checkpoint.remainingMs, layoutChangeReason: "visible-hold-paused-until-matching-frame-and-h4-return" }
+          : candidate) };
+        journeyRef.current = next;
+        return next;
+      });
+    };
+    const holdMutationObserver = initialHoldCard && holdTable && typeof MutationObserver !== "undefined"
+      ? new MutationObserver(pauseVisibleHoldIfUnpainted) : null;
+    if (initialHoldCard && holdTable && initialHoldCard.revealStartedAtMs != null) {
+      holdMutationObserver?.observe(holdTable, {
+        attributes: true,
+        attributeFilter: ["style", "class", "data-public-stage-layout-status", "data-public-stage-layout-identity",
+          "data-public-card-announcement-delivery", "data-public-card-announcement-positioned", "data-public-card-journey-layout-pending"],
+        childList: true,
+        subtree: true,
+      });
+    }
+    const holdResizeObserver = initialHoldCard && holdTable && typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(pauseVisibleHoldIfUnpainted) : null;
+    if (initialHoldCard && holdTable && initialHoldCard.revealStartedAtMs != null) {
+      holdResizeObserver?.observe(holdTable);
+      for (const element of holdTable.querySelectorAll<HTMLElement>(`[data-public-card-journey-event-id]`)) {
+        if (element.dataset.publicCardJourneyEventId === initialHoldCard.eventId) holdResizeObserver?.observe(element);
+      }
+      for (const element of holdTable.querySelectorAll<HTMLElement>(`[data-public-card-announcement='true']`)) {
+        if (element.dataset.publicCardAnnouncementEventId === initialHoldCard.eventId) holdResizeObserver?.observe(element);
+      }
+    }
+    if (initialHoldCard?.revealStartedAtMs != null) {
+      document.addEventListener("visibilitychange", pauseVisibleHoldIfUnpainted);
+      window.addEventListener("resize", pauseVisibleHoldIfUnpainted);
+    }
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
-      const shouldPause = !enabledRef.current || !documentVisibleRef.current || document.visibilityState !== "visible";
-      if (!shouldPause) return;
+      holdMutationObserver?.disconnect();
+      holdResizeObserver?.disconnect();
+      if (initialHoldCard?.revealStartedAtMs != null) {
+        document.removeEventListener("visibilitychange", pauseVisibleHoldIfUnpainted);
+        window.removeEventListener("resize", pauseVisibleHoldIfUnpainted);
+      }
+      const latestAction = actionRef.current;
       const current = journeyRef.current;
+      const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, current.viewerId,
+        latestAction.rootEventId, latestAction.cardFace?.id ?? "");
+      const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+        && latestAction.visibleHoldPolicy.identity.eventId === latestAction.rootEventId
+        && latestAction.visibleHoldPolicy.identity.cardId === latestAction.cardFace?.id);
+      const visibleHoldCard = visibleHoldClaim
+        ? current.cards.find((card) => card.eventId === latestAction.rootEventId
+          && card.cardFace.id === latestAction.cardFace?.id && card.phase === "reveal")
+        : null;
+      const visibleHoldFrame = visibleHoldPolicy?.identity.frame ? latestAction.publicCardEffectFrame : undefined;
+      const visibleHoldPainted = Boolean(visibleHoldCard && visibleHoldPolicy
+        && hasPaintedLargePublicCard(visibleHoldCard.eventId, REVEAL_CARD, visibleHoldFrame,
+          publicVisibleHoldPaintIdentity(visibleHoldPolicy)));
+      const shouldPause = !enabledRef.current || !documentVisibleRef.current || document.visibilityState !== "visible"
+        || Boolean(visibleHoldCard && !visibleHoldPainted);
+      if (!shouldPause) return;
       if (current.scopeKey !== scopeKey) return;
       const now = performance.now();
       let changed = false;
       const cards = current.cards.map((card) => {
         if (card.phase === "reveal" && card.revealStartedAtMs != null) {
           changed = true;
+          const isVisibleHold = Boolean(latestAction.visibleHoldPolicy
+            && latestAction.visibleHoldPolicy.identity.eventId === card.eventId
+            && latestAction.visibleHoldPolicy.identity.cardId === card.cardFace.id);
+          const checkpoint = isVisibleHold ? checkpointPublicStageVisibleHold({
+            elapsedMs: card.revealElapsedMs ?? 0,
+            remainingMs: card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+            startedAtMs: card.revealStartedAtMs,
+            nowMs: now,
+          }) : null;
           const elapsed = Math.max(0, now - card.revealStartedAtMs);
           return {
             ...card,
             revealStartedAtMs: null,
-            revealElapsedMs: (card.revealElapsedMs ?? 0) + elapsed,
-            revealRemainingMs: Math.max(0, (card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS) - elapsed),
+            revealElapsedMs: checkpoint?.elapsedMs ?? (card.revealElapsedMs ?? 0) + elapsed,
+            revealRemainingMs: checkpoint?.remainingMs ?? Math.max(0, (card.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS) - elapsed),
+            layoutChangeReason: isVisibleHold ? "visible-hold-paused-until-matching-frame-and-h4-return" : card.layoutChangeReason,
           };
         }
         if (card.phase === "move") {
@@ -5971,7 +6297,8 @@ function SingleTargetCardJourney({
       if (mountedRef.current) setJourney(next);
     };
   }, [journeyEnabled, documentVisible, journey.cards, journey.scopeKey, scopeKey, activeCard?.eventId, activePhase,
-    roomCode, viewerId, action.publicCardEffectFrame?.eventId, action.rootEventId, action.interactionId,
+    roomCode, viewerId, action.publicCardEffectFrame?.eventId, action.zoneTransition?.claimId, action.rootEventId,
+    action.interactionId, action.visibleHoldPolicy,
     sharedPublicStage?.layout.identity, sharedPublicStage?.revealReady, notifyRevealCompletedOnce]);
 
   useEffect(() => {
@@ -5983,16 +6310,19 @@ function SingleTargetCardJourney({
       const latestAction = actionRef.current;
       const expectedFrame = latestAction.publicCardEffectFrame?.eventId === activeCard.eventId
         ? latestAction.publicCardEffectFrame : undefined;
+      const visibleHoldPolicy = publicVisibleHoldPolicyFor(latestAction, roomCode, viewerIdRef.current,
+        activeCard.eventId, activeCard.cardFace.id);
+      const visibleHoldClaim = Boolean(latestAction.visibleHoldPolicy
+        && latestAction.visibleHoldPolicy.identity.eventId === activeCard.eventId
+        && latestAction.visibleHoldPolicy.identity.cardId === activeCard.cardFace.id);
+      if (visibleHoldClaim && !visibleHoldPolicy) return false;
+      const paintIdentity = visibleHoldPolicy
+        ? publicVisibleHoldPaintIdentity(visibleHoldPolicy)
+        : expectedFrame ? { roomId, rootEventId: latestAction.rootEventId,
+          interactionId: latestAction.interactionId, viewerId: viewerIdRef.current } : undefined;
       let failureReason = "card-face-not-paint-enabled";
-      const safePainted = expectedFrame
-        ? hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, expectedFrame, {
-          roomId: roomCode,
-          rootEventId: latestAction.rootEventId,
-          interactionId: latestAction.interactionId,
-          viewerId: viewerIdRef.current,
-        }, (reason) => { failureReason = reason; })
-        : hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, undefined, undefined,
-          (reason) => { failureReason = reason; });
+      const safePainted = hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD, expectedFrame,
+        paintIdentity, (reason) => { failureReason = reason; });
       if (!documentVisibleRef.current || document.visibilityState !== "visible") return false;
       if (!safePainted) {
         const shared = table ? committedPublicStageLayout(table) : null;
@@ -6073,6 +6403,7 @@ function SingleTargetCardJourney({
       || hasLocalKirinMaterialParking;
     const parkingSelectors = () => {
       const action = actionRef.current;
+      if (action.zoneTransition) return ["[data-player-equipment-slot-owner][data-slot]"];
       const isSingleTarget = action.cardKind === "Steal" || action.cardKind === "Dismantle";
       const selectors = seatHistoryParkingProtectedSelectors({
         protectInteractionControls: isSingleTarget,
@@ -6084,25 +6415,29 @@ function SingleTargetCardJourney({
       document.querySelector<HTMLElement>(".play-table"),
       document.querySelector<HTMLElement>(".player-board"),
       ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+      ...(actionRef.current.zoneTransition
+        ? [...document.querySelectorAll<HTMLElement>("[data-player-equipment-slot-owner][data-slot]")]
+        : []),
       ...(isBumperHarvest || watchesKirinAnnouncement
         ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
       ...parkingSelectors().flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]),
     ].filter((element): element is HTMLElement => Boolean(element)))];
-    const readLayoutSignature = () => [
-      window.innerWidth,
-      window.innerHeight,
-      window.visualViewport?.width ?? 0,
-      window.visualViewport?.height ?? 0,
-      window.visualViewport?.offsetLeft ?? 0,
-      window.visualViewport?.offsetTop ?? 0,
-      window.visualViewport?.scale ?? 1,
-      ...layoutElements().flatMap((element) => {
-        const rect = element.getBoundingClientRect();
-        return [element.dataset.playerAnchor ?? "", element.className, element.dataset.sideColumn ?? "",
-          rect.left, rect.top, rect.width, rect.height]
-          .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
-      }),
-    ].join(":");
+    const readLayoutSignature = () => {
+      const table = document.querySelector<HTMLElement>(".play-table");
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      return [
+        table?.clientWidth ?? 0,
+        table?.clientHeight ?? 0,
+        ...layoutElements().flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          const local = coordinates ? publicStageRectToTableLocal(rect, coordinates) : null;
+          const geometry = local ?? rect;
+          return [element.dataset.playerAnchor ?? "", element.dataset.playerEquipmentSlotOwner ?? "", element.dataset.slot ?? "", element.className, element.dataset.sideColumn ?? "",
+            geometry.left, geometry.top, geometry.right - geometry.left, geometry.bottom - geometry.top]
+            .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
+        }),
+      ].join(":");
+    };
     committedLayoutSignature = readLayoutSignature();
     const observeLayout = () => { for (const element of layoutElements()) layoutObserver?.observe(element); };
     const reflow = (force = false) => {
@@ -6132,16 +6467,7 @@ function SingleTargetCardJourney({
         if (current.scopeKey !== scopeKey) return;
         const currentAction = actionRef.current;
         const currentMotion = singleTargetJourneyMotion(currentAction.motion);
-        const hasSingleTargetReveal = Boolean((currentMotion?.type === "single-target" || currentMotion?.type === "negation")
-          && (currentAction.cardKind === "Steal" || currentAction.cardKind === "Dismantle"));
-        const singleTargetReveal = hasSingleTargetReveal ? singleTargetBattlefieldRevealCard(REVEAL_CARD) : null;
-        const reservations = currentAction.showNegationChainOrdinals === true
-          || currentMotion?.type === "negation" || currentMotion?.type === "group-root"
-          ? { reserveSeatHistoryDepth: 2 }
-          : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) };
-        const fallbackCenter = hasSingleTargetReveal
-          ? battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true })
-          : battlefieldCenterCard(REVEAL_CARD, { ...reservations, requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+        const stationaryCenter = battlefieldCenterCard(REVEAL_CARD);
         const sharedFrameCenter = currentAction.publicCardEffectFrame
           ? effectFramePrimaryRectFromSharedLayout(sharedPublicStage, {
             roomId: roomCode,
@@ -6161,12 +6487,14 @@ function SingleTargetCardJourney({
           }));
         const center = sharedFrameCenter ?? (currentAction.publicCardEffectFrame
           ? sharedFrameRejected ? null : battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
-          : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
+        : currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
             ? battlefieldLustCostCard()
-            : singleTargetReveal ?? fallbackCenter);
+          : currentMotion?.type === "zone-transition"
+            ? battlefieldCenterCard(REVEAL_CARD, { stationarySurface: "card" })
+            : stationaryCenter);
         const framePlacementUnavailable = center === null && current.cards.some((card) => card.phase === "reveal");
-        const pendingCenter = current.center
-          ?? boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
+        const pendingCenter = center ?? current.center;
+        if (!pendingCenter) return;
         const occupied: CardRect[] = [];
         const measuredRectsByActor = new Map<string, CardRect[]>();
         const actorIndexes = new Map<string, number>();
@@ -6184,12 +6512,9 @@ function SingleTargetCardJourney({
             sameAuthorRects: measuredRectsByActor.get(card.actorId) ?? [],
             ...placementFailureReporter(card),
           };
-          const measuredTarget = seatHistoryCardParking(
-            card.actorId,
-            actorIndex,
-            occupied,
-            parkingOptions,
-          )?.rect;
+          const measuredTarget = currentAction.zoneTransition
+            ? committedEquipmentSlotTarget(currentAction, card)
+            : seatHistoryCardParking(card.actorId, actorIndex, occupied, parkingOptions)?.rect;
           const parkedSize = parkingOptions.cardSize ?? parkedCardSize();
           const renderedRect = card.phase === "move" ? renderedJourneyCardRect(card.eventId) : null;
           const target = measuredTarget
@@ -6207,15 +6532,21 @@ function SingleTargetCardJourney({
             : card.moveRemainingMs;
           const expectedFrame = currentAction.publicCardEffectFrame?.eventId === card.eventId
             ? currentAction.publicCardEffectFrame : undefined;
-          const safeFramePainted = card.phase === "reveal" && expectedFrame
-            ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame, {
-              roomId: roomCode,
-              rootEventId: currentAction.rootEventId,
-              interactionId: currentAction.interactionId,
-              viewerId: viewerIdRef.current,
-            })
+          const visibleHoldPolicy = card.phase === "reveal"
+            ? publicVisibleHoldPolicyFor(currentAction, roomCode, viewerIdRef.current, card.eventId, card.cardFace.id)
+            : null;
+          const visibleHoldClaim = card.phase === "reveal" && Boolean(currentAction.visibleHoldPolicy
+            && currentAction.visibleHoldPolicy.identity.eventId === card.eventId
+            && currentAction.visibleHoldPolicy.identity.cardId === card.cardFace.id);
+          const paintIdentity = visibleHoldPolicy
+            ? publicVisibleHoldPaintIdentity(visibleHoldPolicy)
+            : expectedFrame ? { roomId, rootEventId: currentAction.rootEventId,
+              interactionId: currentAction.interactionId, viewerId: viewerIdRef.current } : undefined;
+          const safeRevealPainted = card.phase === "reveal" && visibleHoldClaim && !visibleHoldPolicy
+            ? false : card.phase === "reveal"
+            ? hasPaintedLargePublicCard(card.eventId, REVEAL_CARD, expectedFrame, paintIdentity)
             : true;
-          if (card.phase === "reveal") revealPaintResults.set(card.eventId, safeFramePainted);
+          if (card.phase === "reveal") revealPaintResults.set(card.eventId, safeRevealPainted);
           const phaseReady = publicStageJourneyPhaseReady({
             phase: card.phase === "move" ? "MOVE" : card.phase === "parked" ? "PARKED" : "REVEAL",
             viewerId: viewerIdRef.current,
@@ -6227,10 +6558,10 @@ function SingleTargetCardJourney({
               bottom: measuredTarget.top + measuredTarget.height,
             } : null,
             revealCenterAvailable: card.phase !== "reveal" || center !== null && !framePlacementUnavailable,
-            revealPainted: safeFramePainted,
+            revealPainted: safeRevealPainted,
           });
           const waitingRevealWithTarget = card.phase === "reveal" && card.awaitingParkingTarget
-            && Boolean(measuredTarget) && center !== null && !framePlacementUnavailable && safeFramePainted;
+            && Boolean(measuredTarget) && center !== null && !framePlacementUnavailable && safeRevealPainted;
           const reducedMotion = waitingRevealWithTarget && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           return {
             ...card,
@@ -6316,7 +6647,7 @@ function SingleTargetCardJourney({
     observeLayout();
     const shell = document.querySelector<HTMLElement>(".game-shell");
     mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
-      const relevantSelectors = ["[data-player-anchor]", ...parkingSelectors(),
+      const relevantSelectors = ["[data-player-anchor]", "[data-equipment-id]", ...parkingSelectors(),
         ...(watchesKirinAnnouncement ? ["[data-public-card-announcement='true']"] : [])];
       const containsRelevantLayout = (node: Node) => node instanceof Element
         && (relevantSelectors.some((selector) => node.matches(selector) || Boolean(node.querySelector(selector))));
@@ -6348,12 +6679,7 @@ function SingleTargetCardJourney({
         announcementObserver.observe(announcement, { attributes: true, attributeFilter: ["style"] });
       }
     }
-    const onViewportResize = () => reflow();
-    window.addEventListener("resize", onViewportResize);
-    window.visualViewport?.addEventListener("resize", onViewportResize);
     return () => {
-      window.removeEventListener("resize", onViewportResize);
-      window.visualViewport?.removeEventListener("resize", onViewportResize);
       layoutObserver?.disconnect();
       mutationObserver?.disconnect();
       announcementObserver?.disconnect();
@@ -6432,7 +6758,8 @@ function SingleTargetCardJourney({
     for (const card of journey.cards) {
       if (card.phase !== "parked" || card.layoutPending || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
       parkedNotifiedEventIdsRef.current.add(card.eventId);
-      onJourneyEventParked?.(card.eventId);
+      onJourneyEventParked?.(card.eventId,
+        action.zoneTransition?.eventId === card.eventId ? action.zoneTransition : undefined);
     }
   }, [journeyEnabled, journey.cards, journey.layoutPending, journey.scopeKey, onJourneyEventParked, scopeKey]);
   useEffect(() => {
@@ -6537,7 +6864,7 @@ function SingleTargetCardJourney({
     || action.publicCardEffectFrame?.effectId === "lady_gan_divine_wisdom"
     || action.publicCardEffectFrame?.effectId === "sun_quan_zhiheng"
     || action.publicCardEffectFrame?.effectId === "sun_shangxiang_betrothment"
-    || action.publicCardEffectFrame?.effectId === "sima_yi_guicai"
+    || Boolean(publicVisibleHoldPolicyFor(action, roomCode, viewerId, action.rootEventId, action.cardFace?.id ?? ""))
     || action.publicCardEffectFrame?.effectId === "serpent_spear_attack") && motion?.type !== "lust-cost";
   const currentNotice = groupRootStageOwnsCopy
     ? action.ariaLabel
@@ -6607,6 +6934,7 @@ function SingleTargetCardJourney({
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
     data-public-card-action-key={action.key}
+    data-public-card-room-id={roomCode}
     data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-kind={action.cardKind}
@@ -6677,6 +7005,9 @@ function SingleTargetCardJourney({
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
         publicCardEffectFrame={card.role === "root" && card.eventId === action.publicCardEffectFrame?.eventId
           ? action.publicCardEffectFrame : undefined}
+        visibleHoldPolicy={card.phase === "reveal"
+          ? publicVisibleHoldPolicyFor(action, roomCode, viewerId, card.eventId, card.cardFace.id) ?? undefined
+          : undefined}
         parkedEffectLabel={card.actorId === viewerId ? card.parkedPublicEffect?.title : undefined}
       />;
     })}
@@ -6693,6 +7024,9 @@ function SingleTargetCardJourney({
       h4PublicSequence={negationNarration?.publicSequence ?? action.publicInteractionNarration?.publicSequence}
       publicSequenceForEvent={publicSequenceForEvent}
       eventId={dismantleFaceCopy?.settlementEventId ?? negationNarration?.eventId ?? action.publicInteractionNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
+      pendingVisibleHoldPolicy={activeCard?.phase === "reveal" && displayedAnnouncementEventId === activeCard.eventId
+        ? publicVisibleHoldPolicyFor(action, roomCode, viewerId, activeCard.eventId, activeCard.cardFace.id)
+        : undefined}
       eventCopyKey={publicCardAnnouncementCopyKey(
         action,
         displayedAnnouncementEventId,
@@ -6952,13 +7286,11 @@ function DuelCardJourney({
         if (element === display) break;
       }
       const rect = copy.getBoundingClientRect();
-      const viewport = window.visualViewport;
-      const left = viewport?.offsetLeft ?? 0;
-      const top = viewport?.offsetTop ?? 0;
-      const right = left + (viewport?.width ?? window.innerWidth);
-      const bottom = top + (viewport?.height ?? window.innerHeight);
-      return rect.width > 0 && rect.height > 0 && rect.right > left && rect.left < right
-        && rect.bottom > top && rect.top < bottom;
+      const table = display.closest<HTMLElement>(".play-table");
+      const tableRect = table?.getBoundingClientRect();
+      return Boolean(tableRect && rect.width > 0 && rect.height > 0
+        && rect.right > tableRect.left && rect.left < tableRect.right
+        && rect.bottom > tableRect.top && rect.top < tableRect.bottom);
     };
     const recordFirstPaint = () => {
       if (paintedLustSettlementRef.current?.eventId === settlement.eventId || !copyIsPaintedVisible()) return;
@@ -6988,15 +7320,10 @@ function DuelCardJourney({
     schedulePaintCheck();
     document.addEventListener("visibilitychange", schedulePaintCheck);
     window.addEventListener("resize", schedulePaintCheck);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", schedulePaintCheck);
-    viewport?.addEventListener("scroll", schedulePaintCheck);
     return () => {
       observer.disconnect();
       document.removeEventListener("visibilitychange", schedulePaintCheck);
       window.removeEventListener("resize", schedulePaintCheck);
-      viewport?.removeEventListener("resize", schedulePaintCheck);
-      viewport?.removeEventListener("scroll", schedulePaintCheck);
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
     };
@@ -7034,11 +7361,11 @@ function DuelCardJourney({
       ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
       : currentMotion.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
         ? battlefieldLustCostCard()
-        : currentMotion.type === "duel"
-          ? battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true })
-          : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+        : battlefieldCenterCard(DUEL_REVEAL_CARD);
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
+    const stationaryCenter = center ?? (sameInteraction ? previous.center : null);
+    if (!stationaryCenter) return;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
     const preserveTargets = sameInteraction && !viewerChanged;
     const priorById = new Map(previous.cards.map((card) => [card.eventId, card]));
@@ -7048,7 +7375,7 @@ function DuelCardJourney({
     const cards = events.flatMap((event) => {
       const old = priorById.get(event.eventId);
       const target = targets.get(event.eventId) ?? {
-        rect: old?.target ?? center,
+        rect: old?.target ?? stationaryCenter,
         side: old?.parkingSide ?? "top" as const,
       };
       if (old && preserveTargets) {
@@ -7092,7 +7419,7 @@ function DuelCardJourney({
         return [{
           ...event,
           phase,
-          rect: phase === "parked" ? target.rect : phase === "reveal" ? center : old.rect,
+          rect: phase === "parked" ? target.rect : phase === "reveal" ? stationaryCenter : old.rect,
           target: target.rect,
           parkingSide: target.side,
           revealStartedAtMs: old.revealStartedAtMs,
@@ -7109,7 +7436,7 @@ function DuelCardJourney({
       return [{
         ...event,
         phase,
-        rect: phase === "reveal" ? center : target.rect,
+        rect: phase === "reveal" ? stationaryCenter : target.rect,
         target: target.rect,
         parkingSide: target.side,
         revealStartedAtMs: null,
@@ -7121,14 +7448,14 @@ function DuelCardJourney({
         layoutChangeReason: phase === "reveal" ? "public-event-committed" : viewerChanged ? "viewer-switch" : "public-event-restored",
       }];
     }).sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
-    const cardsWithReveal = viewerChanged ? cards : withFirstQueuedDuelReveal(cards, center, "public-event-committed");
+    const cardsWithReveal = viewerChanged ? cards : withFirstQueuedDuelReveal(cards, stationaryCenter, "public-event-committed");
     const layoutPending = cardsWithReveal.some((card) => card.layoutPending);
     const next: DuelJourneyState = {
       scopeKey,
       viewerId,
       viewerSeat,
       cards: cardsWithReveal,
-      center,
+      center: stationaryCenter,
       suppressTransitions: viewerChanged || previous.suppressTransitions || previous.layoutPending || layoutPending,
       layoutPending,
     };
@@ -7347,6 +7674,7 @@ function DuelCardJourney({
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
     const observedElements = new WeakSet<Element>();
+    let committedLayoutSignature = "";
     const readLayoutSignature = () => {
       const elements = [
         document.querySelector<HTMLElement>(".play-table"),
@@ -7354,13 +7682,19 @@ function DuelCardJourney({
         document.querySelector<HTMLElement>(".local-player-dock"),
         ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
       ].filter((element): element is HTMLElement => Boolean(element));
-      return [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0,
-        window.visualViewport?.height ?? 0, window.visualViewport?.scale ?? 1,
+      const table = elements.find((element) => element.matches(".play-table")) ?? null;
+      const coordinates = table ? publicStageCoordinateSpaceForTable(table) : null;
+      return [table?.clientWidth ?? 0, table?.clientHeight ?? 0,
         ...elements.flatMap((element) => {
           const rect = element.getBoundingClientRect();
-          return [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2);
+          const local = coordinates ? publicStageRectToTableLocal(rect, coordinates) : null;
+          const geometry = local ?? rect;
+          return [element.dataset.playerAnchor ?? "", element.className,
+            geometry.left, geometry.top, geometry.right, geometry.bottom]
+            .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value);
         })].join(":");
     };
+    committedLayoutSignature = readLayoutSignature();
     const observeLayout = () => {
       const elements = [
         document.querySelector<HTMLElement>(".play-table"),
@@ -7388,6 +7722,9 @@ function DuelCardJourney({
       return next;
     });
     const repositionAfterLayoutSettles = () => {
+      const requestedSignature = readLayoutSignature();
+      if (requestedSignature === committedLayoutSignature) return;
+      committedLayoutSignature = requestedSignature;
       const currentLayoutRun = ++layoutRun;
       window.cancelAnimationFrame(resizeFrame);
       sampledFrames = 0;
@@ -7405,6 +7742,7 @@ function DuelCardJourney({
           return;
         }
         resizeFrame = 0;
+        committedLayoutSignature = signature;
         const currentAction = actionRef.current;
         const currentMotion = currentAction.motion;
         const events = duelJourneyEvents(currentAction, sourceNameRef.current);
@@ -7419,9 +7757,7 @@ function DuelCardJourney({
           ? battlefieldPublicEffectFrameCard(currentAction.publicCardEffectFrame)
           : currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
             ? battlefieldLustCostCard()
-            : currentMotion?.type === "duel"
-              ? battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true })
-              : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)), requireProtectedClearance: true, respectFixedUpperH4: true, fixedPublicBands: true });
+            : battlefieldCenterCard(DUEL_REVEAL_CARD);
         const targets = duelParkingTargets(events);
         setJourney((current) => {
           if (current.scopeKey !== scopeKey || currentLayoutRun !== layoutRun) return current;
@@ -7462,14 +7798,7 @@ function DuelCardJourney({
       repositionAfterLayoutSettles();
     });
     if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
-    window.addEventListener("resize", repositionAfterLayoutSettles);
-    window.addEventListener("scroll", repositionAfterLayoutSettles, true);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", repositionAfterLayoutSettles);
     return () => {
-      window.removeEventListener("resize", repositionAfterLayoutSettles);
-      window.removeEventListener("scroll", repositionAfterLayoutSettles, true);
-      viewport?.removeEventListener("resize", repositionAfterLayoutSettles);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(resizeFrame);
@@ -7769,7 +8098,7 @@ export function PublicCardDisplay({
   resultReadRemainingMs?: number | null;
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
-  onJourneyEventParked?: (eventId: string) => void;
+  onJourneyEventParked?: (eventId: string, equipmentClaim?: NonNullable<PublicCardDisplayAction["zoneTransition"]>) => void;
   onJourneyRevealCompleted?: (eventId: string, physicalCardId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyOwnershipChange?: (
@@ -7786,7 +8115,8 @@ export function PublicCardDisplay({
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} publicSequenceForEvent={publicSequenceForEvent} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
-    || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
+    || action.motion?.type === "group-root" || action.motion?.type === "lust-cost"
+    || action.motion?.type === "zone-transition") {
     return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement || action.suppressAnnouncement === true} retainHarvestHistory={retainHarvestHistory} protectFirstParkedMiniature={protectFirstParkedMiniature} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} publicSequenceForEvent={publicSequenceForEvent} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyRevealCompleted={onJourneyRevealCompleted} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {

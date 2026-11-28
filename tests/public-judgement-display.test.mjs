@@ -9,6 +9,7 @@ import {
   publicJudgementPresentationAtCursor,
   publicJudgementReplacementFrameMatches,
   publicJudgementReplacementFrameOwnsCursor,
+  selectJudgementAwarePublicCardAction,
 } from "../game/public-judgement-presentation.ts";
 
 const original = {
@@ -121,8 +122,10 @@ test("replacement narration follows the newest public stage and only its exact E
   const narration = publicJudgementNarrationForPresentation(replacement);
   const laterStage = { ...narration, eventId: "later-public-stage", publicSequence: 12 };
   assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration), laterStage);
-  assert.equal(publicInteractionNarrationWithJudgement(laterStage, narration, true), narration,
-    "a same-resolution terminal Judgement fact cannot replace the canonical original/replacement H4");
+  assert.equal(publicInteractionNarrationWithJudgement({ ...laterStage, publicSequence: 11 }, narration), narration,
+    "the canonical Judgement copy owns its exact event-order tie");
+  assert.equal(publicInteractionNarrationWithJudgement(laterStage, null), laterStage,
+    "a distinct later committed consequence remains independently narratable");
   assert.equal(publicInteractionNarrationWithJudgement(narration, null), narration);
 
   const action = {
@@ -162,4 +165,15 @@ test("replacement narration follows the newest public stage and only its exact E
     action, judgementNarrationBelongsToAction: true,
     interactionNarrationBelongsToAction: true, narration, effectFrameOwnsInteractionRoot: true,
   }), { publicInteractionNarration: narration, suppressAnnouncement: false });
+});
+
+test("the due replacement owns the shared display before retained passive card reads", () => {
+  const due = { rootEventId: "replacement-event" };
+  const passiveNegation = { rootEventId: "held-negation" };
+  const passiveAttackDodge = { rootEventId: "held-attack-dodge" };
+  const latest = { rootEventId: "latest-action" };
+  assert.equal(selectJudgementAwarePublicCardAction({ dueReplacement: due, retainedNegation: passiveNegation,
+    retainedAttackDodge: passiveAttackDodge, latestCommitted: latest }), due);
+  assert.equal(selectJudgementAwarePublicCardAction({ dueReplacement: null, retainedNegation: passiveNegation,
+    retainedAttackDodge: passiveAttackDodge, latestCommitted: latest }), passiveNegation);
 });

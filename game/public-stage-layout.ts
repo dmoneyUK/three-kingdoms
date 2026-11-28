@@ -1,5 +1,258 @@
 export type PublicStageRect = { left: number; top: number; right: number; bottom: number };
 export type PublicStageSize = { width: number; height: number };
+export type PublicStageTableCoordinateSpace = {
+  originLeft: number;
+  originTop: number;
+  borderLeft: number;
+  borderTop: number;
+  scaleX: number;
+  scaleY: number;
+};
+
+export type PublicStageRevealIdentity = {
+  roomId: string;
+  rootEventId: string;
+  interactionId: string;
+  eventId: string;
+  cardId: string;
+  viewerId: string;
+};
+
+export type PublicStageVisibleHoldFrameIdentity = {
+  eventId: string;
+  activationEventId: string | null;
+  rootEventId: string | null;
+  rootResolutionId: string | null;
+  effectId: string;
+  effectClass: "COST" | "CONVERSION" | "EFFECT" | "JUDGEMENT";
+  activationOwnerId: string;
+  materialCardIds: readonly string[];
+  materialOwnerIds: readonly (string | null)[];
+};
+
+export type PublicStageVisibleHoldCompletion =
+  | { kind: "CENTRE_RETIRE" }
+  | {
+    kind: "EQUIPMENT_ARRIVAL";
+    claimId: string;
+    eventId: string;
+    physicalCardId: string;
+    ownerId: string;
+    destination: "EQUIPMENT";
+    slot: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
+  };
+
+const publicStageVisibleHoldPolicyBrand: unique symbol = Symbol("public-stage-visible-hold-policy");
+
+/** One exact, server-proven public CardFace/H4 hold with an explicit real endpoint. */
+export type PublicStageVisibleHoldPolicy = {
+  readonly [publicStageVisibleHoldPolicyBrand]: true;
+  readonly semantics: "PROVEN";
+  readonly identity: PublicStageRevealIdentity & {
+    rootFrameId: string;
+    h4EventId: string;
+    phase: "REVEAL";
+    materialCardIds: readonly string[];
+    frame: PublicStageVisibleHoldFrameIdentity | null;
+  };
+  readonly completion: PublicStageVisibleHoldCompletion;
+};
+
+export type PublicStageVisibleHoldPolicyInput = Omit<PublicStageVisibleHoldPolicy,
+  typeof publicStageVisibleHoldPolicyBrand>;
+
+function validPublicStageVisibleHoldPolicy(value: PublicStageVisibleHoldPolicyInput): boolean {
+  if (!value || typeof value !== "object" || !value.completion || typeof value.completion !== "object"
+    || !value.identity || typeof value.identity !== "object") return false;
+  const identity = value.identity;
+  const requiredIdentity = [identity.roomId, identity.rootEventId, identity.interactionId, identity.eventId,
+    identity.cardId, identity.viewerId, identity.rootFrameId, identity.h4EventId];
+  if (value.semantics !== "PROVEN" || identity.phase !== "REVEAL"
+    || requiredIdentity.some((part) => typeof part !== "string" || !part.trim())
+    || !Array.isArray(identity.materialCardIds) || !identity.materialCardIds.length
+    || identity.materialCardIds.some((id) => typeof id !== "string" || !id.trim())
+    || new Set(identity.materialCardIds).size !== identity.materialCardIds.length
+    || !identity.materialCardIds.includes(identity.cardId)) return false;
+  const frame = identity.frame;
+  if (frame && (typeof frame !== "object" || typeof frame.eventId !== "string" || frame.eventId !== identity.eventId
+    || typeof frame.effectId !== "string" || !frame.effectId.trim()
+    || typeof frame.activationOwnerId !== "string" || !frame.activationOwnerId.trim()
+    || !["COST", "CONVERSION", "EFFECT", "JUDGEMENT"].includes(frame.effectClass)
+    || !Array.isArray(frame.materialCardIds) || !Array.isArray(frame.materialOwnerIds)
+    || frame.materialCardIds.length !== identity.materialCardIds.length
+    || frame.materialOwnerIds.length !== identity.materialCardIds.length
+    || frame.materialCardIds.some((id, index) => id !== identity.materialCardIds[index]
+      || typeof frame.materialOwnerIds[index] !== "string" && frame.materialOwnerIds[index] !== null)
+    || frame.activationEventId !== null && (typeof frame.activationEventId !== "string" || !frame.activationEventId.trim())
+    || frame.rootEventId !== null && (typeof frame.rootEventId !== "string" || !frame.rootEventId.trim())
+    || frame.rootResolutionId !== null && (typeof frame.rootResolutionId !== "string" || !frame.rootResolutionId.trim()))) return false;
+  if (value.completion.kind === "CENTRE_RETIRE") return true;
+  const completion = value.completion;
+  return completion.kind === "EQUIPMENT_ARRIVAL"
+    && typeof completion.claimId === "string" && Boolean(completion.claimId.trim())
+    && typeof completion.ownerId === "string" && Boolean(completion.ownerId.trim())
+    && completion.destination === "EQUIPMENT"
+    && ["weapon", "armor", "offensiveHorse", "defensiveHorse"].includes(completion.slot)
+    && completion.eventId === identity.eventId
+    && completion.physicalCardId === identity.cardId;
+}
+
+/** Create a branded policy only when all reveal, H4, frame and endpoint identities agree. */
+export function createPublicStageVisibleHoldPolicy(
+  input: PublicStageVisibleHoldPolicyInput,
+): PublicStageVisibleHoldPolicy | null {
+  if (!input || !validPublicStageVisibleHoldPolicy(input)) return null;
+  return { ...input, [publicStageVisibleHoldPolicyBrand]: true };
+}
+
+/** Compare two complete policies; array order and endpoint identity are significant. */
+export function publicStageVisibleHoldPolicyMatches(
+  expected: PublicStageVisibleHoldPolicy | null | undefined,
+  actual: PublicStageVisibleHoldPolicy | null | undefined,
+): boolean {
+  if (!expected || !actual || !validPublicStageVisibleHoldPolicy(expected) || !validPublicStageVisibleHoldPolicy(actual)) return false;
+  const a = expected.identity;
+  const b = actual.identity;
+  const frameMatches = a.frame === null || b.frame === null
+    ? a.frame === b.frame
+    : a.frame.eventId === b.frame.eventId
+      && a.frame.activationEventId === b.frame.activationEventId
+      && a.frame.rootEventId === b.frame.rootEventId
+      && a.frame.rootResolutionId === b.frame.rootResolutionId
+      && a.frame.effectId === b.frame.effectId
+      && a.frame.effectClass === b.frame.effectClass
+      && a.frame.activationOwnerId === b.frame.activationOwnerId
+      && a.frame.materialCardIds.length === b.frame.materialCardIds.length
+      && a.frame.materialCardIds.every((id, index) => id === b.frame?.materialCardIds[index])
+      && a.frame.materialOwnerIds.length === b.frame.materialOwnerIds.length
+      && a.frame.materialOwnerIds.every((id, index) => id === b.frame?.materialOwnerIds[index]);
+  const completionMatches = expected.completion.kind === "CENTRE_RETIRE" || actual.completion.kind === "CENTRE_RETIRE"
+    ? expected.completion.kind === actual.completion.kind
+    : expected.completion.kind === actual.completion.kind
+      && expected.completion.claimId === actual.completion.claimId
+      && expected.completion.eventId === actual.completion.eventId
+      && expected.completion.physicalCardId === actual.completion.physicalCardId
+      && expected.completion.ownerId === actual.completion.ownerId
+      && expected.completion.destination === actual.completion.destination
+      && expected.completion.slot === actual.completion.slot;
+  return a.roomId === b.roomId && a.rootEventId === b.rootEventId && a.interactionId === b.interactionId
+    && a.eventId === b.eventId && a.cardId === b.cardId && a.viewerId === b.viewerId
+    && a.rootFrameId === b.rootFrameId && a.h4EventId === b.h4EventId && a.phase === b.phase
+    && a.materialCardIds.length === b.materialCardIds.length
+    && a.materialCardIds.every((id, index) => id === b.materialCardIds[index])
+    && frameMatches && completionMatches;
+}
+
+/** A static H4 may use the pending REVEAL anchor only for its exact live card scope. */
+export function publicStageStaticAnnouncementMatchesReveal(input: {
+  phase: "static" | "reveal" | "move" | "parked";
+  expected: PublicStageRevealIdentity | null | undefined;
+  actual: PublicStageRevealIdentity;
+}): boolean {
+  const expected = input.expected;
+  return input.phase === "static" && Boolean(expected)
+    && [expected!.roomId, expected!.rootEventId, expected!.interactionId, expected!.eventId,
+      expected!.cardId, expected!.viewerId].every((value) => value.trim().length > 0)
+    && expected!.roomId === input.actual.roomId
+    && expected!.rootEventId === input.actual.rootEventId
+    && expected!.interactionId === input.actual.interactionId
+    && expected!.eventId === input.actual.eventId
+    && expected!.cardId === input.actual.cardId
+    && expected!.viewerId === input.actual.viewerId;
+}
+
+/** Checkpoint only the elapsed visible segment; hidden intervals are not charged. */
+export function checkpointPublicStageVisibleHold(input: {
+  elapsedMs: number;
+  remainingMs: number;
+  startedAtMs: number | null;
+  nowMs: number;
+}) {
+  const segmentMs = input.startedAtMs === null ? 0 : Math.max(0, input.nowMs - input.startedAtMs);
+  return {
+    elapsedMs: Math.max(0, input.elapsedMs) + segmentMs,
+    remainingMs: Math.max(0, input.remainingMs - segmentMs),
+    segmentMs,
+    startedAtMs: null,
+  };
+}
+
+/** A visible hold completes only on its deadline while the current paint is safe. */
+export function publicStageVisibleHoldCanComplete(input: {
+  remainingMs: number;
+  startedAtMs: number | null;
+  nowMs: number;
+  safePainted: boolean;
+}): boolean {
+  return input.safePainted && input.startedAtMs !== null
+    && Math.max(0, input.nowMs - input.startedAtMs) >= Math.max(0, input.remainingMs);
+}
+
+/** Convert one client-space measurement to the .play-table padding-box space. */
+export function publicStageRectToTableLocal(
+  rect: PublicStageRect,
+  space: PublicStageTableCoordinateSpace,
+): PublicStageRect | null {
+  if (!finiteRect(rect) || !validTableCoordinateSpace(space)) return null;
+  const left = (rect.left - space.originLeft) / space.scaleX - space.borderLeft;
+  const top = (rect.top - space.originTop) / space.scaleY - space.borderTop;
+  const right = (rect.right - space.originLeft) / space.scaleX - space.borderLeft;
+  const bottom = (rect.bottom - space.originTop) / space.scaleY - space.borderTop;
+  const local = { left, top, right, bottom };
+  return finiteRect(local) ? local : null;
+}
+
+/** Convert one .play-table-local measurement back to client space. */
+export function publicStageRectFromTableLocal(
+  rect: PublicStageRect,
+  space: PublicStageTableCoordinateSpace,
+): PublicStageRect | null {
+  if (!finiteRect(rect) || !validTableCoordinateSpace(space)) return null;
+  const left = space.originLeft + (rect.left + space.borderLeft) * space.scaleX;
+  const top = space.originTop + (rect.top + space.borderTop) * space.scaleY;
+  const right = space.originLeft + (rect.right + space.borderLeft) * space.scaleX;
+  const bottom = space.originTop + (rect.bottom + space.borderTop) * space.scaleY;
+  const client = { left, top, right, bottom };
+  return finiteRect(client) ? client : null;
+}
+
+export function publicStageCoordinateToTableLocal(
+  value: number,
+  axis: "x" | "y",
+  space: PublicStageTableCoordinateSpace,
+): number | null {
+  if (!Number.isFinite(value) || !validTableCoordinateSpace(space)) return null;
+  return axis === "x"
+    ? (value - space.originLeft) / space.scaleX - space.borderLeft
+    : (value - space.originTop) / space.scaleY - space.borderTop;
+}
+
+export function publicStageCoordinateFromTableLocal(
+  value: number,
+  axis: "x" | "y",
+  space: PublicStageTableCoordinateSpace,
+): number | null {
+  if (!Number.isFinite(value) || !validTableCoordinateSpace(space)) return null;
+  return axis === "x"
+    ? space.originLeft + (value + space.borderLeft) * space.scaleX
+    : space.originTop + (value + space.borderTop) * space.scaleY;
+}
+
+export function publicStageLengthToTableLocal(
+  value: number,
+  axis: "x" | "y",
+  space: PublicStageTableCoordinateSpace,
+): number | null {
+  if (!Number.isFinite(value) || value <= 0 || !validTableCoordinateSpace(space)) return null;
+  return value / (axis === "x" ? space.scaleX : space.scaleY);
+}
+
+function validTableCoordinateSpace(space: PublicStageTableCoordinateSpace): boolean {
+  return [space.originLeft, space.originTop, space.borderLeft, space.borderTop, space.scaleX, space.scaleY]
+    .every(Number.isFinite) && space.borderLeft >= 0 && space.borderTop >= 0
+    && space.scaleX > 0 && space.scaleY > 0;
+}
+
 export type PublicStagePhase = "REVEAL" | "MOVE" | "PARKED";
 export type PublicStageStationarySurface = "card" | "effect-frame";
 export type PublicStageH4Geometry = {
@@ -21,7 +274,7 @@ export function publicStageBandClearance(surface: PublicStageStationarySurface =
 
 /** Preferred top for a complete passive Effect Frame centered in the fixed
  * H4-to-PAC display lane. The inputs are nominal reserves, never live copy. */
-export function publicEffectFrameLanePreferredTop(
+export function publicStationaryLanePreferredTop(
   h4Reserve: PublicStageRect,
   pacReserve: PublicStageRect,
   frameHeight: number,
@@ -161,36 +414,19 @@ export type PublicStageLayoutInput = {
   activity: PublicStageSize;
   /** Measured top edge of the real Local Console guidance panel. */
   activityBottom?: number;
-  compactAnnouncement?: PublicStageSize;
   obstacles: readonly { id: string; rect: PublicStageRect }[];
-  /** Exact proof for the owner-approved Harvest root-under-same-pool overlap. */
-  harvestRootPoolOverlap?: {
-    semantics: "PROVEN";
-    scopeId: string;
-    rootEventId: string;
-    interactionId: string;
-    eventId: string;
-    cardId: string;
-    poolRootEventId: string;
-    phase: "REVEAL" | "MOVE";
-  };
   phaseRects?: { card: PublicStageRect; activity: PublicStageRect; announcement?: PublicStageRect };
   upperH4?: PublicStageH4Geometry & { gap: number };
   /** Permanent message-free H4/PAC reservations used for stationary reveals. */
   fixedBands?: { h4: PublicStageH4Geometry; pac: PublicStageRect };
-  /** Measured H4 paint when mounted; a reserve is not painted content. */
-  announcementPaint?: PublicStageRect | null;
-  /** Actual visible PAC paint, separate from its nominal fixed reserve. */
-  activityPaint?: PublicStageRect | null;
   /** Set only when the primary visual is a validated, complete public Effect Frame. */
   stationarySurface?: PublicStageStationarySurface;
   announcementCardGap?: number;
-  cardActivityGap?: number;
 };
 
 export type PublicStageLayout = {
   identity: string;
-  variant: "stack" | "compact-split" | "fixed-bands" | "move" | "parked";
+  variant: "stack" | "fixed-bands" | "move" | "parked";
   generation: number;
   scene: PublicStageScene;
   safeBounds: PublicStageRect;
@@ -198,12 +434,11 @@ export type PublicStageLayout = {
   announcement: PublicStageRect;
   card: PublicStageRect;
   activity: PublicStageRect;
-  cardActivityGap: number;
 };
 
 export type PublicStageLayoutResult =
   | { status: "placed"; layout: PublicStageLayout }
-  | { status: "unavailable"; identity: string | null; reason: "UNPROVEN_SCENE" | "INVALID_GEOMETRY" | "NO_SAFE_STACK" | "NO_SAFE_STAGE_BAND" };
+  | { status: "unavailable"; identity: string | null; reason: "UNPROVEN_SCENE" | "INVALID_GEOMETRY" | "NO_SAFE_STAGE_BAND" };
 
 function finiteRect(rect: PublicStageRect): boolean {
   return rect !== null && typeof rect === "object"
@@ -336,20 +571,23 @@ export function publicStageRevealCanRetire(input: {
   viewerId: string;
   parkingTargetViewerId?: string | null;
   parkingTarget: Pick<PublicStageSize, "width" | "height"> | null | undefined;
+  /** Some verified reveals finish in the centre and have no seat-parking stage. */
+  requireParkingTarget?: boolean;
 }): boolean {
   return input.phase === "REVEAL"
     && !input.layoutPending
     && input.safePainted
     && Boolean(input.viewerId.trim())
-    && input.parkingTargetViewerId === input.viewerId
-    && finiteSize(input.parkingTarget ?? { width: 0, height: 0 });
+    && (input.requireParkingTarget === false
+      || input.parkingTargetViewerId === input.viewerId
+        && finiteSize(input.parkingTarget ?? { width: 0, height: 0 }));
 }
 
 /**
- * Finds the shared collision-free placement for one proven public-card phase.
- * REVEAL uses H4 → full CardFace → PAC. MOVE/PARKED preserve the measured card
- * and PAC positions and reflow only H4 around their actual protected bounds.
- * Card/effect names never affect placement; unavailable means no fit is claimed.
+ * Places one proven public-card phase. Passive REVEAL keeps its canonical
+ * nominal anchor and layers independently over surrounding components.
+ * MOVE/PARKED preserve their measured endpoints and protect real interactive
+ * geometry. Card/effect names never affect placement.
  */
 export function calculatePublicStageLayout(input: PublicStageLayoutInput): PublicStageLayoutResult {
   const identity = publicStageSceneIdentity(input.scene);
@@ -357,17 +595,14 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
 
   const { viewport, table, card, announcement, activity } = input;
   const announcementCardGap = input.announcementCardGap ?? 8;
-  // The configured gap remains a soft layout preference during committed reveals.
-  const cardActivityGap = input.cardActivityGap ?? 9;
   if (!finiteRect(viewport) || !finiteRect(table)
     || !finiteSize(card) || !finiteSize(announcement) || !finiteSize(activity)
     || input.activityBottom !== undefined && !Number.isFinite(input.activityBottom)
     || !Number.isFinite(input.preferredCard.left) || !Number.isFinite(input.preferredCard.top)
     || !Number.isFinite(announcementCardGap) || announcementCardGap < 0
-    || !Number.isFinite(cardActivityGap) || cardActivityGap < 0
-    || !Array.isArray(input.obstacles)
-    || input.obstacles.some((obstacle) => !obstacle || typeof obstacle.id !== "string"
-      || !obstacle.id.trim() || !finiteRect(obstacle.rect))) {
+    || input.scene.phase !== "REVEAL" && (!Array.isArray(input.obstacles)
+      || input.obstacles.some((obstacle) => !obstacle || typeof obstacle.id !== "string"
+        || !obstacle.id.trim() || !finiteRect(obstacle.rect)))) {
     return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
   }
   if (input.scene.phase !== "REVEAL" && (!input.phaseRects
@@ -379,28 +614,17 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   }
 
   const activityBottom = Math.min(viewport.bottom, input.activityBottom ?? Math.min(viewport.bottom, table.bottom) - 8);
-  const rootPoolProof = input.harvestRootPoolOverlap;
-  const mayCoverHarvestPool = Boolean(rootPoolProof?.semantics === "PROVEN"
-    && (input.scene.phase === "REVEAL" || input.scene.phase === "MOVE")
-    && rootPoolProof.phase === input.scene.phase
-    && rootPoolProof.scopeId === input.scene.scopeId
-    && rootPoolProof.rootEventId === input.scene.scopeId
-    && rootPoolProof.poolRootEventId === input.scene.scopeId
-    && rootPoolProof.eventId === input.scene.eventId
-    && rootPoolProof.eventId === rootPoolProof.rootEventId
-    && rootPoolProof.cardId === input.scene.cardId
-    && Boolean(input.scene.interactionId)
-    && rootPoolProof.interactionId === input.scene.interactionId);
-  const cardObstacles = input.obstacles.filter(({ id }) => !(mayCoverHarvestPool && id === "harvest-choice-panel"));
-  const safeBounds: PublicStageRect = {
-    left: Math.max(viewport.left, table.left) + 8,
-    top: Math.max(viewport.top, table.top) + 8,
-    right: Math.min(viewport.right, table.right) - 8,
-    // The PAC may use the measured gap below the battlefield border so its
-    // lower edge can meet the Console guidance border exactly.
-    bottom: activityBottom,
-  };
-  if (safeBounds.right <= safeBounds.left || safeBounds.bottom <= safeBounds.top) {
+  const safeBounds: PublicStageRect = input.scene.phase === "REVEAL"
+    ? { ...table }
+    : {
+      left: Math.max(viewport.left, table.left) + 8,
+      top: Math.max(viewport.top, table.top) + 8,
+      right: Math.min(viewport.right, table.right) - 8,
+      // The PAC may use the measured gap below the battlefield border so its
+      // lower edge can meet the Console guidance border exactly.
+      bottom: activityBottom,
+    };
+  if (input.scene.phase !== "REVEAL" && (safeBounds.right <= safeBounds.left || safeBounds.bottom <= safeBounds.top)) {
     return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
   }
   const anchoredActivity = makeRect(
@@ -410,13 +634,16 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
   );
   if (input.scene.phase === "REVEAL" && input.fixedBands) {
     const { h4 } = input.fixedBands;
+    if (!finiteRect(h4.reserve) || !finiteRect(h4.paint) || !finiteRect(input.fixedBands.pac)) {
+      return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
+    }
     // H4/PAC are independently painted foreground layers. Their nominal or
     // actual rectangles are useful for placement and diagnostics, but never
     // veto a proven passive reveal, including when the layers intersect.
     const announcementRect = finiteRect(h4.paint) ? h4.paint
       : finiteRect(h4.reserve) ? h4.reserve
         : makeRect((safeBounds.left + safeBounds.right) / 2, safeBounds.top, input.announcement);
-    const centerX = (safeBounds.left + safeBounds.right) / 2;
+    const centerX = (table.left + table.right) / 2;
     const activityRect = makeRect(centerX, activityBottom - activity.height, activity);
     // Keep the existing canonical card position. H4/PAC reserves and preferred
     // clearance are placement guides, not hard gates for a committed reveal.
@@ -426,41 +653,37 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       right: input.preferredCard.left + card.width,
       bottom: input.preferredCard.top + card.height,
     };
-    if (cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
-      || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
-      || activityRect.bottom > activityBottom + 2
-      || cardObstacles.some((obstacle) => overlaps(cardRect, obstacle.rect))) {
+    if (!finiteRect(cardRect) || !finiteRect(activityRect)) {
       return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     }
     return { status: "placed", layout: { identity, variant: "fixed-bands", generation: input.scene.generation,
       scene: input.scene, safeBounds,
-      protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-      announcement: announcementRect, card: cardRect,
-      activity: activityRect, cardActivityGap: activityRect.top - cardRect.bottom } };
+      protectedRects: [],
+      announcement: announcementRect, card: cardRect, activity: activityRect } };
   }
   if (input.upperH4) {
     const { reserve, paint: h4Paint, gap, overlapPolicy } = input.upperH4;
     if (input.scene.phase === "REVEAL") {
+      if (!finiteRect(reserve) || !finiteRect(h4Paint)) {
+        return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
+      }
       const announcementRect = finiteRect(h4Paint) ? h4Paint
         : finiteRect(reserve) ? reserve
           : makeRect((safeBounds.left + safeBounds.right) / 2, safeBounds.top, input.announcement);
-      const activityRect = anchoredActivity;
+      const activityRect = makeRect((table.left + table.right) / 2, activityBottom - activity.height, activity);
       const cardRect = {
         left: input.preferredCard.left,
         top: input.preferredCard.top,
         right: input.preferredCard.left + card.width,
         bottom: input.preferredCard.top + card.height,
       };
-      if (cardRect.left < safeBounds.left || cardRect.right > safeBounds.right
-        || cardRect.top < safeBounds.top || cardRect.bottom > safeBounds.bottom
-        || cardObstacles.some(({ rect }) => overlaps(cardRect, rect))) {
+      if (!finiteRect(cardRect) || !finiteRect(activityRect)) {
         return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
       }
       return { status: "placed", layout: { identity, variant: "stack", generation: input.scene.generation,
         scene: input.scene, safeBounds,
-        protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-        announcement: announcementRect, card: cardRect, activity: activityRect,
-        cardActivityGap: activityRect.top - cardRect.bottom } };
+        protectedRects: [],
+        announcement: announcementRect, card: cardRect, activity: activityRect } };
     }
     const reservedHeight = finiteRect(reserve) ? reserve.bottom - reserve.top : Number.NaN;
     if (overlapPolicy !== "PASSIVE_REVEAL_FOREGROUND"
@@ -472,17 +695,16 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
       return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
     }
     const h4 = h4Paint;
-    const activityRect = input.scene.phase === "REVEAL" || input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
+    const activityRect = input.activityBottom !== undefined ? anchoredActivity : input.phaseRects!.activity;
     const cardRect = input.phaseRects!.card;
-    const stageRects = input.scene.phase === "REVEAL" ? [h4, cardRect, activityRect] : [h4, activityRect];
-    if (stageRects.some((rect, index) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom
-      || (input.scene.phase === "REVEAL" && index === 1 ? cardObstacles : input.obstacles).some((obstacle) => overlaps(rect, obstacle.rect)))
-      || overlaps(h4, activityRect)
-      || input.scene.phase === "REVEAL" && cardRect.bottom > activityRect.top) {
+    const stageRects = [h4, activityRect];
+    if (stageRects.some((rect) => rect.left < safeBounds.left || rect.right > safeBounds.right || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom
+      || input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))
+      || overlaps(h4, activityRect)) {
       return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
     }
-    return { status: "placed", layout: { identity, variant: input.scene.phase === "REVEAL" ? "stack" : input.scene.phase === "MOVE" ? "move" : "parked", generation: input.scene.generation, scene: input.scene, safeBounds,
-      protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })), announcement: h4, card: { ...cardRect }, activity: { ...activityRect }, cardActivityGap: activityRect.top - cardRect.bottom } };
+    return { status: "placed", layout: { identity, variant: input.scene.phase === "MOVE" ? "move" : "parked", generation: input.scene.generation, scene: input.scene, safeBounds,
+      protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })), announcement: h4, card: { ...cardRect }, activity: { ...activityRect } } };
   }
   if (input.scene.phase !== "REVEAL") {
     const phaseRects = input.phaseRects!;
@@ -519,7 +741,6 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
           announcement: { ...announcementRect },
           card: { ...phaseRects.card },
           activity: { ...moveActivityRect },
-          cardActivityGap: phaseRects.activity.top - phaseRects.card.bottom,
         },
       };
     }
@@ -600,111 +821,13 @@ export function calculatePublicStageLayout(input: PublicStageLayoutInput): Publi
           announcement: announcementRect,
           card: { ...phaseRects.card },
           activity: { ...activityRect },
-          cardActivityGap: activityRect.top - phaseRects.card.bottom,
         },
       };
     }
     return { status: "unavailable", identity, reason: "NO_SAFE_STAGE_BAND" };
   }
 
-  const stackWidth = Math.max(card.width, announcement.width, activity.width);
-  const minCenterX = safeBounds.left + stackWidth / 2;
-  const maxCenterX = safeBounds.right - stackWidth / 2;
-  const minCardTop = safeBounds.top + announcement.height + announcementCardGap;
-  const activityRect = anchoredActivity;
-  const maxCardTop = activityRect.top - card.height - cardActivityGap;
-  const stackPossible = maxCenterX >= minCenterX && maxCardTop >= minCardTop;
-
-  const preferredCenterX = input.preferredCard.left + card.width / 2;
-  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-  const centers = new Set<number>([
-    clamp(preferredCenterX, minCenterX, maxCenterX),
-    minCenterX,
-    maxCenterX,
-  ]);
-  const tops = new Set<number>([maxCardTop]);
-  for (const obstacle of cardObstacles) {
-    centers.add(clamp(obstacle.rect.left - stackWidth / 2, minCenterX, maxCenterX));
-    centers.add(clamp(obstacle.rect.right + stackWidth / 2, minCenterX, maxCenterX));
-    // Keep H4 and the genuine card together above or below each blocker; PAC
-    // stays on its independent, measured Console seam.
-    tops.add(clamp(obstacle.rect.top - card.height, minCardTop, maxCardTop));
-    tops.add(clamp(obstacle.rect.bottom + announcementCardGap + announcement.height, minCardTop, maxCardTop));
-  }
-
-  const candidates = [...centers].flatMap((centerX) => [...tops].map((cardTop) => ({
-    centerX,
-    cardTop,
-    distance: Math.abs(centerX - preferredCenterX) + Math.abs(cardTop - maxCardTop),
-  }))).sort((left, right) => left.distance - right.distance
-    || left.cardTop - right.cardTop || left.centerX - right.centerX);
-
-  for (const candidate of stackPossible ? candidates : []) {
-    const cardRect = makeRect(candidate.centerX, candidate.cardTop, card);
-    const announcementRect = makeRect(candidate.centerX, cardRect.top - announcementCardGap - announcement.height, announcement);
-    const stackRects = [announcementRect, cardRect, activityRect];
-    if (stackRects.some((rect) => rect.left < safeBounds.left || rect.right > safeBounds.right
-      || rect.top < safeBounds.top || rect.bottom > safeBounds.bottom)) continue;
-    if (stackRects.some((rect, index) => (index === 1 ? cardObstacles : input.obstacles)
-      .some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
-    return {
-      status: "placed",
-      layout: {
-        identity,
-        variant: "stack",
-        generation: input.scene.generation,
-        scene: input.scene,
-        safeBounds,
-        protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-        announcement: announcementRect,
-        card: cardRect,
-        activity: activityRect,
-        cardActivityGap: activityRect.top - cardRect.bottom,
-      },
-    };
-  }
-
-  // When the full stack cannot fit, place the full card and a measured,
-  // wrapped H4 side by side; the PAC remains centred underneath both.
-  const compact = input.compactAnnouncement;
-  if (compact && finiteSize(compact)) {
-    const center = (safeBounds.left + safeBounds.right) / 2;
-    const gap = Math.max(8, announcementCardGap);
-    const rowWidth = card.width + gap + compact.width;
-    const rowHeight = Math.max(card.height, compact.height);
-    // Reserve a six-pixel edge on short stages; the measured Dock remains a
-    // hard obstacle and the full card-to-PAC gap remains at least eight.
-    const compactBounds = { ...safeBounds, bottom: safeBounds.bottom + 2 };
-    const compactActivityGap = Math.max(8, cardActivityGap - 1);
-    const rowLeft = center - rowWidth / 2;
-    const minTop = safeBounds.top;
-    const maxTop = activityRect.top - rowHeight - compactActivityGap;
-    if (rowLeft >= safeBounds.left && rowLeft + rowWidth <= safeBounds.right
-      && activity.width <= safeBounds.right - safeBounds.left && maxTop >= minTop) {
-      const rowTops = new Set([maxTop]);
-      for (const { rect } of input.obstacles) {
-        rowTops.add(clamp(rect.bottom + gap, minTop, maxTop));
-        rowTops.add(clamp(rect.top - gap - rowHeight - compactActivityGap - activity.height, minTop, maxTop));
-      }
-      for (const top of [...rowTops].sort((a, b) => b - a)) {
-        for (const cardOnLeft of [true, false]) {
-          const cardLeft = rowLeft + (cardOnLeft ? 0 : compact.width + gap);
-          const announcementLeft = rowLeft + (cardOnLeft ? card.width + gap : 0);
-          const cardRect = makeRect(cardLeft + card.width / 2, top, card);
-          const announcementRect = makeRect(announcementLeft + compact.width / 2, top, compact);
-          if (cardObstacles.some((obstacle) => overlaps(cardRect, obstacle.rect))
-            || [announcementRect, activityRect].some((rect) =>
-              input.obstacles.some((obstacle) => overlaps(rect, obstacle.rect)))) continue;
-          return { status: "placed", layout: {
-            identity, variant: "compact-split", generation: input.scene.generation,
-            scene: input.scene, safeBounds: compactBounds,
-            protectedRects: input.obstacles.map(({ id, rect }) => ({ id, rect: { ...rect } })),
-            announcement: announcementRect, card: cardRect, activity: activityRect,
-            cardActivityGap: activityRect.top - cardRect.bottom,
-          } };
-        }
-      }
-    }
-  }
-  return { status: "unavailable", identity, reason: "NO_SAFE_STACK" };
+  // REVEAL requires the canonical fixed-band target above; there is no
+  // collision-search or alternate-layout fallback for passive presentation.
+  return { status: "unavailable", identity, reason: "INVALID_GEOMETRY" };
 }

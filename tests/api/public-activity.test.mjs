@@ -216,14 +216,19 @@ test("Borrowed Sword PAC names only its proven chooser and holder", () => {
   assert.deepEqual(playerIds(status.textSegments), ["p3", "p2"]);
 });
 
-test("PAC follows the exact committed Judgement event and ignores stale or mismatched stage facts", () => {
-  const identity = { interactionId: "interaction-1", rootFrameId: "root-1", checkpointId: "checkpoint-1", presentationRevision: 1 };
-  const judgementFact = {
-    semantics: "PROVEN", visibility: "PUBLIC", identity, eventId: "judgement-reveal", rootEventId: "overindulgence-play",
-    order: 2, category: "EFFECT_APPLIED", actorId: "p2", affectedPlayerIds: ["p2"], label: "Overindulgence",
-    outcomeLabel: "Da Qiao revealed A♠ Duel for Overindulgence.", effect: { kind: "judgement", label: "Overindulgence" },
+test("PAC follows the exact canonical Judgement event and ignores stale or mismatched stages", () => {
+  const judgementPresentation = {
+    semantics: "PROVEN", visibility: "PUBLIC", judgementId: "judgement-reveal", eventId: "judgement-reveal",
+    order: 2, phase: "ORIGINAL", status: "PROVISIONAL", targetId: "p2", judgingPlayerId: "p2",
+    purpose: "overindulgence", continuationKind: "delayed",
+    originalCard: { id: "judgement-card", kind: "Duel", suit: "♠", rank: "A" },
+    effectiveCard: { id: "judgement-card", kind: "Duel", suit: "♠", rank: "A" },
+    judgementStatus: "unsatisfied", copy: { message: "Test Player 2 is judging Overindulgence. Judgement: [A♠].", segments: [] },
   };
-  const judgementSnapshot = snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [judgementFact] });
+  const judgementSnapshot = {
+    ...snapshot({ stage: "JUDGEMENT", actorId: null, stableKind: "REST", publicEventFacts: [] }),
+    publicJudgementPresentations: [judgementPresentation],
+  };
   const input = room({ phase: "resolving", presentationSnapshot: judgementSnapshot, activePublicJudgementEventId: "judgement-reveal" });
   assert.deepEqual(visibleActivityStatus(derivePublicActivityStatus(input)), {
     kind: "judgement", text: "Test Player 2 is judging Overindulgence.", heading: "Test Player 2 is judging Overindulgence.",
@@ -682,6 +687,12 @@ test("generic H4 retains damage through Skip and formats committed public or hid
   const fanjianNarration = derivePublicInteractionNarration(input([root, fanjianActivation]));
   assert.equal(fanjianNarration?.headline, "Test Player 1 used Sowing Distrust on Test Player 2.");
   assert.deepEqual(playerIds(fanjianNarration?.headlineSegments), ["p1", "p2"]);
+  const stauchnessActivation = fact("stauchness-activation", 2, "SKILL_USED", {
+    actorId: "p2", label: "Stauchness", effect: { kind: "judgement", effectId: "xiahou_dun_ganglie" },
+  });
+  assert.equal(derivePublicInteractionNarration(input([root, stauchnessActivation]))?.headline,
+    "Test Player 2 used Stauchness.",
+    "the committed skill proof remains truthful without the superseded generic started-a-Judgement outcome");
   // A Skip adds no skill fact, including when a later decision uses the same causal root.
   assert.equal(derivePublicInteractionNarration(input([root, damage]))?.eventId, "damage");
   const hidden = fact("hidden", 3, "SKILL_USED", { actorId: "p2", affectedPlayerIds: ["p1"], label: "Retaliation", outcomeLabel: "obtained one card", effect: { kind: "gain_target_card" } });
@@ -1328,6 +1339,33 @@ test("committed HP, draw, discard, recovery and transfer results own the shared 
   assert.equal(active?.headline, expected);
   assert.equal(active?.compactHeadline, expected);
   assert.deepEqual(playerIds(active?.headlineSegments), ["p2", "p1", "p2", "p2", "p2", "p2", "p1"]);
+
+  const canonicalCopy = {
+    eventId: outcome.eventId,
+    headline: "Test Player 2 caused Test Player 1 to discard [8♠ Attack], then the committed outcomes were retained.",
+    segments: [
+      { kind: "player", playerId: "p2", text: "Test Player 2" },
+      { kind: "text", text: " caused " },
+      { kind: "player", playerId: "p1", text: "Test Player 1" },
+      { kind: "text", text: " to discard [8♠ Attack], then the committed outcomes were retained." },
+    ],
+  };
+  const canonicalActive = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
+    canonicalDiscardCopy: canonicalCopy,
+  });
+  assert.equal(canonicalActive?.headline, canonicalCopy.headline,
+    "a verified same-event discard copy replaces the competing generic count-only committed-result sentence");
+  assert.deepEqual(playerIds(canonicalActive?.headlineSegments), ["p2", "p1"],
+    "canonical player spans remain typed for the shared H4");
+  const staleCanonical = derivePublicInteractionNarration({
+    ...input,
+    snapshot: snapshot({ stage: "SETTLEMENT", actorId: null, publicEventFacts: [root, outcome] }),
+    canonicalDiscardCopy: { ...canonicalCopy, eventId: "stale-event" },
+  });
+  assert.equal(staleCanonical?.headline, expected,
+    "a copy for another event cannot replace the committed outcome");
 
   const retained = derivePublicInteractionNarration({ ...input, snapshot: {
     identity: null, interaction: null, stable: { kind: "REST" }, publicEventFacts: [],

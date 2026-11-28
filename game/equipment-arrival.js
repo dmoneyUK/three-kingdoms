@@ -29,22 +29,3 @@ export function equipmentArrivalIdentity(event, players) {
   if (owners.length !== 1) return null;
   return { eventId: event.id, cardId: event.card.id, ownerId: owners[0].player.id, slot };
 }
-
-/**
- * New equipment thumbnails stay visually parked until their own presentation
- * arrival. Events already present at mount are supplied as presented, so a
- * late join or refresh never replays or hides settled Equipment.
- */
-export function pendingEquipmentArrivalIdentities(events, players, presentedEventIds) {
-  const pending = events.filter((event) => event && typeof event.id === "string" && event.id
-    && !event.id.startsWith("optimistic-") && !presentedEventIds.has(event.id)
-    && event.type === "card" && event.action === "equip" && !event.playedAs
-    && event.presentation !== false && event.card?.id);
-  const uniqueEvents = [...new Map(pending.map((event) => [event.id, event])).values()];
-
-  return uniqueEvents
-    .map((event) => equipmentArrivalIdentity(event, players))
-    .filter((identity) => identity !== null && players.some((player) => player.id === identity.ownerId
-      && player.equipmentCards?.some((card) => card.id === identity.cardId
-        && card.kind && cardDefinition(card.kind).equipmentSlot === identity.slot)));
-}

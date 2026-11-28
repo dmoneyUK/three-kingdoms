@@ -20,6 +20,7 @@ const fastTests = [
   "tests/game-screen-recovery.test.mjs",
   "tests/local-precommit-selection.test.mjs",
   "tests/hand-choice-selection.test.mjs",
+  "tests/ordinary-turn-action.test.mjs",
   "tests/shared-response-window.test.mjs",
   "tests/shared-response-commit.test.mjs",
   "tests/room-safety-render.test.mjs",

@@ -305,7 +305,7 @@ test("one committed Fanjian result stays visible for three seconds without hidin
         firstMiniSource: parkedMiniatures.length ? "parked-dom" : "reserved-slot",
         cardRect,
         cardOpacity: card ? Number(getComputedStyle(card).opacity) : null,
-        cardRoute: card?.dataset.publicRevealH4Route ?? null,
+        stationaryPlacement: card?.dataset.publicRevealStationaryPlacement ?? "ready",
         cardOverlapsH4: overlapsRects(h4Rect, cardRect),
         cardOverlapsMini: firstMiniRects.some((mini) => overlapsRects(mini, cardRect)),
         h4Delivery: copy?.dataset.publicCardAnnouncementDelivery ?? null,

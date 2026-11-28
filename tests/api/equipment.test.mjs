@@ -2,7 +2,7 @@
 import test from "node:test";
 import { derivePublicInteractionNarration } from "../../game/public-activity.ts";
 import { latestSerpentSpearGroupResponseEventId } from "../../game/serpent-spear-group-response-routing.ts";
-import { selectPublicH4AnnouncementOwner } from "../../app/public-presentation-routing.ts";
+import { selectPublicH4AnnouncementOwner, uniquePublicH4Facts } from "../../app/public-presentation-routing.ts";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts } from "../../app/public-discard-settlement.ts";
 import { assertPublicOutcomeHasH4Owner } from "./public-outcome-h4-assertions.mjs";
 import {
@@ -479,9 +479,10 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   const [host, alice] = game.members;
   const [hostPlayer, alicePlayer] = game.room.players;
   const firstCard = card("FrostSword", "public-h4-first");
+  const interveningPeach = card("Peach", "public-h4-intervening-peach");
   const replacementCard = card("BlueSteelSword", "public-h4-replacement");
   setEquipment(hostPlayer.id, {});
-  setHand(hostPlayer.id, [firstCard, replacementCard], 4, 4);
+  setHand(hostPlayer.id, [firstCard, interveningPeach, replacementCard], 3, 4);
   setTurn(game.code, hostPlayer.seat);
 
   const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: firstCard.id });
@@ -518,6 +519,20 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.deepEqual(observer.presentationSnapshot.retainedPublicEventFacts, equipped.data.room.presentationSnapshot.retainedPublicEventFacts);
   assert.equal(observer.myHand.some((item) => item.id === firstCard.id || item.id === replacementCard.id), false,
     "another player's public equipment identity does not expose either card as a hidden Hand card");
+
+  const intervening = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: interveningPeach.id });
+  assert.equal(intervening.status, 200, JSON.stringify(intervening.data));
+  const interveningEvent = intervening.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === interveningPeach.id);
+  assert.ok(interveningEvent, "the actor can commit another legal card before the observer's next poll");
+  assert.ok(interveningEvent.publicSequence > firstEvent.publicSequence, "the later root follows the equipment event in server order");
+  const ownerAfterIntervening = intervening.data.room.presentationSnapshot;
+  const observerAfterIntervening = (await state(game.code, alice.token)).data;
+  assert.deepEqual(observerAfterIntervening.presentationSnapshot.publicEventFacts, ownerAfterIntervening.publicEventFacts,
+    "the queued equipment proof is available from a subsequent observer poll without viewer-specific public projections");
+  assert.ok(observerAfterIntervening.timeline.some((event) => event.id === firstEvent.id && event.card?.id === firstCard.id),
+    "the original committed physical Equipment identity remains in the public event history");
+  assert.equal(observerAfterIntervening.myHand.some((item) => item.id === replacementCard.id), false,
+    "later public polling still does not expose the owner's unplayed replacement card");
 
   const replaced = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: replacementCard.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
@@ -561,9 +576,12 @@ test("committed Equipment H4 is shared by viewers and follows a real slot replac
   assert.equal(replacementFact.category, "CARD_DISCARDED");
   assert.equal(replacementFact.effect?.kind, "equipment_replaced");
   assert.equal(replacementFact.rootEventId, replacementEvent.id);
-  assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.eventId, replacementEvent.id,
-    "the newer committed equip supersedes the earlier H4 fact");
-  assert.equal(replaced.data.room.presentationSnapshot.retainedPublicEvent?.label, "Blue Steel Sword");
+  const replacementH4Fact = replacementSnapshot.publicEventFacts.find((fact) => fact.eventId === replacementEvent.id)
+    ?? replacementSnapshot.retainedPublicEventFacts?.find((fact) => fact.eventId === replacementEvent.id)
+    ?? (replacementSnapshot.retainedPublicEvent?.eventId === replacementEvent.id ? replacementSnapshot.retainedPublicEvent : null);
+  assert.equal(replacementH4Fact?.category, "CARD_EQUIPPED",
+    "the newer committed equip remains represented in the active or retained public H4 projection");
+  assert.equal(replacementH4Fact?.label, "Blue Steel Sword");
   const finalEquipment = replaced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards;
   assert.ok(finalEquipment.some((item) => item.id === replacementCard.id && item.kind === "BlueSteelSword"));
   assert.equal(finalEquipment.some((item) => item.id === firstCard.id), false);
@@ -801,6 +819,22 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.equal(forcedDamage.publicFact.committedOutcome.source.label, "Attack",
     "the Axe modifier does not replace the actual Attack source in public H4");
   const snapshot = forced.data.room.presentationSnapshot;
+  const axePublicFacts = uniquePublicH4Facts([
+    ...(snapshot.publicEventFacts ?? []), ...(snapshot.retainedPublicEventFacts ?? []),
+  ]);
+  const axeSettlement = normalizePublicDiscardSettlements({
+    timeline: forced.data.room.timeline,
+    publicCardEffects: snapshot.publicCardEffects ?? [],
+    dismantleSettlements: forced.data.room.presentationV2.dismantleSettlements,
+    publicEventFacts: axePublicFacts,
+  }).find((settlement) => settlement.eventId === axeCostEvent.id && settlement.presentation === "eligible");
+  assert.ok(axeSettlement, "the mixed Hand/Equipment Axe cost has one canonical discard settlement");
+  const axeCanonicalCopy = publicDiscardSettlementCopyForFacts({
+    settlement: axeSettlement, players: forced.data.room.players, publicEventFacts: axePublicFacts,
+  });
+  assert.ok(axeCanonicalCopy, "the committed Axe cost has a shared canonical copy");
+  assert.deepEqual(axeCanonicalCopy.cards?.map(({ id }) => id), axeCostEvent.cards.map(({ id }) => id),
+    "the canonical copy preserves both real mixed-zone Axe cost faces in server order");
   const forcedNarration = derivePublicInteractionNarration({
     snapshot, players: forced.data.room.players,
     rootEventId: forcedDamage.publicFact.rootEventId,
