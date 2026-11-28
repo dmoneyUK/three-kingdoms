@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { isOrdinaryTurnActionAuthorized } from "../game/ordinary-turn-action.ts";
 
 const actions = ["play_card", "serpent_spear_attack", "trigger", "end_turn"];
@@ -45,4 +46,18 @@ test("server-authorized trigger selections remain available before ordinary Play
     assert.equal(isOrdinaryTurnActionAuthorized(input, action), false, `${action} remains blocked during an authorized pre-Play trigger`);
   }
   assert.equal(isOrdinaryTurnActionAuthorized({ ...input, currentAction: { ...input.currentAction, legalActions: ["decline_trigger"] } }, "trigger"), false, "a trigger without server-authorized trigger action stays disabled");
+});
+
+test("ordinary action controls and handlers use per-action CurrentAction authority", () => {
+  const source = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /\bcanPlay\b/, "phase-only canPlay must not remain as client authority");
+  assert.match(source, /const isPlayPhaseForDisplay =/, "phase state may remain only under an explicit display name");
+  assert.match(source, /const ordinaryTurnPlayAuthorized = ordinaryTurnActionAuthorized\("play_card"\)/);
+  assert.match(source, /const ordinaryTurnSerpentAuthorized = ordinaryTurnActionAuthorized\("serpent_spear_attack"\)/);
+  assert.match(source, /const ordinaryTurnEndAuthorized = ordinaryTurnActionAuthorized\("end_turn"\)/);
+  assert.match(source, /const targetEligibilityActionAvailable = serpentMode\s*\?\s*ordinaryTurnSerpentAuthorized\s*:\s*Boolean\(card && ordinaryTurnPlayAuthorized\)/);
+  assert.match(source, /if \(!ordinaryTurnActionAuthorized\("play_card"\) \|\| !card/);
+  assert.match(source, /if \(!me \|\| !ordinaryTurnActionAuthorized\("serpent_spear_attack"\)/);
+  assert.match(source, /ordinaryTurnCardActionAuthorized && consoleKind === "turn" && consolePrimaryId === "turn"/);
+  assert.match(source, /ordinaryTurnEndAuthorized && consoleKind === "turn"/);
 });

@@ -5683,7 +5683,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     "--seat-row-count": String(mobileSideRowCount),
     ...mobileSeatRingLayoutStyle,
   } as CSSProperties : undefined;
-  const canPlay = room.phase?.startsWith("play") && room.status === "playing";
+  const isPlayPhaseForDisplay = room.phase?.startsWith("play") === true && room.status === "playing";
   const ordinaryTurnActionAuthorized = (action: OrdinaryTurnAction) => isOrdinaryTurnActionAuthorized({
     status: room.status,
     phase: room.phase,
@@ -5693,6 +5693,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     currentAction: room.currentAction,
   }, action);
   const ordinaryTurnPlayAuthorized = ordinaryTurnActionAuthorized("play_card");
+  const ordinaryTurnSerpentAuthorized = ordinaryTurnActionAuthorized("serpent_spear_attack");
+  const ordinaryTurnEndAuthorized = ordinaryTurnActionAuthorized("end_turn");
+  const ordinaryTurnCardActionAuthorized = serpentMode ? ordinaryTurnSerpentAuthorized : ordinaryTurnPlayAuthorized;
+  const ordinaryTurnActionSurfaceAuthorized = ordinaryTurnCardActionAuthorized || ordinaryTurnEndAuthorized;
   const harvestActionRevision = room.actionRevision ?? "";
   const hasAvailableHarvestChoice = Boolean(room.pendingHarvest?.availableIds.some((availableId) =>
     room.pendingHarvest?.revealed.some((choice) => choice.id === availableId)));
@@ -6332,15 +6336,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     targetEligibilityModeKeyRef.current = targetEligibilityModeKey;
     setLocalPlayTargetNotice((notice) => notice?.stale ? notice : null);
   }, [targetEligibilityModeKey]);
-  const targetEligibilityActionAvailable = Boolean(
-    room.currentAction?.kind === "turn"
-    && room.currentAction.actorId === room.meId
-    && room.isMyAction
-    && canPlay
-    && (serpentMode
-      ? canUseAction(room.currentAction, "serpent_spear_attack")
-      : card && canUseAction(room.currentAction, "play_card")),
-  );
+  const targetEligibilityActionAvailable = serpentMode
+    ? ordinaryTurnSerpentAuthorized
+    : Boolean(card && ordinaryTurnPlayAuthorized);
   const currentPlayTargetEligibility = targetEligibilityActionAvailable
     ? serpentMode
       ? room.currentAction?.playTargetEligibility?.find((entry) => entry.mode === "serpent_spear_attack" && entry.effectiveKind === "Attack") ?? null
@@ -6381,6 +6379,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }
       return;
     }
+    if (!ordinaryTurnActionAuthorized(serpentMode ? "serpent_spear_attack" : "play_card")) return;
     setTargetIds((ids) => activeSkillTargetIds.length ? [playerId] : halberdAttack ? ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < 3 ? [...ids, playerId] : ids : [playerId]);
   };
   const toggleActiveSkillCardSelection = (cardId: string) => setActiveSkillSelectionState((state) => {
@@ -6388,7 +6387,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return togglePrecommitDraftCard(state, activeSkillScope, cardId, activeSkillSelection.eligibleCardIds, activeSkillSelection.max);
   });
   const attackTargetsValid = selectedPlayTargetsValid;
-  const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
+  const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && ordinaryTurnSerpentAuthorized && canDeclareAttack;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction && !sharedWindowExpired;
   const rescueDecisionReady = canRescue && !presentationBusy;
@@ -6473,15 +6472,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerTargetMode = Boolean(triggerResponse && responseDecisionReady && triggerTargetSelection && responseProviderId === selectedTriggerOption?.effectId);
   const borrowedSwordTargetSelectionActive = Boolean(canChooseBorrowedSword && !presentationBusy);
   const borrowedSwordContinuationConsole = borrowedSwordTargetSelectionActive || borrowedSwordForcedChoiceActive;
-  const normalTurnTargetSelectionActive = Boolean(ordinaryTurnPlayAuthorized
+  const normalTurnTargetActionAuthorized = serpentMode ? ordinaryTurnSerpentAuthorized : ordinaryTurnPlayAuthorized;
+  const normalTurnTargetSelectionActive = Boolean(normalTurnTargetActionAuthorized
     && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
   const targetSelectionActive = Boolean(borrowedSwordTargetSelectionActive || triggerTargetMode || activeSkillTargetMode || normalTurnTargetSelectionActive);
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
   const normalTargetSelectionActive = targetSelectionActive && !borrowedSwordTargetSelectionActive && !triggerTargetMode && !activeSkillTargetMode;
   const simpleAttackTargetMode = Boolean(
-    room.isMyTurn
-    && canPlay
+    ordinaryTurnPlayAuthorized
     && normalTargetSelectionActive
     && card?.kind === "Attack"
     && selected === card.id
@@ -7811,10 +7810,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!me || !ordinaryTurnActionAuthorized("serpent_spear_attack") || !canDeclareAttack || serpentSelected.length !== 2) return;
     const materials = serpentSelected.map((id) => room.myHand.find((item) => item.id === id)).filter((item): item is Card => Boolean(item));
     if (materials.length !== 2) return;
-    const responseTarget = room.pendingDuel ? room.players.find((player) => player.id === room.pendingDuel?.opponentId)?.name ?? me.name : me.name;
-    const displayTarget = canPlay ? targetPlayer?.name : responseTarget;
-    if (canPlay && (!attackTargetsValid || !displayTarget)) return;
-    const optimisticEvent: CardGroupEvent = { id: `optimistic-serpent-${materials.map((item) => item.id).join("-")}`, type: "cards", player: me.name, target: displayTarget ?? me.name, cards: materials, action: "play" };
+    const displayTarget = targetPlayer?.name;
+    if (!attackTargetsValid || !displayTarget) return;
+    const optimisticEvent: CardGroupEvent = { id: `optimistic-serpent-${materials.map((item) => item.id).join("-")}`, type: "cards", player: me.name, target: displayTarget, cards: materials, action: "play" };
     const presentImmediately = !optimisticPlay && !activeEvent && eventQueue.length === 0;
     if (presentImmediately) {
       selfTargetWindowRevision.current += 1;
@@ -12831,7 +12829,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : "waiting";
   const endTurnConfirmationAuthorizationReason = !room.isMyTurn ? "not-viewer-turn"
     : !room.isMyAction ? "current-action-not-owned-by-viewer"
-      : !canPlay ? "play-phase-not-actionable"
+      : !isPlayPhaseForDisplay ? "play-phase-not-actionable"
         : consoleKind !== "turn" ? "console-not-in-turn-mode"
           : room.currentAction?.kind !== "turn" ? "current-action-not-turn"
             : room.currentAction.actorId !== room.meId ? "current-action-actor-mismatch"
@@ -12945,7 +12943,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(sharedDyingPeachAvailable ? [{ id: "shared-dying-peach", label: "Confirm", enabled: sharedDyingPeachSelectionComplete, priority: 66 }] : []),
     ...(rescueDecisionReady && !canRespond && !sharedDyingPeachWindowActive ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
-    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play"), enabled: turnConversionPrecommitControls?.primaryEnabled ?? ((canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack))), priority: 40 }] : []),
+    ...(consoleKind === "turn" && ordinaryTurnActionSurfaceAuthorized ? [{ id: "turn", label: turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play"), enabled: ordinaryTurnCardActionAuthorized && (turnConversionPrecommitControls?.primaryEnabled ?? (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack))), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
   const currentPublicGroupResponse = (() => {
@@ -13058,7 +13056,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const action = room.currentAction;
     if (!action || action.kind !== "turn" || !currentActionOwnedByViewer) return null;
     if (room.phase?.startsWith("draw") && canUseAction(action, "draw")) return "Draw your cards.";
-    if (!room.phase?.startsWith("play")) return null;
+    if (!isPlayPhaseForDisplay) return null;
     const canPlayCard = canUseAction(action, "play_card");
     const canUseHeroSkill = canUseAction(action, "trigger") && Boolean(action.triggerOptions?.length);
     const canEndPlay = canUseAction(action, "end_turn");
@@ -13104,11 +13102,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(genericTriggerOptions.map((option) => option.selection ? stablePrecommitOwnerLabel(option.label) : option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
     ...(canFormSerpentAttack ? [SERPENT_SPEAR_LABEL] : []),
-    ...(room.isMyTurn && canPlay ? ["End"] : []),
+    ...(ordinaryTurnEndAuthorized ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
   const ordinaryPlayTargetSelection = Boolean(
-    room.isMyTurn
-    && canPlay
+    ordinaryTurnPlayAuthorized
     && consoleKind === "turn"
     && normalTargetSelectionActive
     && !serpentMode
@@ -13708,7 +13705,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             }
             return <button key={option.providerId} className="serpent-control" disabled={physicalResponseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>;
           })}
-          {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" data-precommit-owner="serpent_spear_attack" aria-label={SERPENT_SPEAR_LABEL} title={serpentMode ? "Tap again to cancel this selection." : `Use ${SERPENT_SPEAR_LABEL}`} aria-pressed={serpentMode} disabled={busy || !ordinaryTurnActionAuthorized("serpent_spear_attack")} onClick={() => { if (!ordinaryTurnActionAuthorized("serpent_spear_attack")) return; clearLocalPrecommitDrafts(); if (!serpentMode) setSerpentMode(true); }}>{SERPENT_SPEAR_LABEL}</button>}
+          {consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} data-serpent-spear-control="true" data-precommit-owner="serpent_spear_attack" aria-label={SERPENT_SPEAR_LABEL} title={serpentMode ? "Tap again to cancel this selection." : `Use ${SERPENT_SPEAR_LABEL}`} aria-pressed={serpentMode} disabled={busy || !ordinaryTurnSerpentAuthorized} onClick={() => { if (!ordinaryTurnSerpentAuthorized) return; clearLocalPrecommitDrafts(); if (!serpentMode) setSerpentMode(true); }}>{SERPENT_SPEAR_LABEL}</button>}
         </div>
         <div data-action-slots="true">
           <div data-action-slot="cancel">
@@ -13716,7 +13713,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {targetCardPickerInLocalDock && canClearTargetCardPickerSelection && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelTargetCardPicker}>Clear selection</button>}
             {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
             {(activeSkillSelection || activeSkillTargetSelection) && activeSkillTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && !ordinaryPlayTargetSelection && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+            {consoleKind === "turn" && normalTargetSelectionActive && !ordinaryPlayTargetSelection && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy && !normalTurnTargetActionAuthorized || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
           </div>
           <div data-action-slot="primary">
             {sharedDyingPeachAvailable && consolePrimaryId === "shared-dying-peach" && <button className="primary" data-shared-dying-peach-confirm="true" disabled={busy || presentationBusy || !sharedDyingPeachSelectionComplete || !canUseAction(room.currentAction, "respond") || !consoleDecision.primary?.enabled} onClick={() => { if (sharedDyingPeachOption) void submitResponseProvider(sharedDyingPeachOption); }}>{busy ? "Confirming…" : "Confirm"}</button>}
@@ -13729,13 +13726,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !ordinaryTurnActionAuthorized("trigger") || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => { if (ordinaryTurnActionAuthorized("trigger") && activeSkillSubmission) void submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission)); }}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || !ordinaryTurnActionAuthorized("serpent_spear_attack") || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || !ordinaryTurnPlayAuthorized || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play")}</button>}
+            {ordinaryTurnCardActionAuthorized && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={busy || !canDeclareAttack && (serpentMode || selectedCanPlayAsAttack) || serpentMode && (serpentSelected.length !== 2 || !attackTargetsValid) || !serpentMode && (!card || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation")) || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : turnConversionPrecommitControls?.primaryLabel ?? (normalTargetSelectionActive ? "Confirm" : "Play")}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(busy ? "Skipping…" : "Skip")} disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName("Skip")} disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
             {canRespond && consoleDecision.authoritativeDecline && <button className={gameplayDeclineButtonClassName(responseDeclineLabel)} disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end"
+            {ordinaryTurnEndAuthorized && consoleKind === "turn" && <button ref={endTurnConfirmationButtonRef} className="end"
               data-end-turn-block-reason={busy ? "gameplay-request-busy"
                 : !canUseAction(room.currentAction, "end_turn") ? "end-turn-not-in-current-action-legal-actions"
                   : endTurnConfirmationAuthorizationReason ?? "ready"}
