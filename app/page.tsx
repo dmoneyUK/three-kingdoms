@@ -61,13 +61,13 @@ import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodg
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 import { compactLustDuelOrderMessage, compactLustDuelResultMessage } from "./lust-public-copy";
 import { publicHeroCostAnnouncementLifecycle } from "../game/public-hero-cost-lifecycle";
-import { canClearPublicJourneyOwnership, selectCanonicalPublicDiscardOwner, selectPublicAnnouncementCandidate, selectPublicCardActionForCursor } from "../game/public-announcement";
+import { canClearPublicJourneyOwnership, selectPublicAnnouncementCandidate, selectPublicCardActionForCursor } from "../game/public-announcement";
 import { duelExchangeAttackNarration, selectDuelPublicStageOwner } from "../game/duel-public-stage-owner";
 import { isCommittedPublicEquipmentPlay, publicEquipmentArrivalCompletionMatches, publicEquipmentCardDisplayAction, routePublicEquipmentTransition } from "./public-equipment-transition";
 import { isM3JudgementTransitionEvent, publicCardRevealCompletionFromCommittedEvent, publicJudgementReplacementOwnsActiveTimer, publicJudgementReplacementRevealCompletion, publicJudgementTransitionMatches, publicJudgementTransitionSourceEventId, publicJudgementTransitionUsesCompletedPriorReveal, publicJudgementTransitionUsesExistingRevealOwner, routePublicJudgementReveal, routePublicJudgementTransition, type PublicCardRevealCompletion, type PublicJudgementRevealRoute } from "./public-judgement-transition";
 import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-group-response-routing";
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
-import { canonicalPublicDiscardActionOwnerCandidate, canonicalPublicDiscardTransitionOwnerCandidate, publicDiscardActionCandidate } from "./public-discard-presentation-owner";
+import { resolveCanonicalPublicDiscardPresentation } from "./public-discard-presentation-owner";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
 import { layoutPublicResultCards } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
@@ -10378,15 +10378,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !(action.rootEventId === prodigalHealerCostFrameCandidate?.costEvent.id
       && prodigalHealerAnnouncementLifecycle.status === "superseded"))
     .map((action) => withCanonicalPublicDiscardCopy(action) ?? action);
-  const heroPublicDiscardActionCandidates = heroPublicCardEffectFrameActionCandidates
-    .filter((action) => publicDiscardActionCandidate(action, room.presentationSnapshot?.publicCardEffects ?? [], excludedCanonicalDiscardEventIds));
-  const latestHeroPublicCardEffectFrameAction = heroPublicCardEffectFrameActionCandidates
-    .filter((action) => !publicDiscardActionCandidate(action, room.presentationSnapshot?.publicCardEffects ?? [], excludedCanonicalDiscardEventIds))
-    .reduce<PublicCardDisplayAction | null>((latest, action) => {
-      if (!latest) return action;
-      return room.timeline.findIndex((event) => event.id === action.rootEventId)
-        > room.timeline.findIndex((event) => event.id === latest.rootEventId) ? action : latest;
-    }, null);
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
     key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
       lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
@@ -10870,11 +10861,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ?? nonHeroLivePublicCardActionAfterAcquisition;
   }
   const nonHeroPublicCardActionCandidate = withCanonicalPublicDiscardCopy(selectNonHeroLivePublicCardAction());
-  const nonHeroActionIsDiscard = Boolean(nonHeroPublicCardActionCandidate
-    && publicDiscardActionCandidate(nonHeroPublicCardActionCandidate, room.presentationSnapshot?.publicCardEffects ?? [], excludedCanonicalDiscardEventIds));
-  const nonHeroActionHasDismantleDiscard = Boolean(nonHeroPublicCardActionCandidate?.settlement?.outcome === "DISMANTLE_RESOLVED"
-    && nonHeroPublicCardActionCandidate.settlement.targetCardMovement?.destinationZone === "discard");
-  const nonHeroLivePublicCardAction = nonHeroActionIsDiscard ? null : nonHeroPublicCardActionCandidate;
   const publicCardActionCheckpointEventId = (action: PublicCardDisplayAction) =>
     action.publicNegationNarration?.latestCommittedEventId
     ?? action.settlement?.eventId
@@ -10883,58 +10869,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ?? action.publicCardEffectFrame?.eventId
     ?? action.rootEventId;
   const publicH4PresentationCursor = activeEvent ?? eventQueue[0] ?? null;
-  const canonicalDiscardLifecycle = (
-    eventId: string,
-    action?: PublicCardDisplayAction,
-  ) => {
-    const seen = publicCardJourneySeenEventIds.has(eventId)
-      || Boolean(action?.rootEventId && publicCardJourneySeenEventIds.has(action.rootEventId));
-    const motion = action?.motion;
-    const freshEventIds = motion && "freshEventIds" in motion ? motion.freshEventIds : [];
-    const fresh = !seen && Boolean(freshEventIds?.includes(eventId)
-      || action?.rootEventId && freshEventIds?.includes(action.rootEventId));
-    return {
-      fresh,
-      seen,
-      phase: publicH4PresentationCursor?.id === eventId ? "ACTIVE_CURSOR" as const : "QUEUED_CURSOR" as const,
-    };
-  };
-  const publicDiscardOwnerCandidates = [
-    ...heroPublicDiscardActionCandidates,
-    ...((nonHeroActionIsDiscard || nonHeroActionHasDismantleDiscard) && nonHeroPublicCardActionCandidate
-      ? [nonHeroPublicCardActionCandidate] : []),
-  ].flatMap((action) => {
-    const eventId = action.publicCardEffectFrame?.eventId ?? action.settlement?.eventId;
-    const presentation = eventId ? canonicalPublicDiscardPresentationByEvent.get(eventId) : undefined;
-    const candidate = canonicalPublicDiscardActionOwnerCandidate(action, presentation?.settlement, presentation?.copy,
-      room.presentationSnapshot?.publicCardEffects ?? [], eventId ? canonicalDiscardLifecycle(eventId, action) : {
-        fresh: false, seen: false, phase: "QUEUED_CURSOR",
-      });
-    return candidate ? [candidate] : [];
+  const canonicalPublicDiscardPresentationSelection = resolveCanonicalPublicDiscardPresentation({
+    cursorEventId: publicH4PresentationCursor?.id,
+    heroActions: heroPublicCardEffectFrameActionCandidates,
+    nonHeroAction: nonHeroPublicCardActionCandidate,
+    timelineEventIds: publicAnnouncementTimelineEventIds,
+    effects: room.presentationSnapshot?.publicCardEffects ?? [],
+    excludedEventIds: excludedCanonicalDiscardEventIds,
+    presentationsByEvent: canonicalPublicDiscardPresentationByEvent,
+    journeySeenEventIds: publicCardJourneySeenEventIds,
+    presentedTransitionEventIds: presentedEventIds,
+    activeTransition: activePublicDiscardTransition,
   });
-  const transitionDiscardOwnerCandidate = activePublicDiscardTransition
-    ? canonicalPublicDiscardTransitionOwnerCandidate(activePublicDiscardTransition,
-      canonicalPublicDiscardPresentationByEvent.get(activePublicDiscardTransition.eventId)?.settlement,
-      {
-        fresh: !presentedEventIds.has(activePublicDiscardTransition.eventId),
-        seen: presentedEventIds.has(activePublicDiscardTransition.eventId),
-        phase: publicH4PresentationCursor?.id === activePublicDiscardTransition.eventId ? "ACTIVE_CURSOR" : "QUEUED_CURSOR",
-      })
-    : null;
-  const canonicalPublicDiscardOwnerCandidate = selectCanonicalPublicDiscardOwner(
-    publicH4PresentationCursor?.id,
-    [...publicDiscardOwnerCandidates, transitionDiscardOwnerCandidate],
-  );
-  const canonicalPublicDiscardOwner = canonicalPublicDiscardOwnerCandidate;
-  const canonicalDiscardActionOwner = canonicalPublicDiscardOwner?.kind === "effect-frame"
-    || canonicalPublicDiscardOwner?.kind === "dismantle-adapter"
-    ? canonicalPublicDiscardOwner.action
-    : null;
+  const canonicalPublicDiscardOwner = canonicalPublicDiscardPresentationSelection.owner;
+  const canonicalDiscardActionOwner = canonicalPublicDiscardPresentationSelection.actionOwner;
   const publicCardActionCursorSelection = selectPublicCardActionForCursor({
     cursorEvent: publicH4PresentationCursor,
     canonicalDiscardOwner: canonicalDiscardActionOwner,
-    nonHeroAction: nonHeroLivePublicCardAction,
-    latestHeroAction: latestHeroPublicCardEffectFrameAction,
+    nonHeroAction: canonicalPublicDiscardPresentationSelection.nonDiscardAction,
+    latestHeroAction: canonicalPublicDiscardPresentationSelection.latestNonDiscardHeroAction,
     checkpointEventId: publicCardActionCheckpointEventId,
     timelineEventIds: publicAnnouncementTimelineEventIds,
     laterPublicPlayEventIds: laterPublicCardPlayEventIds,

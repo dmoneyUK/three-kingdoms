@@ -39,6 +39,36 @@ export type CanonicalPublicDiscardRenderOwner =
   | { kind: "effect-frame" | "dismantle-adapter"; action: PublicCardDisplayAction; descriptor: CanonicalPublicDiscardDescriptor }
   | { kind: "ordinary-transition"; route: PublicDiscardTransitionRoute; descriptor: CanonicalPublicDiscardDescriptor };
 
+export type CanonicalPublicDiscardPresentation = {
+  settlement: CanonicalPublicDiscardSettlement;
+  copy: PublicDiscardSettlementCopy;
+};
+
+export type CanonicalPublicDiscardPresentationSelection = {
+  owner: CanonicalPublicDiscardRenderOwner | null;
+  actionOwner: PublicCardDisplayAction | null;
+  nonDiscardAction: PublicCardDisplayAction | null;
+  latestNonDiscardHeroAction: PublicCardDisplayAction | null;
+};
+
+/** Prefer the most specific already-proven visual role; duplicate owners at that role fail closed. */
+export function selectCanonicalPublicDiscardRenderOwner(
+  cursorEventId: string | null | undefined,
+  candidates: readonly (CanonicalPublicDiscardOwnerCandidate<CanonicalPublicDiscardRenderOwner> | null | undefined)[],
+): CanonicalPublicDiscardRenderOwner | null {
+  if (!cursorEventId) return null;
+  const due = candidates.filter((candidate): candidate is CanonicalPublicDiscardOwnerCandidate<CanonicalPublicDiscardRenderOwner> => candidate !== null
+    && candidate !== undefined && candidate.eventId === cursorEventId
+    && candidate.orderedPhysicalCardIds.length > 0
+    && candidate.orderedPhysicalCardIds.every((id) => typeof id === "string" && id.trim().length > 0)
+    && new Set(candidate.orderedPhysicalCardIds).size === candidate.orderedPhysicalCardIds.length);
+  for (const kind of ["effect-frame", "dismantle-adapter", "ordinary-transition"] as const) {
+    const roleOwners = due.filter((candidate) => candidate.owner.kind === kind);
+    if (roleOwners.length > 0) return roleOwners.length === 1 ? roleOwners[0].owner : null;
+  }
+  return null;
+}
+
 function descriptorFor(input: {
   settlement: CanonicalPublicDiscardSettlement;
   visualRole: CanonicalPublicDiscardDescriptor["visualRole"];
@@ -94,6 +124,69 @@ export function publicDiscardActionCandidate(
     && effect.effectClass !== "CONVERSION" && effect.effectClass !== "JUDGEMENT"
     && !excludedPresentationEventIds.has(effect.eventId)
     && effect.materials.some((material) => material.toZone === "DISCARD"));
+}
+
+/** Resolve all canonical discard display ownership outside the React render path. */
+export function resolveCanonicalPublicDiscardPresentation(input: {
+  cursorEventId?: string | null;
+  heroActions: readonly PublicCardDisplayAction[];
+  nonHeroAction?: PublicCardDisplayAction | null;
+  timelineEventIds: readonly string[];
+  effects: readonly PresentationSnapshotPublicCardEffect[];
+  excludedEventIds?: ReadonlySet<string>;
+  presentationsByEvent: ReadonlyMap<string, CanonicalPublicDiscardPresentation>;
+  journeySeenEventIds: ReadonlySet<string>;
+  presentedTransitionEventIds: ReadonlySet<string>;
+  activeTransition?: PublicDiscardTransitionRoute | null;
+}): CanonicalPublicDiscardPresentationSelection {
+  const excludedEventIds = input.excludedEventIds ?? new Set<string>();
+  const isDismantleDiscard = (action: PublicCardDisplayAction) => action.settlement?.outcome === "DISMANTLE_RESOLVED"
+    && action.settlement.targetCardMovement?.destinationZone === "discard";
+  const isDiscardAction = (action: PublicCardDisplayAction) => isDismantleDiscard(action)
+    || publicDiscardActionCandidate(action, input.effects, excludedEventIds);
+  const discardHeroActions = input.heroActions.filter(isDiscardAction);
+  const nonDiscardHeroActions = input.heroActions.filter((action) => !isDiscardAction(action));
+  const latestNonDiscardHeroAction = nonDiscardHeroActions.reduce<PublicCardDisplayAction | null>((latest, action) => {
+    if (!latest) return action;
+    return input.timelineEventIds.indexOf(action.rootEventId) > input.timelineEventIds.indexOf(latest.rootEventId) ? action : latest;
+  }, null);
+  const nonHeroIsDiscard = input.nonHeroAction ? isDiscardAction(input.nonHeroAction) : false;
+  const discardActions = [...discardHeroActions, ...(nonHeroIsDiscard && input.nonHeroAction ? [input.nonHeroAction] : [])];
+  const cursorEventId = input.cursorEventId ?? null;
+  const candidates = discardActions.flatMap((action) => {
+    const eventId = action.publicCardEffectFrame?.eventId ?? action.settlement?.eventId;
+    const presentation = eventId ? input.presentationsByEvent.get(eventId) : undefined;
+    if (!eventId || !presentation) return [];
+    const seen = input.journeySeenEventIds.has(eventId)
+      || Boolean(action.rootEventId && input.journeySeenEventIds.has(action.rootEventId));
+    const motion = action.motion;
+    const freshEventIds = motion && "freshEventIds" in motion ? motion.freshEventIds : [];
+    const lifecycle: CanonicalPublicDiscardLifecycle = {
+      fresh: !seen && Boolean(freshEventIds?.includes(eventId)
+        || action.rootEventId && freshEventIds?.includes(action.rootEventId)),
+      seen,
+      phase: cursorEventId === eventId ? "ACTIVE_CURSOR" : "QUEUED_CURSOR",
+    };
+    const candidate = canonicalPublicDiscardActionOwnerCandidate(action, presentation.settlement, presentation.copy,
+      input.effects, lifecycle);
+    return candidate ? [candidate] : [];
+  });
+  const transition = input.activeTransition;
+  const transitionCandidate = transition
+    ? canonicalPublicDiscardTransitionOwnerCandidate(transition, input.presentationsByEvent.get(transition.eventId)?.settlement, {
+      fresh: !input.presentedTransitionEventIds.has(transition.eventId),
+      seen: input.presentedTransitionEventIds.has(transition.eventId),
+      phase: cursorEventId === transition.eventId ? "ACTIVE_CURSOR" : "QUEUED_CURSOR",
+    })
+    : null;
+  const owner = selectCanonicalPublicDiscardRenderOwner(cursorEventId, [...candidates, transitionCandidate]);
+  const actionOwner = owner?.kind === "effect-frame" || owner?.kind === "dismantle-adapter" ? owner.action : null;
+  return {
+    owner,
+    actionOwner,
+    nonDiscardAction: nonHeroIsDiscard ? null : input.nonHeroAction ?? null,
+    latestNonDiscardHeroAction,
+  };
 }
 
 /** Build the display owner only when an existing adapter matches the full normalized discard proof. */
