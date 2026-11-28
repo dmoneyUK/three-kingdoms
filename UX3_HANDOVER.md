@@ -2,11 +2,12 @@
 
 ## Current state
 
-- Authority: UX3-D18 (`a067415ec9430569c44ed62abe8f6ca43067a138`) and UX3-AUTO-04. Owner resumed the ordered FE-01R → FE-06 batch; no intermediate Manager wait was required.
+- Authority: UX3-D19 (`f5971f6cf30df4ab174d423ab713451c19cfb140`) and UX3-AUTO-04. Owner authorized the ordered FE-07A → FE-07B → FE-08 → FE-09 → FE-10 → FE-11 batch without intermediate acceptance.
 - Isolated worktree: `/Users/jingedai/.codex/worktrees/ux3-env-01a`, branch `ux3`. UX2 and AI workspaces/branches were not edited.
-- **FE-01R through FE-06 reached their technical gates. FE-06 exact-SHA CI and the authorized shared deployment passed on attempt 7 of run `46177226627`. The batch is complete and awaits independent UX3 Manager acceptance; no Owner visual/device acceptance is claimed.**
-- Next bounded task: independent UX3 Manager review and acceptance of the completed FE-01R → FE-06 batch. No additional implementation task is selected.
-- The Agent did not run local UI, browser, screenshot, or device checks. CI Browser Smoke remained enabled. No D1 migration was run.
+- FE-01R through FE-06 previously reached their reported technical gates; FE-06 shared deployment is recorded below. Independent source review and unified acceptance remain pending.
+- **Current bounded task: FE-07A.** A test-only, failure-path diagnostic is prepared in `tests/browser/room-creation-real-gameplay.spec.mjs`; exact-SHA CI is pending. It preserves prior assertions, selectors, and timeout settings. No product source was changed.
+- FE-03 and FE-06 CI logs repeat the missing `Select` button at line 58. Their error-context/trace paths were named in job logs but no run artifacts were available to inspect; passing retries do not establish an infrastructure cause. The new diagnostic reports sanitized API projection summaries, redacted viewer/action seat ordinals, UI counts/flags, render error categories, and filtered existing gateway trace stages. Gateway epoch/generation are private and not exposed by that browser trace; this limitation is emitted explicitly rather than inferred.
+- The Agent has not run local UI, browser, screenshot, or device checks. CI Browser Smoke remains enabled. No D1 migration was run.
 
 ## Batch evidence
 
@@ -29,3 +30,10 @@
 - Final SHA exact CI attempts 1–6 had intermittent Browser Smoke failures; attempt 4 also had API `fetch failed` errors. The Browser Smoke issue is pre-existing on FE-03 SHA `e48c2fc` (run `46171689203`, attempt 1) at the same test line; that SHA later passed on attempt 3. On final SHA, attempt 7 passed all five jobs. Counts: lint/fast 644/644, staging guard 52/52, API 397/397, Browser Smoke 3 passed plus 1 flaky test that passed on retry. The exact test is `tests/browser/room-creation-real-gameplay.spec.mjs:58`; logs show the `Select` button absent on its first try. This supports an intermittent test failure, not a proven source cause.
 - Attempt 7 deployed the shared Worker from exact source SHA `7b7f54456f18e0e47ea493755ed15ed2cb0a5c25`, returning version `b34e8067-7dc0-46d8-9fd7-cd8188aa7a13`; Worker binding was `three-kingdoms-db`, root and `/api/health` smoke requests succeeded, and no migration ran. The page exposed no build-SHA marker, so no independent live-SHA readback is claimed.
 - Remaining `GameRoom` and `PublicCardDisplay` container decomposition is explicitly unfinished, per FE-06 contract.
+
+## D19 second batch progress
+
+| Unit | Source / evidence | State |
+| --- | --- | --- |
+| FE-07A | Test-only failure-path sanitized diagnostics prepared; syntax and `git diff --check` pass. Source commit and exact-SHA CI pending. | In progress; diagnose before FE-07B |
+| FE-07B → FE-11 | Not started. | Ordered behind FE-07A evidence |
