@@ -1,22 +1,25 @@
 # UX3 Handover
 
-## Latest delivery — incremental UX2 sync
+## Latest delivery — UX3-BASELINE-02 final UX2 sync
 
-- Normal merge `67fc88c6ed5aa942884decef6c70d7cf0e5b8d15` brought UX2 tip `d24731abc11933aed3d283a079ed695299d15175` onto UX3 parent `23a23d42e0e1ea3bd2a7dcd986acfe6f0848e367`. The earlier pinned UX2 baseline `fffd4d91f8a199a849dbc82ed49be2b0ace103f6` remains in history through merge `6130f24cc37a4b3ce5e890cee887393af519ee3c`.
-- Latest UX2 code SHA in this batch: `4232d5fae439549d838c806127e3f84962930035`. Its exact-SHA UX2 Actions run [45992980780](https://github.com/dmoneyUK/three-kingdoms/actions/runs/45992980780) succeeded. The two later commits through `d24731ab` changed only `docs/UX2-refine.md`.
-- The merge brought 67 incoming paths with no merge conflicts. `tests/run-fast-tests.mjs` retains UX2 tests and the UX3 staging-config guard. `git diff --check` passed after trimming two extra EOF blank lines from imported files.
+- UX3 starting parent: `7181cfa468de902e89529ad8c1cd2b1257ebd6f3` (D12 plus D13 design updates). Pinned UX2 source and incoming merge parent: `82de25990edc51e957a34ed3303005558ac5cbae`, committed 2026-11-28 11:00:34 UTC. Common ancestor: `d24731abc11933aed3d283a079ed695299d15175`.
+- Normal merge `899fa260529ff10af98c960e3c43803c139f7318` has those exact two parents. It imports the pinned 49-path UX2 diff with no merge conflicts. `tests/run-fast-tests.mjs` matches the pinned source plus one UX3 staging-guard registration after `tests/wrangler-worker-supervisor.test.mjs`. The prior UX2 baseline `fffd4d91` and merge `6130f24c` remain in history.
+- UX3 Wrangler, staging verifier/tests, CI-only workflow, deploy workflow, and D12/D13 documents match the pre-merge UX3 parent. The imported `AGENTS.md` task-ID commit convention is followed by the merge and this handover commit.
 
-## Exact-SHA UX3 validation
+## Validation
 
-[UX3 CI run 46003328045](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46003328045), head SHA `67fc88c6ed5aa942884decef6c70d7cf0e5b8d15`: **success**, all four jobs passed.
+[UX3 exact-SHA CI run 46141762056](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46141762056), head SHA `899fa260529ff10af98c960e3c43803c139f7318`: **success**, all four UX3 CI-only jobs passed.
 
-- UX3 staging config guard — **52/52** focused tests; generated staging build and sentinel guard passed.
-- Lint and fast tests — lint/build passed; fast tests **572/572** across 45 files.
-- API tests — **396/396** across 32 files and two shards (277.10 seconds).
-- Browser smoke — **4/4**.
+- Staging config guard: **52/52** tests; generated-config guard passed.
+- Lint/build and fast tests: passed; **584/584** fast tests across 46 files.
+- API: **397/397** across 32 files and two shards (252.59 seconds).
+- Browser smoke: **4/4**.
+- Local focused staging guard: **52/52**.
 
-The UX3 run used the CI-only workflow and had no deployment or migration job. This sync did not initiate a Cloudflare deployment, remote database migration, resource creation, or paid service. The upstream UX2 Actions run above belongs to its existing workflow, which includes its own deploy path; it was not triggered by this UX3 sync. The UX3 CI workflow, deploy workflow, Wrangler configuration, staging guard, and UX3 design/workflow/Manager documents were unchanged by the merge.
+`git diff --check` reports two trailing-space lines in the pinned upstream `docs/UX2-refine.md` (lines 1305 and 1435). That file was preserved exactly as required; the remaining merge paths pass the check. No UX2 Owner acceptance is inferred from these CI results. The UX2 Handover's pre-CI pending text is superseded only for technical CI status by exact-SHA run [46137818636](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46137818636) on `82de2599`: lint/fast **532/532**, API **397/397**, browser **4/4**. That pre-existing UX2 workflow also completed its own D1 migration, Worker deploy and production smoke; this UX3 sync did not trigger those operations.
+
+The UX3 run had no deployment or migration job. This task created no Cloudflare resources and initiated no deployment or remote migration. No UX2 or AI Player worktree/branch was modified.
 
 ## Current boundary
 
-**Next task: stop for independent UX3 Manager review and acceptance of this incremental sync and the previously delivered ENV-01A preparation.** Keep ENV-01B and FE-01 gated; do not dispatch them automatically. No UX2 or AI Player worktree/branch was written.
+**Next task: independent UX3 Manager review of BASELINE-02.** Verify the merge, exact-SHA CI, and reconcile current UX2 compatibility/Owner-status records per D13. Keep FE-01 blocked pending Manager release and re-pin; ENV-01B remains deferred; UX3-DEPLOY-01 remains blocked pending coordinated release. Stop here and await Manager acceptance.
