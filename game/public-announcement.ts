@@ -7,38 +7,50 @@ export type PublicAnnouncementCandidate<T> = {
   supersedeOnNewerPublicPlay?: boolean;
 };
 
-/** Select a proof-built card action only when its physical event owns the current presentation cursor. */
-export function selectPublicCardActionAtCursor<T extends { rootEventId: string }>(
+export type CanonicalPublicDiscardOwnerCandidate<T> = {
+  /** The exact server-committed discard event, not its parent play or later result. */
+  eventId: string;
+  /** Ordered physical material identity from the normalized public settlement. */
+  orderedPhysicalCardIds: readonly string[];
+  owner: T;
+};
+
+/**
+ * Select one already proof-normalized discard presentation owner at its exact
+ * committed event cursor. Ambiguous or malformed ownership fails closed.
+ */
+export function selectCanonicalPublicDiscardOwner<T>(
   cursorEventId: string | null | undefined,
-  candidates: readonly (T | null | undefined)[],
+  candidates: readonly (CanonicalPublicDiscardOwnerCandidate<T> | null | undefined)[],
 ): T | null {
   if (!cursorEventId) return null;
-  const due = candidates.filter((candidate): candidate is T => candidate?.rootEventId === cursorEventId);
-  return due.length === 1 ? due[0] : null;
+  const due = candidates.filter((candidate): candidate is CanonicalPublicDiscardOwnerCandidate<T> => candidate !== null
+    && candidate !== undefined && candidate.eventId === cursorEventId
+    && candidate.orderedPhysicalCardIds.length > 0
+    && candidate.orderedPhysicalCardIds.every((id) => typeof id === "string" && id.trim().length > 0)
+    && new Set(candidate.orderedPhysicalCardIds).size === candidate.orderedPhysicalCardIds.length);
+  return due.length === 1 ? due[0].owner : null;
 }
 
 /**
  * Selects a committed card presentation at the active event cursor, then
- * falls back to the existing timeline-ranked public announcement candidates.
- * Cursor-bound cost frames cannot re-enter through the older hero fallback.
+ * falls back to timeline-ranked non-discard public announcement candidates.
+ * Canonical discard ownership is resolved separately from a verified event
+ * plus ordered material descriptor and can never re-enter this fallback.
  */
 export function selectPublicCardActionForCursor<T extends { rootEventId: string }>(input: {
   cursorEvent?: { id: string } | null;
-  cursorActions: readonly (T | null | undefined)[];
+  canonicalDiscardOwner?: T | null;
   nonHeroAction?: T | null;
   latestHeroAction?: T | null;
-  canonicalDiscardAction?: T | null;
   checkpointEventId: (action: T) => string;
   timelineEventIds: readonly string[];
   laterPublicPlayEventIds?: readonly string[];
-  latestHeroPriority?: number;
 }): { cursorOwnedAction: T | null; latestAction: T | null } {
-  const cursorOwnedAction = selectPublicCardActionAtCursor(input.cursorEvent?.id, input.cursorActions);
-  if (cursorOwnedAction) return { cursorOwnedAction, latestAction: cursorOwnedAction };
+  if (input.canonicalDiscardOwner) {
+    return { cursorOwnedAction: input.canonicalDiscardOwner, latestAction: input.canonicalDiscardOwner };
+  }
 
-  const cursorBoundEventIds = new Set(input.cursorActions
-    .filter((action): action is T => Boolean(action))
-    .map((action) => action.rootEventId));
   const candidates: PublicAnnouncementCandidate<T>[] = [];
   if (input.nonHeroAction) candidates.push({
     value: input.nonHeroAction,
@@ -46,18 +58,12 @@ export function selectPublicCardActionForCursor<T extends { rootEventId: string 
     checkpointEventId: input.checkpointEventId(input.nonHeroAction),
     priority: 2,
   });
-  if (input.latestHeroAction && !cursorBoundEventIds.has(input.latestHeroAction.rootEventId)) candidates.push({
+  if (input.latestHeroAction) candidates.push({
     value: input.latestHeroAction,
     rootEventId: input.latestHeroAction.rootEventId,
     checkpointEventId: input.checkpointEventId(input.latestHeroAction),
-    priority: input.latestHeroPriority ?? 1,
+    priority: 1,
     supersedeOnNewerPublicPlay: true,
-  });
-  if (input.canonicalDiscardAction) candidates.push({
-    value: input.canonicalDiscardAction,
-    rootEventId: input.canonicalDiscardAction.rootEventId,
-    checkpointEventId: input.checkpointEventId(input.canonicalDiscardAction),
-    priority: 3,
   });
 
   return {

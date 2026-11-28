@@ -1,4 +1,4 @@
-import { publicH4CardFaceReference, publicH4CardSourceReference, publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
+import { publicH4CardFaceReference, publicH4Copy, type PublicH4Segment } from "../game/public-h4-copy";
 import type { CommittedPublicOutcome, PublicPhysicalZoneTransition, PublicPresentationEventFactDraft, PublicZoneEndpoint } from "../game/presentation-semantics";
 import { cardDefinition } from "../game/cards";
 import type { CardKind, CardRank, CardSuit } from "../game/model";
@@ -39,13 +39,6 @@ export type PublicDiscardAnnouncement = {
   actorId: string;
   order: number;
   count: number;
-  cards: readonly { id: string; name: string; rank: CardRank; suit: CardSuit }[] | null;
-  headline: string;
-  segments?: readonly PublicH4Segment[];
-  accessibleLabel: string;
-};
-
-export type PublicDiscardByActionAnnouncement = {
   cards: readonly { id: string; name: string; rank: CardRank; suit: CardSuit }[] | null;
   headline: string;
   segments?: readonly PublicH4Segment[];
@@ -246,34 +239,4 @@ export function publicDiscardAnnouncement(input: {
     : ` discarded ${count} ${count === 1 ? "card" : "cards"}.`;
   const { message: headline, segments } = publicH4Copy([{ id: event.actorId!, name: actor }, suffix]);
   return { eventId: event.id, actorId: event.actorId!, order: event.publicSequence!, count, cards: cardList, headline, segments, accessibleLabel: headline };
-}
-
-/** Formats one committed effect that makes its target's discarded cards public. */
-export function publicDiscardByActionAnnouncement(input: {
-  actor: { id: string; name: string };
-  materialOwner: { id: string; name: string };
-  actionLabel: string;
-  actionSourceKind?: "card" | "equipment" | "skill";
-  cards: readonly PublicDiscardCard[];
-}): PublicDiscardByActionAnnouncement | null {
-  const { actor, materialOwner, actionLabel, cards } = input;
-  if (!actor.id || !actor.name.trim() || !materialOwner.id || !materialOwner.name.trim()
-    || !actionLabel.trim() || !cards.length || cards.some((card) => !card.id || !card.kind)
-    || new Set(cards.map((card) => card.id)).size !== cards.length) return null;
-  const normalizedActionLabel = actionLabel.trim();
-  const cardList = publicDiscardCardFaces(cards);
-  const sourceLabel = input.actionSourceKind === "card"
-    ? publicH4CardSourceReference({ kind: "card", label: normalizedActionLabel }) ?? "a card"
-    : input.actionSourceKind === "equipment"
-      ? publicH4CardSourceReference({ kind: "equipment", label: normalizedActionLabel }) ?? "an equipment effect"
-      : input.actionSourceKind === "skill" ? normalizedActionLabel : "a public effect";
-  const count = cards.length;
-  const cardCopy = cardList ? `: ${publicDiscardCardList(cardList)}.` : ".";
-  const { message: headline, segments } = publicH4Copy([
-    { id: actor.id, name: actor.name.trim() },
-    ` used ${sourceLabel} to discard ${count} ${count === 1 ? "card" : "cards"} from `,
-    { id: materialOwner.id, name: materialOwner.name.trim() },
-    cardCopy,
-  ]);
-  return { cards: cardList, headline, segments, accessibleLabel: headline };
 }
