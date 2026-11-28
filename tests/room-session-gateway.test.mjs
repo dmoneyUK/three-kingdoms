@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { RoomCommandGateway } from "../app/room-session/room-command-gateway.ts";
+import { resolveTestControllerHeroViewer, RoomCommandGateway } from "../app/room-session/room-command-gateway.ts";
 
 function deferred() {
   let resolve;
@@ -368,6 +368,46 @@ test("viewer switch retires pending GET and publishes only the selected private 
   assert.equal(JSON.stringify(h.published).includes("old-private-card"), false);
 });
 
+test("non-test-room hero controller follows only the current controlled seat and returns to host", () => {
+  const host = { id: "host", isHost: true };
+  const seatTwo = { id: "test-seat-2", isTestPlayer: true };
+  const seatThree = { id: "test-seat-3", isTestPlayer: true };
+  const initial = room("ABCDE", "host", {
+    status: "heroes",
+    isTestController: true,
+    isTestRoom: false,
+    actionPlayerId: seatTwo.id,
+    players: [host, seatTwo, seatThree],
+  });
+
+  const first = resolveTestControllerHeroViewer(initial, "host", null);
+  assert.equal(first.targetViewerId, seatTwo.id);
+  assert.deepEqual(first.pendingReturn, { roomCode: "ABCDE", viewerId: "host" });
+
+  const next = resolveTestControllerHeroViewer({ ...initial, meId: seatTwo.id, actionPlayerId: seatThree.id }, seatTwo.id, first.pendingReturn);
+  assert.equal(next.targetViewerId, seatThree.id);
+  assert.deepEqual(next.pendingReturn, first.pendingReturn);
+
+  const sameViewer = resolveTestControllerHeroViewer({ ...initial, meId: seatThree.id, actionPlayerId: seatThree.id }, seatThree.id, next.pendingReturn);
+  assert.equal(sameViewer.targetViewerId, null);
+  assert.deepEqual(sameViewer.pendingReturn, next.pendingReturn);
+
+  const ended = resolveTestControllerHeroViewer({ ...initial, status: "playing", meId: seatThree.id }, seatThree.id, sameViewer.pendingReturn);
+  assert.equal(ended.targetViewerId, "host");
+  assert.deepEqual(ended.pendingReturn, sameViewer.pendingReturn);
+
+  const restored = resolveTestControllerHeroViewer({ ...initial, status: "playing", meId: "host" }, "host", ended.pendingReturn);
+  assert.equal(restored.targetViewerId, null);
+  assert.equal(restored.pendingReturn, null);
+
+  const testRoom = resolveTestControllerHeroViewer({ ...initial, isTestRoom: true }, "host", null);
+  assert.equal(testRoom.targetViewerId, null);
+  assert.equal(testRoom.pendingReturn, null);
+
+  const humanSelector = resolveTestControllerHeroViewer({ ...initial, actionPlayerId: "human-seat", players: [host, { id: "human-seat" }] }, "host", null);
+  assert.equal(humanSelector.targetViewerId, null, "a test controller never switches into a player outside its controlled roster");
+});
+
 test("TEST restore chooses the host gameplay view and hero advance follows the server-selected seat", async () => {
   let getCount = 0;
   let postCount = 0;
@@ -651,6 +691,9 @@ test("Home delegates transport and sole publication to the Gateway while retaini
   assert.match(home, /visibility-resume/);
   assert.match(home, /UI_TIMING\.hiddenPoll/);
   assert.match(home, /UI_TIMING\.activeGamePoll/);
+  assert.match(home, /resolveTestControllerHeroViewer\(room, sessionView\.viewerId, automaticHeroViewerReturnRef\.current\)/);
+  assert.match(home, /test-controller-hero-view/);
+  assert.match(home, /test-controller-host-restore/);
   assert.equal(home.includes("fetch(\"/api/rooms\""), false);
   assert.equal(home.includes("localStorage"), false);
   assert.equal(home.includes("new RoomPollRecovery"), false);

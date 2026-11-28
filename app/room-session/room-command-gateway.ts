@@ -14,8 +14,40 @@ export type RoomSessionRoom = {
   meId: string;
   status: string;
   isTestController?: boolean;
+  isTestRoom?: boolean;
+  actionPlayerId?: string | null;
   players?: readonly { id: string; isHost?: boolean; isTestPlayer?: boolean }[];
 };
+
+export type TestControllerHeroViewerReturn = Readonly<{ roomCode: string; viewerId: string }>;
+
+export function resolveTestControllerHeroViewer(
+  room: RoomSessionRoom | null,
+  viewerId: string | null,
+  pendingReturn: TestControllerHeroViewerReturn | null,
+): { targetViewerId: string | null; pendingReturn: TestControllerHeroViewerReturn | null } {
+  if (!room || room.isTestController !== true || room.isTestRoom === true) {
+    return { targetViewerId: null, pendingReturn: null };
+  }
+
+  const players = room.players ?? [];
+  const host = players.find((player) => player.isHost);
+  if (!host) return { targetViewerId: null, pendingReturn: null };
+
+  if (room.status === "heroes") {
+    const selector = players.find((player) => player.id === room.actionPlayerId);
+    const targetViewerId = selector && (selector.isHost || selector.isTestPlayer) ? selector.id : host.id;
+    return {
+      targetViewerId: targetViewerId === viewerId ? null : targetViewerId,
+      pendingReturn: { roomCode: room.code, viewerId: host.id },
+    };
+  }
+
+  const returnToHost = pendingReturn?.roomCode === room.code ? pendingReturn : null;
+  if (!returnToHost) return { targetViewerId: null, pendingReturn: null };
+  if (returnToHost.viewerId === viewerId) return { targetViewerId: null, pendingReturn: null };
+  return { targetViewerId: returnToHost.viewerId, pendingReturn: returnToHost };
+}
 
 export type RoomCommandGatewayCallbacks<TRoom extends RoomSessionRoom> = {
   onSessionChange?: (view: RoomSessionView, previous: RoomSessionView) => void;

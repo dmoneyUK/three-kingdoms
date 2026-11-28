@@ -75,7 +75,7 @@ import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-gr
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { resolveCanonicalPublicDiscardPresentation, type CanonicalPublicDiscardEffectFrameSeed } from "./public-discard-presentation-owner";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
-import { RoomCommandGateway, type RoomSessionView } from "./room-session/room-command-gateway";
+import { resolveTestControllerHeroViewer, RoomCommandGateway, type RoomSessionView, type TestControllerHeroViewerReturn } from "./room-session/room-command-gateway";
 import { RoomSessionStore, useRoomSessionSelector } from "./room-session/room-session-store";
 import { endTurnConfirmationScopeFor, useEndTurnConfirmation } from "./interaction/end-turn-confirmation";
 import { layoutPublicResultCards } from "./public-result-layout";
@@ -2718,6 +2718,7 @@ export default function Home() {
   const roomRef = useRef<Room | null>(null);
   const lastPublicCounterReadIdentity = useRef<string | null>(null);
   const pendingTestViewerFocusIdRef = useRef<string | null>(null);
+  const automaticHeroViewerReturnRef = useRef<TestControllerHeroViewerReturn | null>(null);
   const harvestCompletionWatcherRef = useRef<{ key: string; attempt: number; timer: number | null } | null>(null);
   const harvestCompletionRequestInFlightRef = useRef(false);
   const sharedResponseExpiryWatcherRef = useRef<{ key: string; attempt: number; inFlight: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
@@ -2787,6 +2788,22 @@ export default function Home() {
   }, [gateway, acceptPublicPresentationTurn, roomSessionStore]);
 
   const fetchRoom = useCallback((options: { viewerId?: string | null; forceFresh?: boolean; reason?: string } = {}) => gateway.refresh(options), [gateway]);
+
+  useEffect(() => {
+    if (!sessionView.active) {
+      automaticHeroViewerReturnRef.current = null;
+      return;
+    }
+    if (!room) return;
+    const resolution = resolveTestControllerHeroViewer(room, sessionView.viewerId, automaticHeroViewerReturnRef.current);
+    automaticHeroViewerReturnRef.current = resolution.pendingReturn;
+    if (!resolution.targetViewerId) return;
+    void fetchRoom({
+      viewerId: resolution.targetViewerId,
+      forceFresh: true,
+      reason: room.status === "heroes" ? "test-controller-hero-view" : "test-controller-host-restore",
+    });
+  }, [room, sessionView.active, sessionView.viewerId, fetchRoom]);
 
   const notePublicCounterReadVisible = useCallback((identity: string, durationMs = UI_TIMING.publicCounterRead, renew = false) => {
     if (!identity || (!renew && lastPublicCounterReadIdentity.current === identity)) return;
