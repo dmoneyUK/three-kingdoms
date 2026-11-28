@@ -1,4 +1,4 @@
-name: UX3 CI only
+name: UX3 CI and shared deploy
 
 on:
   push:
@@ -17,8 +17,8 @@ env:
   NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
   WRANGLER_SEND_METRICS: "false"
 
-# Owner-approved isolated validation. No deployment jobs, cloud credentials,
-# remote migrations, production smoke, or pull_request triggers.
+# Owner-approved shared Worker deployment after the complete UX3 CI gate.
+# UX3 never applies remote D1 migrations and has no pull_request deploy path.
 jobs:
   staging-config:
     if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
@@ -113,3 +113,52 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:browser:smoke
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ux3'
+    name: Deploy UX3 to shared Worker
+    needs: [staging-config, lint-fast, api, browser-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - name: Build the shared production Worker
+        run: npm run build
+      - name: Verify the generated shared target immediately before deploy
+        run: node scripts/verify-shared-deploy-config.mjs --config dist/server/wrangler.json
+      - name: Deploy shared Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+      - name: Smoke test shared Worker
+        env:
+          SHARED_URL: https://three-kingdoms.dai-jinge.workers.dev
+        run: |
+          set -eu
+          root_body="$(mktemp)"
+          health_body="$(mktemp)"
+          trap 'rm -f "$root_body" "$health_body"' EXIT
+          curl --fail --silent --show-error --location --max-time 20 "$SHARED_URL/" --output "$root_body"
+          curl --fail --silent --show-error --location --max-time 20 "$SHARED_URL/api/health" --output "$health_body"
+          marker="$(grep -oE 'data-build-sha="[^"]+"' "$root_body" | head -n 1 || true)"
+          if [ -n "$marker" ]; then
+            printf 'Live page build marker observed: %s\n' "$marker"
+            if [ "$marker" = "data-build-sha=\"$GITHUB_SHA\"" ]; then
+              echo "Live page marker matches this workflow SHA."
+            else
+              echo "Live page marker differs; another eligible branch may have deployed afterward."
+            fi
+          else
+            echo "No build marker was present on the landing page."
+          fi
