@@ -16,6 +16,8 @@ const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const publicCardDisplaySource = readFileSync(new URL("../app/public-card-display.tsx", import.meta.url), "utf8");
 const opponentPlayerCardSource = readFileSync(new URL("../app/components/game/opponent-player-card.tsx", import.meta.url), "utf8");
+const localPlayerDockSource = readFileSync(new URL("../app/components/game/local-player-dock.tsx", import.meta.url), "utf8");
+const heroPortraitSource = readFileSync(new URL("../app/components/game/hero-portrait.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
@@ -361,8 +363,8 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-decision-actor[^"]*"[^>]*data-player-anchor="p2"/);
   assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-active-resolver[^"]*"[^>]*data-player-anchor="p2"/);
   assert.doesNotMatch(semanticSeatHtml, /class="[^"]*player-square[^"]*selected-target[^"]*"[^>]*data-player-anchor="p2"/, "semantic active-target highlighting does not select a gameplay target");
-  assert.match(gameRoomSource, /isSelectedTarget \? "selected-target" : ""/);
-  assert.match(gameRoomSource, /interactionRoles\.isActiveTarget \? "interaction-seat-active-target" : ""/);
+  assert.match(opponentPlayerCardSource, /isSelectedTarget \? "selected-target" : ""/);
+  assert.match(opponentPlayerCardSource, /interactionRoles\.isActiveTarget \? "interaction-seat-active-target" : ""/);
   const localSourceOwnedSnapshot = {
     ...uxRoom.presentationSnapshot,
     stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
@@ -605,7 +607,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.ok(zhangLiao && zhouYu);
   const zhangLiaoHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhangLiao] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
   const zhouYuHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhouYu] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
-  assert.match(gameRoomSource, /"zhang-liao": "\/hero-zhang-liao\.jpg"/);
+  assert.match(heroPortraitSource, /"zhang-liao": "\/hero-zhang-liao\.jpg"/);
   assert.match(zhangLiaoHtml, /data-hero-art-id="zhang-liao"/);
   const zhangFei = STANDARD_HEROES.find((hero) => hero.id === "zhang-fei");
   const zhenJi = STANDARD_HEROES.find((hero) => hero.id === "zhen-ji");
@@ -848,7 +850,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-slot="armor"[^>]*aria-label="Armour slot"/);
   assert.match(html, /class="local-judgement-cards local-judgement-overlay"[^>]*data-judgement-layout="pending"/);
   assert.equal((html.match(/class="local-judgement-card-slot"/g) ?? []).length, 2, "Judgement renders only its two actual cards");
-  assert.match(gameRoomSource, /const judgementCardLayout = useMemo[\s\S]*Math\.max\(12, naturalStep\)/, "Judgement spacing overlaps dynamically");
+  assert.match(localPlayerDockSource, /const judgementCardLayout = useMemo[\s\S]*Math\.max\(12, naturalStep\)/, "Judgement spacing overlaps dynamically");
   assert.doesNotMatch(sequenceStyleSource, /local-judgement-stack \.local-zone-card:nth-child/);
   assert.match(html, /aria-label="View Blue Steel Sword details"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.match(html, /data-equipment-id="weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
@@ -862,7 +864,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="opponent-judgement-status" data-judgement-owner-id="p3"[\s\S]*data-judgement-id="opponent-judgement"/, "the real owner carries the Judgement marker inside the status bar");
   assert.doesNotMatch(html, /class="opponent-judgement-zone"|class="mini-zone-card judgement-mini"/, "no detached full-card Judgement rail remains on opponent Seats");
   assert.doesNotMatch(html, /class="opponent-card-zones"/, "the old portrait-overlay zone wrapper is removed");
-  assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
+  assert.match(localPlayerDockSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
   assert.equal((html.match(/class="local-hand-section"/g) ?? []).length, 1, "the hand is a distinct dock layout region");
   assert.equal((html.match(/class="turn-controls"/g) ?? []).length, 1, "the action row is a distinct dock layout region");
@@ -934,9 +936,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.local-hero-anchor\s*\{[^}]*position: relative;[^}]*overflow: visible;/);
   assert.match(sequenceStyleSource, /\.local-judgement-overlay\s*\{[^}]*position: absolute;[^}]*pointer-events: none;/);
   assert.match(sequenceStyleSource, /\.local-judgement-card-slot \.local-zone-card\s*\{\s*pointer-events: auto;/, "only the card controls receive pointer input over the portrait");
-  assert.match(gameRoomSource, /judgementCardLayout\.step - judgementCardWidth/);
-  assert.match(gameRoomSource, /hiddenCardIds\.has\(card\.id\)/, "in-flight Judgement cards retain their existing hidden-card behavior");
-  assert.doesNotMatch(gameRoomSource, /judgementCardLayout\.step - 34/);
+  assert.match(localPlayerDockSource, /judgementCardLayout\.step - judgementCardWidth/);
+  assert.match(localPlayerDockSource, /hiddenCardIds\.has\(card\.id\)/, "in-flight Judgement cards retain their existing hidden-card behavior");
+  assert.doesNotMatch(localPlayerDockSource, /judgementCardLayout\.step - 34/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
   const handViewportRule = sequenceStyleSource.match(/^\.local-hand-rail\s*\{([^}]*)\}/m)?.[1] ?? "";
   assert.match(handViewportRule, /top: calc\(-1 \* var\(--hand-lift-clearance\)\)/);
@@ -992,9 +994,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /player-square-3 \{[\s\S]*right: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "right opponent mirrors the left seat");
   assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "nonvisual discard flights keep their lower-middle anchor");
   assert.match(sequenceStyleSource, /\.game-shell \.play-center > \.draw-stack,[\s\S]*?\.game-shell \.play-center > \.discard-stack \{[^}]*width: 1px;[^}]*height: 1px;[^}]*opacity: 0;[^}]*pointer-events: none;/, "Deck/Discard geometry targets are tiny, invisible and noninteractive");
-  assert.match(gameRoomSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
-  assert.match(gameRoomSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-player-equipment-slot-owner=\{player\.id\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions keep a real owner-slot anchor without rendering fake equipped art");
-  assert.match(gameRoomSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
+  assert.match(opponentPlayerCardSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
+  assert.match(opponentPlayerCardSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-player-equipment-slot-owner=\{player\.id\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions keep a real owner-slot anchor without rendering fake equipped art");
+  assert.match(opponentPlayerCardSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
   assert.match(opponentPlayerCardSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");
   assert.match(sequenceStyleSource, /UX2 §10\.8\.2\.2 H2-G1[\s\S]*?\.game-shell \.player-board \.opponent-status-equipment-strip\s*\{[\s\S]*?flex: 0 0 20px[\s\S]*?data-seat-topology="side-column"[\s\S]*?\.opponent-status-equipment-strip\s*\{[\s\S]*?flex-basis: 18px/, "the final seat rules use a compact shared HP/equipment band at both top and side seats");
   assert.match(sequenceStyleSource, /\.opponent-seat-inspect-button\s*\{[\s\S]*?height: 44px[\s\S]*?background: transparent[\s\S]*?pointer-events: auto/, "target selection keeps a transparent 44px name-band Inspector hit target without a painted icon");
@@ -1003,7 +1005,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-judgement-status[\s\S]*\.opponent-judgement-indicators[\s\S]*display: flex/, "Judgement markers use the shared status band");
   assert.match(sequenceStyleSource, /@container opponent-status \(max-width: 82px\)[\s\S]*\.opponent-judgement-overflow \{ display: grid; \}/, "narrow Seats retain a bounded count summary");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
-  assert.match(gameRoomSource, /targetSelectionActive \? onTarget\(trigger\) : onInspect\(trigger\)/, "target selection takes priority over inspection while inspection retains its opener for focus return");
+  assert.match(opponentPlayerCardSource, /targetSelectionActive \? onTarget\(trigger\) : onInspect\(trigger\)/, "target selection takes priority over inspection while inspection retains its opener for focus return");
   // Inspect placement, projected public details, and concealed-hand redaction are behavior-tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
   // The seat Hero-info click behavior is also tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
   assert.match(sequenceStyleSource, /\.opponent-inspection-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "expanded public cards preserve aspect ratio");

@@ -46,7 +46,7 @@ import { attackDodgeResponseEventMatchesProof, publicCardPlayProvesEffectiveKind
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
 import { latestProvenPublicEventSequence, publicDismantleSettlementIdentityFromEvent, publicDismantleSettlementRetirementKey, publicDismantleSettlementRetirementReason } from "../game/public-target-card-settlement-lifecycle";
-import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
+import { buildDyingHandoffView, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type PresentationClientView } from "../game/presentation-client";
 import type { PresentationTransitionKind } from "../game/presentation-transition";
 import { createPresentationTransitionStore } from "./presentation/presentation-transition-store";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
