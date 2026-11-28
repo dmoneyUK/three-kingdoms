@@ -229,7 +229,15 @@ export function createPresentationTransitionStore(initialScope: PresentationTran
       }
 
       const nextIdentity = publicViewIdentity(nextView);
-      if (nextIdentity === acceptedIdentity) return false;
+      if (nextIdentity === acceptedIdentity) {
+        const presentation = buildPresentationTransition(acceptedView, nextView);
+        acceptedView = nextView;
+        if (snapshot.presentation.kind !== "NONE" && presentation.kind === "NONE") {
+          snapshot = { ...snapshot, presentation };
+          notify();
+        }
+        return false;
+      }
       const presentation = buildPresentationTransition(acceptedView, nextView);
       const transitions = buildAttackDodgePresentationTransitions(acceptedView, nextView);
       const unseenTransitions = transitions.filter((transition) => !transition.fresh || !observedEventIds.has(transition.eventId));

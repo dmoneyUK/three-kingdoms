@@ -197,6 +197,25 @@ test("deduplicates repeated identities while retaining a newer fact for a pendin
   assert.equal(updatedSnapshot.pendingAttackDodgeTransitions[0].proofKey, firstSnapshot.pendingAttackDodgeTransitions[0].proofKey);
 });
 
+test("private-only refresh clears a stale presentation transition without retiring pending public events", () => {
+  const store = createPresentationTransitionStore(scope, restView());
+  const attackView = activeView({ rootAction: attack() });
+  store.accept(scope, attackView);
+  assert.equal(store.getSnapshotFor(scope).presentation.kind, "INTERACTION_TRANSITION");
+
+  assert.equal(store.accept(scope, {
+    ...attackView,
+    hasLocalControl: true,
+    isLocalDecisionActor: true,
+    localActionRevision: "private-refresh",
+  }), false);
+  const snapshot = store.getSnapshotFor(scope);
+  assert.equal(snapshot.presentation.kind, "NONE");
+  assert.deepEqual(snapshot.pendingAttackDodgeTransitions.map(({ kind, eventId }) => ({ kind, eventId })), [
+    { kind: "ATTACK_COMMITTED", eventId: "attack-event" },
+  ]);
+});
+
 test("room/view switches and proof truncation reset or retire transitions without replay", () => {
   const store = createPresentationTransitionStore(scope, restView());
   const responseView = activeView({ attackDodgeResponses: [dodge()] });
