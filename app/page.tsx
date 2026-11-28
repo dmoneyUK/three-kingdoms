@@ -68,7 +68,7 @@ import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-gr
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { resolveCanonicalPublicDiscardPresentation, type CanonicalPublicDiscardEffectFrameSeed } from "./public-discard-presentation-owner";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
-import { RoomCommandGateway, type RoomCommandGatewayCallbacks, type RoomSessionView } from "./room-session/room-command-gateway";
+import { RoomCommandGateway, type RoomSessionView } from "./room-session/room-command-gateway";
 import { layoutPublicResultCards } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
@@ -2745,8 +2745,9 @@ export default function Home() {
     return true;
   }, []);
 
-  const [gateway] = useState(() => {
-    const callbacks: RoomCommandGatewayCallbacks<Room> = {
+  const [gateway] = useState(() => new RoomCommandGateway<Room>());
+  useLayoutEffect(() => {
+    gateway.setCallbacks({
       onSessionChange: (view) => {
         latestTurnPresentationScope.current = null;
         roomRef.current = null;
@@ -2792,9 +2793,8 @@ export default function Home() {
           [sessionToken, ...diagnosticRoom.myHand.map((card) => card.id)],
         ) as Record<string, unknown>);
       },
-    };
-    return new RoomCommandGateway<Room>({ callbacks });
-  });
+    });
+  }, [gateway, acceptPublicPresentationTurn]);
 
   const fetchRoom = useCallback((options: { viewerId?: string | null; forceFresh?: boolean; reason?: string } = {}) => gateway.refresh(options), [gateway]);
 

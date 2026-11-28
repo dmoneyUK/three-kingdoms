@@ -124,6 +124,25 @@ function fakeClock() {
   };
 }
 
+test("Home can attach callbacks to its stable Gateway before restoring a session", async () => {
+  const storage = memoryStorage({
+    "three-realms-session": JSON.stringify({ code: "ABCDE", token: "credential-secret", name: "Player One" }),
+  });
+  const published = [];
+  const gateway = new RoomCommandGateway({
+    fetcher: async () => json(room()),
+    normalize: (value) => value && typeof value === "object" ? value : null,
+    storage: () => storage,
+  });
+  gateway.setCallbacks({ onRoom: (value) => { published.push(value); return true; } });
+
+  const restored = await gateway.restoreSavedSession();
+
+  assert.equal(restored && restored.meId, "player-1");
+  assert.equal(published.length, 1);
+  assert.equal(published[0].myHand[0].id, "private-player-1");
+});
+
 test("same identity and generation coalesce one GET and publish once", async () => {
   const pending = deferred();
   let calls = 0;
@@ -472,6 +491,7 @@ test("Home delegates transport and sole publication to the Gateway while retaini
   const home = source.slice(source.indexOf("export default function Home()"), source.indexOf("\nfunction Brand()"));
   assert.match(home, /gateway\.command\(\{ action, name, code, extra, context, room: currentRoom \}\)/);
   assert.match(home, /gateway\.refresh\(options\)/);
+  assert.match(home, /gateway\.setCallbacks\(\{/);
   assert.match(home, /gateway\.expireInactiveRoom\(\)/);
   assert.match(home, /acceptPublicPresentationTurn\(nextRoom\)/);
   assert.match(home, /visibility-resume/);

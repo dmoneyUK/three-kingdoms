@@ -88,7 +88,7 @@ async function readJson<T>(response: Response): Promise<T> {
 export class RoomCommandGateway<TRoom extends RoomSessionRoom> {
   private readonly fetcher: typeof fetch;
   private readonly normalize: (value: unknown) => TRoom | null;
-  private readonly callbacks: RoomCommandGatewayCallbacks<TRoom>;
+  private callbacks: RoomCommandGatewayCallbacks<TRoom>;
   private readonly storage: NonNullable<RoomCommandGatewayOptions<TRoom>["storage"]>;
   private readonly now: () => number;
   private readonly setTimer: typeof setTimeout;
@@ -117,6 +117,10 @@ export class RoomCommandGateway<TRoom extends RoomSessionRoom> {
     this.setTimer = options.setTimer ?? setTimeout;
     this.clearTimer = options.clearTimer ?? clearTimeout;
     this.timeoutMs = options.timeoutMs ?? 15_000;
+  }
+
+  setCallbacks(callbacks: RoomCommandGatewayCallbacks<TRoom>): void {
+    this.callbacks = callbacks;
   }
 
   get view(): RoomSessionView {
