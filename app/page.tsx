@@ -2717,7 +2717,11 @@ export default function Home() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [connectionInterrupted, setConnectionInterrupted] = useState(false);
-  const [traceAvailable, setTraceAvailable] = useState(false);
+  const traceAvailable = useSyncExternalStore(
+    subscribeToAttackDodgeUxTraceActive,
+    hasAttackDodgeUxTrace,
+    getAttackDodgeUxTraceServerSnapshot,
+  );
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
   const latestTurnPresentationScope = useRef<PublicPresentationTurnViewer | null>(null);
@@ -2741,8 +2745,7 @@ export default function Home() {
     return true;
   }, []);
 
-  const gatewayRef = useRef<RoomCommandGateway<Room> | null>(null);
-  if (!gatewayRef.current) {
+  const [gateway] = useState(() => {
     const callbacks: RoomCommandGatewayCallbacks<Room> = {
       onSessionChange: (view) => {
         latestTurnPresentationScope.current = null;
@@ -2772,7 +2775,6 @@ export default function Home() {
         else if (category === "invalid-session") setError("This player session is no longer valid. Start or join another game below.");
         if (category !== "left") {
           stopAttackDodgeUxTrace("room-session-unavailable");
-          setTraceAvailable(hasAttackDodgeUxTrace());
         }
       },
       onSavedName: (savedName) => { if (savedName) setName(savedName); },
@@ -2791,13 +2793,8 @@ export default function Home() {
         ) as Record<string, unknown>);
       },
     };
-    gatewayRef.current = new RoomCommandGateway<Room>({
-      callbacks,
-    });
-  }
-  const gateway = gatewayRef.current;
-
-  useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
+    return new RoomCommandGateway<Room>({ callbacks });
+  });
 
   const fetchRoom = useCallback((options: { viewerId?: string | null; forceFresh?: boolean; reason?: string } = {}) => gateway.refresh(options), [gateway]);
 
@@ -2869,7 +2866,9 @@ export default function Home() {
     return gateway.command({ action, name, code, extra, context, room: currentRoom });
   }
 
-  sharedResponseExpiryAdvanceRef.current = () => send("advance_timers");
+  useLayoutEffect(() => {
+    sharedResponseExpiryAdvanceRef.current = () => send("advance_timers");
+  }, [send]);
 
   async function switchTestViewer(playerId: string) {
     const targetPlayer = room?.players.find((player) => player.id === playerId);
@@ -3073,7 +3072,6 @@ export default function Home() {
   function leave() {
     recordAttackDodgeUxTrace("game-user-left", { status: room?.status ?? null, phase: room?.phase ?? null });
     stopAttackDodgeUxTrace("player-left-game");
-    setTraceAvailable(hasAttackDodgeUxTrace());
     gateway.retire("left");
   }
 
