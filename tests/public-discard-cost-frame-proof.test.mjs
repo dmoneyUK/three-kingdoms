@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createPublicCardEffectFrameView } from "../app/public-card-display.tsx";
-import { canonicalPublicDiscardActionOwnerCandidate, canonicalPublicDiscardTransitionOwnerCandidate, publicDiscardActionCandidate, resolveCanonicalPublicDiscardPresentation, selectCanonicalPublicDiscardRenderOwner } from "../app/public-discard-presentation-owner.ts";
-import { attachCanonicalPublicDiscardCopy, verifiedRockCleavingAxeCostFrameForEvent, verifiedStauchnessCostFrameForEvent } from "../app/page.tsx";
+import { canonicalPublicDiscardTransitionOwnerCandidate, resolveCanonicalPublicDiscardPresentation, selectCanonicalPublicDiscardRenderOwner } from "../app/public-discard-presentation-owner.ts";
+import { verifiedRockCleavingAxeCostFrameForEvent, verifiedStauchnessCostFrameForEvent } from "../app/page.tsx";
 import { selectCanonicalPublicDiscardOwner, selectPublicCardActionForCursor } from "../game/public-announcement.ts";
 
 const axeOwner = { id: "axe-owner", name: "Axe Owner" };
@@ -126,7 +126,7 @@ test("Axe COST recorded as play retains both ordered materials without guessing 
     axeCards.map((card) => [card.id, axeOwner.id]));
 });
 
-test("effect-frame discard owner requires exact proof, ordered materials and owners", () => {
+test("canonical discard factory builds one proof-bound Frame Action and copy before cursor ownership", () => {
   const cards = [
     { id: "frame-card-1", kind: "Attack", rank: "8", suit: "♠" },
     { id: "frame-card-2", kind: "Peach", rank: "Q", suit: "♥" },
@@ -136,6 +136,7 @@ test("effect-frame discard owner requires exact proof, ordered materials and own
     semantics: "PROVEN", eventId, effectClass: "COST", activationOwnerId: axeOwner.id,
     rootEventId: "root-attack", rootResolutionId: "root-resolution",
     materials: cards.map((card) => ({ cardId: card.id, ownerId: axeOwner.id, fromZone: "HAND", toZone: "DISCARD" })),
+    cards,
   };
   const settlement = {
     semantics: "PROVEN", visibility: "PUBLIC", eventId, order: 12, rootEventId: "root-attack",
@@ -145,72 +146,46 @@ test("effect-frame discard owner requires exact proof, ordered materials and own
     presentation: "eligible",
   };
   const copy = { eventId, order: 12, cards: cards.map((card) => ({ ...card, name: card.kind })), headline: "Canonical discard copy.", accessibleLabel: "Canonical discard copy." };
-  const frameAction = {
-    rootEventId: eventId, publicDiscardSettlement: copy, cardLabel: "ROCK CLEAVING AXE · FORCE HIT",
-    publicCardEffectFrame: {
-      eventId, rootEventId: "root-attack", rootResolutionId: "root-resolution", activationOwnerId: axeOwner.id,
-      title: "ROCK CLEAVING AXE · FORCE HIT",
-      materials: cards.map((card) => ({ card, ownerId: axeOwner.id })),
-    },
+  const seed = {
+    effect, key: "axe-cost", sourceId: axeOwner.id, targetId: null, cardLabel: "ROCK CLEAVING AXE · FORCE HIT",
+    visualTitle: "ROCK CLEAVING AXE · FORCE HIT", motionScopeKey: "axe-cost", freshEventIds: [eventId],
+    ownerNamesById: { [axeOwner.id]: axeOwner.name },
   };
-  const lifecycle = { fresh: true, seen: false, phase: "ACTIVE_CURSOR" };
-
-  const owner = canonicalPublicDiscardActionOwnerCandidate(frameAction, settlement, copy, [effect], lifecycle);
-  assert.equal(owner?.eventId, eventId);
-  assert.deepEqual(owner?.orderedPhysicalCardIds, cards.map((card) => card.id));
-  assert.equal(owner?.owner.kind, "effect-frame");
-  assert.equal(owner?.owner.action, frameAction);
-  assert.equal(owner?.owner.descriptor.visualRole, "effect-frame");
-  assert.equal(owner?.owner.descriptor.visualTitle, "ROCK CLEAVING AXE · FORCE HIT");
-  assert.deepEqual(owner?.owner.descriptor.orderedPhysicalCardIds, cards.map((card) => card.id));
-  assert.deepEqual(owner?.owner.descriptor.lifecycle, lifecycle);
-  assert.equal(publicDiscardActionCandidate({ ...frameAction, publicDiscardSettlement: undefined }, [effect]), true,
-    "a committed discard remains excluded from non-discard fallback even when normalized proof is unavailable");
-  assert.equal(publicDiscardActionCandidate({ ...frameAction, publicDiscardSettlement: undefined }, [
-    { ...effect, effectClass: "CONVERSION" },
-  ]), false, "conversion materials retain their existing response renderer");
-  assert.equal(publicDiscardActionCandidate({ ...frameAction, publicDiscardSettlement: undefined }, [effect], new Set([eventId])), false,
-    "a normalized excluded play does not become a new discard presentation");
-  assert.equal(canonicalPublicDiscardActionOwnerCandidate({ ...frameAction, publicDiscardSettlement: undefined }, settlement, copy, [effect], lifecycle), null);
-  assert.equal(canonicalPublicDiscardActionOwnerCandidate(frameAction, settlement, copy, [{ ...effect, materials: [...effect.materials].reverse() }], lifecycle), null,
-    "reordered raw proof cannot claim the canonical renderer");
-  assert.equal(canonicalPublicDiscardActionOwnerCandidate(frameAction, { ...settlement, materials: settlement.materials.map((material) => ({ ...material, ownerId: damageSource.id })) }, copy, [effect], lifecycle), null,
-    "a mismatched material owner fails closed");
-  assert.equal(canonicalPublicDiscardActionOwnerCandidate(frameAction, { ...settlement, source: { ...settlement.source, providerId: "unexpected" } }, copy, [
-    { ...effect, source: { kind: "equipment", label: "Rock Cleaving Axe", providerId: "rock_cleaving_axe" } },
-  ], lifecycle), null, "a different committed effect source cannot claim the descriptor");
-
-  const selected = resolveCanonicalPublicDiscardPresentation({
-    cursorEventId: eventId,
-    heroActions: [frameAction],
-    timelineEventIds: [eventId],
-    effects: [effect],
-    presentationsByEvent: new Map([[eventId, { settlement, copy }]]),
-    journeySeenEventIds: new Set(),
-    presentedTransitionEventIds: new Set(),
+  const presentationsByEvent = new Map([[eventId, { settlement, copy }]]);
+  const select = (overrides = {}) => resolveCanonicalPublicDiscardPresentation({
+    cursorEventId: eventId, heroActions: [], effectFrameSeeds: [seed], timelineEventIds: [eventId], effects: [effect],
+    presentationsByEvent, journeySeenEventIds: new Set(), presentedTransitionEventIds: new Set(), ...overrides,
   });
-  assert.equal(selected.owner?.kind, "effect-frame");
-  assert.equal(selected.actionOwner, frameAction);
-  assert.equal(selected.latestNonDiscardHeroAction, null,
-    "a canonical discard frame cannot re-enter the non-discard Hero fallback");
+  const selected = select();
+  const owner = selected.owner;
+  assert.equal(owner?.descriptor.eventId, eventId);
+  assert.deepEqual(owner?.descriptor.orderedPhysicalCardIds, cards.map((card) => card.id));
+  assert.equal(owner?.kind, "effect-frame");
+  assert.equal(owner?.action, selected.actionOwner);
+  assert.equal(owner?.action.publicNotice, copy.headline);
+  assert.equal(owner?.action.ariaLabel, copy.accessibleLabel);
+  assert.ok(owner?.action.publicCardEffectFrame.accessibleLabel.endsWith(copy.accessibleLabel));
+  assert.equal(owner?.descriptor.visualRole, "effect-frame");
+  assert.equal(owner?.descriptor.visualTitle, "ROCK CLEAVING AXE · FORCE HIT");
+  assert.deepEqual(owner?.descriptor.orderedPhysicalCardIds, cards.map((card) => card.id));
+  assert.deepEqual(owner?.descriptor.lifecycle, { fresh: true, seen: false, phase: "ACTIVE_CURSOR" });
+  assert.equal(selected.latestNonDiscardHeroAction, null);
+
+  assert.equal(select({ effectFrameSeeds: [seed, seed] }).owner, null, "duplicate exact event owners fail closed");
+  assert.equal(select({ excludedEventIds: new Set([eventId]) }).owner, null, "excluded public outcomes cannot create a discard owner");
+  assert.equal(select({ effects: [{ ...effect, materials: [...effect.materials].reverse() }] }).owner, null,
+    "reordered projected proof cannot claim the canonical renderer");
+  assert.equal(select({ presentationsByEvent: new Map([[eventId, { settlement: {
+    ...settlement, materials: settlement.materials.map((material) => ({ ...material, ownerId: damageSource.id })),
+  }, copy }]]) }).owner, null, "a mismatched material owner fails closed");
   assert.equal(resolveCanonicalPublicDiscardPresentation({
-    cursorEventId: eventId,
-    heroActions: [frameAction, frameAction],
-    timelineEventIds: [eventId],
-    effects: [effect],
-    presentationsByEvent: new Map([[eventId, { settlement, copy }]]),
-    journeySeenEventIds: new Set(),
-    presentedTransitionEventIds: new Set(),
-  }).owner, null, "duplicate same-role frames fail closed");
-  assert.equal(resolveCanonicalPublicDiscardPresentation({
-    cursorEventId: "later-event",
-    heroActions: [frameAction],
-    timelineEventIds: [eventId, "later-event"],
-    effects: [effect],
-    presentationsByEvent: new Map([[eventId, { settlement, copy }]]),
-    journeySeenEventIds: new Set(),
-    presentedTransitionEventIds: new Set(),
+    cursorEventId: "later-event", heroActions: [], effectFrameSeeds: [seed], timelineEventIds: [eventId, "later-event"],
+    effects: [effect], presentationsByEvent, journeySeenEventIds: new Set(), presentedTransitionEventIds: new Set(),
   }).owner, null, "an older discard does not claim a later cursor");
+  assert.equal(resolveCanonicalPublicDiscardPresentation({
+    cursorEventId: eventId, heroActions: [], effectFrameSeeds: [seed], timelineEventIds: [eventId],
+    effects: [{ ...effect, effectClass: "CONVERSION" }], presentationsByEvent, journeySeenEventIds: new Set(), presentedTransitionEventIds: new Set(),
+  }).owner, null, "conversion materials remain outside canonical discard routing");
 
   const descriptor = { eventId, orderedPhysicalCardIds: cards.map((card) => card.id) };
   const ordinaryOwner = { kind: "ordinary-transition" };
@@ -252,45 +227,23 @@ test("ordinary discard and verified Dismantle use the shared owner descriptor", 
       targetCardMovement: { sourceZone: "hand", affectedCardOwnerId: damageSource.id, destinationZone: "discard", destinationOwnerId: null, affectedCardFace: card } },
   };
   const dismantleSettlement = { ...settlement, rootEventId: "dismantle-root", resolutionId: "dismantle-resolution", activationOwnerId: axeOwner.id };
-  const dismantleOwner = canonicalPublicDiscardActionOwnerCandidate(dismantleAction, dismantleSettlement, copy, [], lifecycle);
-  assert.equal(dismantleOwner?.owner.kind, "dismantle-adapter");
-  assert.equal(dismantleOwner?.owner.action, dismantleAction);
-  assert.equal(dismantleOwner?.owner.descriptor.visualTitle, "BURNING BRIDGE");
-  assert.equal(publicDiscardActionCandidate({ ...dismantleAction, publicDiscardSettlement: undefined }, []), false,
-    "the Dismantle root card remains an ordinary action while its target face uses the separate adapter");
-  assert.equal(publicDiscardActionCandidate(dismantleAction, []), false,
-    "attaching canonical target copy does not turn the Dismantle root action into a second discard renderer");
-  assert.equal(canonicalPublicDiscardActionOwnerCandidate(dismantleAction, { ...dismantleSettlement, eventId: "other-event" }, copy, [], lifecycle), null);
+  const selectedDismantle = resolveCanonicalPublicDiscardPresentation({
+    cursorEventId: eventId, heroActions: [], effectFrameSeeds: [], nonHeroAction: dismantleAction,
+    timelineEventIds: [eventId], effects: [], presentationsByEvent: new Map([[eventId, { settlement: dismantleSettlement, copy }]]),
+    journeySeenEventIds: new Set(), presentedTransitionEventIds: new Set(),
+  });
+  assert.equal(selectedDismantle.owner?.kind, "dismantle-adapter");
+  assert.equal(selectedDismantle.owner?.action.publicDiscardSettlement, copy);
+  assert.equal(selectedDismantle.owner?.descriptor.visualTitle, "BURNING BRIDGE");
+  assert.equal(selectedDismantle.nonDiscardAction, null,
+    "Dismantle's root action is not passed as a competing second discard renderer");
+  assert.equal(resolveCanonicalPublicDiscardPresentation({
+    cursorEventId: eventId, heroActions: [], effectFrameSeeds: [], nonHeroAction: dismantleAction,
+    timelineEventIds: [eventId], effects: [], presentationsByEvent: new Map([[eventId, { settlement: { ...dismantleSettlement, eventId: "other-event" }, copy }]]),
+    journeySeenEventIds: new Set(), presentedTransitionEventIds: new Set(),
+  }).owner, null, "mismatched normalized settlement cannot claim the Dismantle adapter");
 });
 
-test("the exact canonical discard copy is attached before H4 and Frame consume the action", () => {
-  const headline = "Xiahou Dun used Stauchness, causing Damage Source to discard 2 cards: [8♠ Attack] · [Q♥ Peach].";
-  const segments = [{ kind: "text", text: headline }];
-  const copy = { eventId: "stauchness-cost", order: 2, cards: stauchnessCards.map((card) => ({ ...card, name: card.kind })), headline,
-    segments, accessibleLabel: headline };
-  const settlement = {
-    semantics: "PROVEN", visibility: "PUBLIC", eventId: "stauchness-cost", order: 2,
-    affectedPlayerIds: [damageSource.id], source: { kind: "skill", label: "Stauchness" }, mode: "forced",
-    materials: stauchnessCards.map((card) => ({ card, physicalCardId: card.id, ownerId: damageSource.id, fromZone: "HAND", toZone: "DISCARD" })),
-    presentation: "eligible",
-  };
-  const presentations = new Map([[settlement.eventId, { settlement, copy }]]);
-  const oldCopy = "Xiahou Dun caused Damage Source to discard 2 cards.";
-  const action = {
-    key: "stauchness-cost", rootEventId: "stauchness-cost", publicNotice: oldCopy, ariaLabel: oldCopy,
-    publicCardEffectFrame: { eventId: "stauchness-cost", materials: stauchnessCards.map((card) => ({ card, ownerId: damageSource.id })), accessibleLabel: oldCopy },
-  };
-
-  const canonical = attachCanonicalPublicDiscardCopy(action, presentations);
-  assert.equal(canonical.publicNotice, headline);
-  assert.equal(canonical.ariaLabel, headline);
-  assert.equal(canonical.publicNoticeSegments, segments);
-  assert.equal(canonical.publicDiscardSettlement, copy);
-  assert.equal(canonical.publicCardEffectFrame.accessibleLabel, headline);
-  assert.equal(attachCanonicalPublicDiscardCopy({ ...action, publicCardEffectFrame: {
-    ...action.publicCardEffectFrame, materials: [...action.publicCardEffectFrame.materials].reverse(),
-  } }, presentations).publicNotice, oldCopy, "wrong material order does not receive another event's canonical copy");
-});
 
 test("discard proof and selected actions have one copy source, before cursor selection", () => {
   const source = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
@@ -298,11 +251,15 @@ test("discard proof and selected actions have one copy source, before cursor sel
   const proofBuilders = source.slice(source.indexOf("type VerifiedStauchnessCostFrameProof"), source.indexOf("type VerifiedKirinBowEffectFrameProof"));
   assert.doesNotMatch(proofBuilders, /h4Copy|publicH4Copy\(/);
   assert.doesNotMatch(source, /selectedPublicDiscardSettlement|canonicalDiscardFallbackAction|cursorActions:\s*\[stauchnessCostFrameAction/);
-  assert.match(ownerSource, /export function canonicalPublicDiscardActionOwnerCandidate\(/);
+  assert.match(ownerSource, /function canonicalEffectFrameAction\(/);
+  assert.doesNotMatch(ownerSource, /publicDiscardActionCandidate|canonicalPublicDiscardActionOwnerCandidate/);
+  assert.doesNotMatch(source, /attachCanonicalPublicDiscardCopy|withCanonicalPublicDiscardCopy/);
   assert.match(source, /resolveCanonicalPublicDiscardPresentation\(/,
     "the pure shared resolver keeps discard ownership analysis outside the React Hook control-flow graph");
-  assert.match(source, /const heroPublicCardEffectFrameActionCandidates = \[[\s\S]*?stauchnessCostFrameAction,[\s\S]*?rockCleavingAxeCostFrameAction,[\s\S]*?kirinBowDamageFrameAction \?\? kirinBowEffectFrameAction,[\s\S]*?frostSwordEffectFrameAction/,
-    "Stauchness, Axe, Kirin and Frost use the same canonical candidate/owner route");
+  assert.match(source, /const canonicalDiscardEffectFrameSeeds = \[[\s\S]*?stauchnessCostFrameSeed,[\s\S]*?rockCleavingAxeCostFrameSeed,[\s\S]*?kirinBowDamageFrameSeed \?\? kirinBowEffectFrameSeed,[\s\S]*?frostSwordEffectFrameSeed/,
+    "Stauchness, Axe, Kirin and Frost enter the shared canonical seed/factory route");
+  assert.doesNotMatch(source, /(?:prodigalHealer|divineWisdom|dauntless|betrothment|equilibrium|stauchness|rockCleavingAxe|kirinBow|frostSword|yinYangSwords)\w*FrameAction\s*:/,
+    "individual discard skills no longer build independent Frame Actions");
   assert.match(ownerSource, /selectCanonicalPublicDiscardRenderOwner\(/,
     "the shared router selects one exact proof-bound render role before visual rendering");
   assert.match(ownerSource, /latestNonDiscardHeroAction/,
@@ -310,7 +267,7 @@ test("discard proof and selected actions have one copy source, before cursor sel
   assert.match(source, /canonicalPublicDiscardPresentationByEvent\.get\(currentInteractionFact\.eventId\)\?\.copy/,
     "the current shared H4 receives canonical copy only for its exact committed discard event");
   assert.match(source, /const publicCardActionCursorSelection = selectPublicCardActionForCursor/);
-  assert.match(source, /ownerNamesById\[input\.effect\.activationOwnerId\]/,
+  assert.match(ownerSource, /seed\.ownerNamesById\[effect\.activationOwnerId\]/,
     "shared frame construction uses the verified owner's public name, not its internal ID");
   assert.match(ownerSource, /isDismantleDiscard/,
     "Dismantle target discard ownership is routed independently from its real root CardFace");
