@@ -5,8 +5,9 @@
 - Authority: UX3-D19 (`f5971f6cf30df4ab174d423ab713451c19cfb140`) and UX3-AUTO-04. Owner authorized the ordered FE-07A → FE-07B → FE-08 → FE-09 → FE-10 → FE-11 batch without intermediate acceptance.
 - Isolated worktree: `/Users/jingedai/.codex/worktrees/ux3-env-01a`, branch `ux3`. UX2 and AI workspaces/branches were not edited.
 - FE-01R through FE-06 previously reached their reported technical gates; FE-06 shared deployment is recorded below. Independent source review and unified acceptance remain pending.
-- **Current bounded task: FE-07A.** A test-only, failure-path diagnostic is prepared in `tests/browser/room-creation-real-gameplay.spec.mjs`; exact-SHA CI is pending. It preserves prior assertions, selectors, and timeout settings. No product source was changed.
-- FE-03 and FE-06 CI logs repeat the missing `Select` button at line 58. Their error-context/trace paths were named in job logs but no run artifacts were available to inspect; passing retries do not establish an infrastructure cause. The new diagnostic reports sanitized API projection summaries, redacted viewer/action seat ordinals, UI counts/flags, render error categories, and filtered existing gateway trace stages. Gateway epoch/generation are private and not exposed by that browser trace; this limitation is emitted explicitly rather than inferred.
+- **Current bounded task: FE-07B.** FE-07A source `ee6fb250636b0545229273ceec60056646edbcf0` passed exact-SHA CI run `46184558035` (5/5 jobs) and shared deployment; the deployed Worker version is `2a71c465-2b40-425a-85de-cc43b314fd80`. The browser job recorded one flaky test: first attempt failed and Playwright retry passed. No build marker was present for a live-SHA readback.
+- FE-07A diagnostics identify the concrete state behind the failure: status `heroes`; selected viewer seat 1; action seat 2; `isMyAction=false`; `myHeroOptionsCount=0`; UI correctly showed the waiting state with no selectable buttons, no connection interruption, and no render-error signal. The transient failure is therefore a test-controller viewer handoff gap, not evidence of an infrastructure outage or incorrect HeroSelection rendering. Existing Home only exposes viewer switching from GameRoom, so a controller can remain on the host projection during non-TEST-room hero selection. `isTestRoom=true` Hero assignment must retain its existing host-controlled sequencing. The filtered browser trace did not include Gateway epoch/generation; those private values remain explicitly unobserved.
+- FE-07B will follow the server-selected, host-controlled seat using a fresh viewer projection during this non-TEST-room hero phase and restore the host projection once that phase ends. It will not submit or replay a human action. Regression scope: same/changed viewer and host return plus the existing four-choice Browser Smoke with its current assertions/selectors/timing. FE-03/FE-06 earlier failures remain unexplained beyond their missing-Select symptom; FE-07A now provides the missing direct state evidence.
 - The Agent has not run local UI, browser, screenshot, or device checks. CI Browser Smoke remains enabled. No D1 migration was run.
 
 ## Batch evidence
@@ -35,5 +36,6 @@
 
 | Unit | Source / evidence | State |
 | --- | --- | --- |
-| FE-07A | Test-only failure-path sanitized diagnostics prepared; syntax and `git diff --check` pass. Source commit and exact-SHA CI pending. | In progress; diagnose before FE-07B |
-| FE-07B → FE-11 | Not started. | Ordered behind FE-07A evidence |
+| FE-07A | `ee6fb250636b0545229273ceec60056646edbcf0`; [run 46184558035](https://github.com/dmoneyUK/three-kingdoms/actions/runs/46184558035), attempt 1, 5/5 jobs; Browser Smoke 3 passed + 1 flaky (retry passed); shared Worker `2a71c465-2b40-425a-85de-cc43b314fd80`. Sanitized failure evidence: viewer seat 1, action seat 2, no private options, UI correctly waiting. | Technical gate passed; diagnosis complete |
+| FE-07B | Targeted test-controller hero viewer handoff and host return. | Current |
+| FE-08 → FE-11 | Not started. | Ordered after FE-07B |
