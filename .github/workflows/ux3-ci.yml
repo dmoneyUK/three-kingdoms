@@ -67,8 +67,16 @@ jobs:
         id: build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build
-      - name: Fast tests
+      - name: Run shared deploy config guard unit tests
+        id: shared-deploy-guard-tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.build.outcome == 'success' }}
+        run: node --test tests/shared-deploy-config.test.mjs
+      - name: Verify generated shared deploy target offline
+        id: shared-deploy-guard
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.build.outcome == 'success' }}
+        run: node scripts/verify-shared-deploy-config.mjs --config dist/server/wrangler.json
+      - name: Fast tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.build.outcome == 'success' && steps.shared-deploy-guard-tests.outcome == 'success' && steps.shared-deploy-guard.outcome == 'success' }}
         run: npm run test:fast
 
   api:

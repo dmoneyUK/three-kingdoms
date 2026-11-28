@@ -48,6 +48,7 @@ const fastTests = [
   "tests/public-card-effect-frame-view.test.mjs",
   "tests/wrangler-worker-supervisor.test.mjs",
   "tests/ux3-staging-config.test.mjs",
+  "tests/shared-deploy-config.test.mjs",
 ];
 
 // rendered-html exercises the built SSR bundle, so test:fast includes it when
