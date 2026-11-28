@@ -1323,6 +1323,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(skillButton().props["aria-pressed"], true);
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
   assert.ok(button(renderer, { children: "Skip" }).props.className.includes("wtk-card-pool-action--skip"));
   assert.ok(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.className.includes("card-pool-decision-footer__confirm"));
   assert.equal(button(renderer, { "aria-label": "Confirm Retaliation selection" }).props.children, "Confirm");
@@ -1615,7 +1616,7 @@ test("mounted GameRoom exposes semantic transition hooks without animation or pr
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: privateOnly, onRecover: () => {} }, React.createElement(renderGameRoom, { room: privateOnly, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "NONE");
 
-  const content = dyingRescueRoom({ actionRevision: "dying-rescue-2" });
+  const content = { ...dyingRescueRoom({ actionRevision: "dying-rescue-2" }), code: initial.code };
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: content, onRecover: () => {} }, React.createElement(renderGameRoom, { room: content, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "CONTENT_UPDATE");
   await act(async () => { renderer.unmount(); });
