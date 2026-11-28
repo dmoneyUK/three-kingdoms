@@ -1,6 +1,6 @@
 "use client";
 
-import { gameRenderFailureDiagnostic, resyncStaleResponseTimer } from "../game/game-screen-recovery";
+import { gameRenderFailureDiagnostic } from "../game/game-screen-recovery";
 
 import { sharedResponseContributions } from "../game/shared-response-contribution";
 import {
@@ -10,7 +10,6 @@ import {
   publicH4RankSuitReference,
 } from "../game/public-h4-copy";
 import { verifiedPlayerCopy, type VerifiedPlayerCopySegment } from "../game/verified-player-copy";
-import { classifyRoomGetFailure, RoomGetError, RoomPollRecovery } from "../game/room-poll-recovery";
 import { runSharedResponseExpiryAttempt } from "../game/shared-response-expiry";
 import { gameplayDeclineButtonClassName } from "./semantic-action-style";
 import { projectPublicEquipmentTargetPool } from "./public-equipment-target-pool";
@@ -30,7 +29,6 @@ import { beginAutomaticDrawAttempt, createAutomaticDrawAttempt, normalDrawDecisi
 import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
 import { getResponseOptions } from "../game/responses";
 import { HEROES, heroGender, type HeroSkill } from "../game/heroes";
-import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
 import { isOrdinaryTurnActionAuthorized, type OrdinaryTurnAction } from "../game/ordinary-turn-action";
 import { derivePrivateResponseGuidance } from "../game/private-response-guidance.ts";
@@ -70,6 +68,7 @@ import { latestSerpentSpearGroupResponseEventId } from "../game/serpent-spear-gr
 import { publicDiscardAnnouncement, routePublicDiscardTransition, type PublicDiscardTimelineEvent, type PublicDiscardTransitionRoute } from "./public-discard-transition";
 import { resolveCanonicalPublicDiscardPresentation, type CanonicalPublicDiscardEffectFrameSeed } from "./public-discard-presentation-owner";
 import { normalizePublicDiscardSettlements, publicDiscardSettlementCopyForFacts, publicDiscardSettlementForMaterials, type CanonicalPublicDiscardSettlement, type PublicDiscardSettlementCopy } from "./public-discard-settlement";
+import { RoomCommandGateway, type RoomCommandGatewayCallbacks, type RoomSessionView } from "./room-session/room-command-gateway";
 import { layoutPublicResultCards } from "./public-result-layout";
 import { routePublicHandRevealTransition, type PublicHandRevealTimelineEvent, type PublicHandRevealTransitionRoute } from "./public-hand-reveal-transition";
 import { coalesceLinkedJudgementActivationQueue, coalescePresentationQueue, presentationEventBlocksActions, publicH4FactAtPresentationCursor, publicRetaliationSettlementOwnsEvent, selectPublicH4AnnouncementOwner, uniquePublicH4Facts, type PublicPresentationRoute } from "./public-presentation-routing";
@@ -2709,50 +2708,27 @@ const NO_DISMANTLE_SETTLEMENTS = [] as const;
 const NO_STEAL_SETTLEMENTS = [] as const;
 const NO_ATTACK_HIT_SETTLEMENTS = [] as const;
 
-async function readApiJson<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    // Development middleware can occasionally return a plain-text error page.
-    // Never surface its implementation text as a JSON parsing failure in-game.
-    throw new Error(response.status >= 500
-      ? "The local game server had a temporary error. Please try again."
-      : "The game server returned an invalid response. Please try again.");
-  }
-}
-
-function clearSavedGameSession() {
-  if (typeof window === "undefined") return;
-  try { window.localStorage.removeItem("three-realms-session"); } catch { /* A blocked storage API must not prevent leaving the room. */ }
-}
-
 export default function Home() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
-  const [token, setToken] = useState("");
+  const [sessionView, setSessionView] = useState<RoomSessionView>({ roomCode: "", viewerId: null, epoch: 0, active: false });
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [connectionInterrupted, setConnectionInterrupted] = useState(false);
-  const pollRecovery = useRef(new RoomPollRecovery());
   const [traceAvailable, setTraceAvailable] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
-  const stateEpoch = useRef(0);
   const latestTurnPresentationScope = useRef<PublicPresentationTurnViewer | null>(null);
-  const mutationInFlight = useRef<string | null>(null);
-  const latestAppliedMutation = useRef(0);
+  const roomRef = useRef<Room | null>(null);
   const lastPublicCounterReadIdentity = useRef<string | null>(null);
-  const testViewerIdRef = useRef<string | null>(null);
-  const testViewerRoomCodeRef = useRef<string | null>(null);
-  const testViewerRevisionRef = useRef(0);
   const pendingTestViewerFocusIdRef = useRef<string | null>(null);
   const harvestCompletionWatcherRef = useRef<{ key: string; attempt: number; timer: number | null } | null>(null);
   const harvestCompletionRequestInFlightRef = useRef(false);
   const sharedResponseExpiryWatcherRef = useRef<{ key: string; attempt: number; inFlight: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
   const sharedResponseExpiryAdvanceRef = useRef<() => Promise<boolean>>(async () => false);
+  useLayoutEffect(() => { roomRef.current = room; }, [room]);
 
   const acceptPublicPresentationTurn = useCallback((nextRoom: Room) => {
     const incoming: PublicPresentationTurnViewer = {
@@ -2765,113 +2741,65 @@ export default function Home() {
     return true;
   }, []);
 
+  const gatewayRef = useRef<RoomCommandGateway<Room> | null>(null);
+  if (!gatewayRef.current) {
+    const callbacks: RoomCommandGatewayCallbacks<Room> = {
+      onSessionChange: (view) => {
+        latestTurnPresentationScope.current = null;
+        roomRef.current = null;
+        setRoom(null);
+        setSessionView(view);
+        setCode(view.roomCode);
+        setConnectionInterrupted(view.active && pendingTestViewerFocusIdRef.current === view.viewerId);
+        setError("");
+        setPublicCounterReadUntil(0);
+        lastPublicCounterReadIdentity.current = null;
+      },
+      onRoom: (nextRoom, source) => {
+        if (!acceptPublicPresentationTurn(nextRoom)) return false;
+        recordPublicGameRoomSnapshot(nextRoom, source);
+        if (nextRoom.status === "finished") stopAttackDodgeUxTrace("game-finished");
+        roomRef.current = nextRoom;
+        setRoom(nextRoom);
+        setCode(nextRoom.code);
+        return true;
+      },
+      onConnection: setConnectionInterrupted,
+      onBusy: (nextBusy, action) => { setBusy(nextBusy); setBusyAction(action); },
+      onError: setError,
+      onRetired: (category) => {
+        if (category === "missing-room") setError("This game has expired or is no longer available. Start or join another game below.");
+        else if (category === "invalid-session") setError("This player session is no longer valid. Start or join another game below.");
+        if (category !== "left") {
+          stopAttackDodgeUxTrace("room-session-unavailable");
+          setTraceAvailable(hasAttackDodgeUxTrace());
+        }
+      },
+      onSavedName: (savedName) => { if (savedName) setName(savedName); },
+      trace: (event, data) => recordAttackDodgeUxTrace(event, data),
+      traceId: () => getAttackDodgeUxTraceId(),
+      onServerDiagnostic: (diagnostic, diagnosticRoom, sessionToken, source) => {
+        if (!diagnosticRoom) return;
+        const traceEvent = source === "poll"
+          ? "server-projection-evaluation"
+          : diagnostic.stage === "server-projection-after-play" ? "server-projection-after-play" : "server-proof-evaluation";
+        recordAttackDodgeUxTrace(traceEvent, sanitizeAttackDodgeUxTraceData(
+          diagnostic,
+          diagnosticRoom.players.map((player) => player.name),
+          diagnosticRoom.code,
+          [sessionToken, ...diagnosticRoom.myHand.map((card) => card.id)],
+        ) as Record<string, unknown>);
+      },
+    };
+    gatewayRef.current = new RoomCommandGateway<Room>({
+      callbacks,
+    });
+  }
+  const gateway = gatewayRef.current;
+
   useEffect(() => { setTraceAvailable(hasAttackDodgeUxTrace()); }, []);
 
-  const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
-    if (testViewerRoomCodeRef.current !== roomCode) {
-      testViewerRoomCodeRef.current = roomCode;
-      testViewerIdRef.current = null;
-      testViewerRevisionRef.current += 1;
-    }
-    const epoch = stateEpoch.current;
-    const testViewerRevision = testViewerRevisionRef.current;
-    const selectedTestViewerId = requestedViewerId ?? testViewerIdRef.current;
-    const requestKey = `${roomCode}:${epoch}:${testViewerRevision}:${selectedTestViewerId ?? ""}`;
-    pollRecovery.current.activate(requestKey);
-    if (!pollRecovery.current.begin(requestKey)) return false;
-    const isCurrent = () => epoch === stateEpoch.current && testViewerRevision === testViewerRevisionRef.current;
-    const uxTraceId = getAttackDodgeUxTraceId();
-    try {
-      if (uxTraceId) recordAttackDodgeUxTrace("room-poll-request", { traceId: uxTraceId });
-      const query = new URLSearchParams({ code: roomCode, token: playerToken });
-      if (selectedTestViewerId) query.set("testViewerId", selectedTestViewerId);
-      if (uxTraceId) query.set("uxTraceId", uxTraceId);
-      const response = await fetch(`/api/rooms?${query.toString()}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
-      if (uxTraceId) recordAttackDodgeUxTrace("room-poll-response", { traceId: uxTraceId, status: response.status, ok: response.ok });
-      let rawData: unknown;
-      try { rawData = await response.json(); } catch { throw new RoomGetError("temporary", response.status); }
-      if (!response.ok) throw new RoomGetError(classifyRoomGetFailure(response.status, rawData), response.status);
-      if (!isCurrent()) return false;
-      let roomPayload = rawData;
-      let serverDiagnostic: Record<string, unknown> | null = null;
-      if (uxTraceId && rawData && typeof rawData === "object" && !Array.isArray(rawData)) {
-        const traceResponse = rawData as { room?: unknown; attackDodgeUxTrace?: Record<string, unknown> };
-        if (traceResponse.attackDodgeUxTrace) {
-          serverDiagnostic = traceResponse.attackDodgeUxTrace;
-          roomPayload = traceResponse.room ?? rawData;
-        }
-      }
-      const nextRoom = normalizeRoomData(roomPayload) as Room | null;
-      if (!nextRoom || !nextRoom.meId) throw new RoomGetError("temporary", response.status);
-      if (selectedTestViewerId && nextRoom.meId !== selectedTestViewerId) throw new RoomGetError("unavailable-viewer", response.status);
-      // Test controllers follow the server-selected seat while choosing
-      // Generals, then start gameplay from HOST until a SWITCH button is
-      // explicitly used. Do not let the default action-player projection
-      // silently choose a gameplay perspective on a fresh/reloaded client.
-      if (!selectedTestViewerId && nextRoom.isTestController && nextRoom.status !== "heroes") {
-        const hostId = nextRoom.players.find((player) => player.isHost)?.id;
-        if (hostId) {
-          testViewerRoomCodeRef.current = nextRoom.code;
-          testViewerIdRef.current = hostId;
-          testViewerRevisionRef.current += 1;
-          return fetchRoomRequest(roomCode, playerToken, quiet, hostId);
-        }
-      }
-      if (!acceptPublicPresentationTurn(nextRoom)) return false;
-      if (serverDiagnostic) {
-        recordAttackDodgeUxTrace("server-projection-evaluation", sanitizeAttackDodgeUxTraceData(
-          serverDiagnostic,
-          nextRoom.players.map((player) => player.name),
-          nextRoom.code,
-          [playerToken, ...nextRoom.myHand.map((card) => card.id)],
-        ) as Record<string, unknown>);
-      }
-      if (!isCurrent()) return false;
-      recordPublicGameRoomSnapshot(nextRoom, "poll");
-      if (nextRoom.status === "finished") stopAttackDodgeUxTrace("game-finished");
-      if (epoch === stateEpoch.current && testViewerRevision === testViewerRevisionRef.current) {
-        if (nextRoom.isTestController) {
-          testViewerRoomCodeRef.current = nextRoom.code;
-          testViewerIdRef.current = selectedTestViewerId ?? nextRoom.meId;
-        } else {
-          testViewerRoomCodeRef.current = nextRoom.code;
-          testViewerIdRef.current = null;
-        }
-        if (pollRecovery.current.stale) recordAttackDodgeUxTrace("room-connection-recovered", { status: response.status });
-        pollRecovery.current.recover(requestKey);
-        setConnectionInterrupted(false);
-        setRoom(nextRoom as Room);
-      }
-      return nextRoom as Room;
-    } catch (cause) {
-      if (!isCurrent()) return false;
-      const category = cause instanceof RoomGetError ? cause.category : "temporary";
-      recordAttackDodgeUxTrace("room-poll-failure", { category, status: cause instanceof RoomGetError ? cause.status : null });
-      if (category === "missing-room" || category === "invalid-session") {
-        stateEpoch.current += 1;
-        pollRecovery.current.reset();
-        setConnectionInterrupted(false);
-        recordAttackDodgeUxTrace("game-session-retired", { category, status: cause instanceof RoomGetError ? cause.status : null });
-        stopAttackDodgeUxTrace("room-session-unavailable");
-        clearSavedGameSession();
-        setRoom(null); setCode(""); setToken("");
-        setTraceAvailable(hasAttackDodgeUxTrace());
-        setError(category === "missing-room"
-          ? "This game has expired or is no longer available. Start or join another game below."
-          : "This player session is no longer valid. Start or join another game below.");
-      } else {
-        pollRecovery.current.fail(requestKey);
-        setConnectionInterrupted(true);
-        if (category === "unavailable-viewer") {
-          testViewerIdRef.current = null;
-          testViewerRevisionRef.current += 1;
-        }
-      }
-      return false;
-    } finally {
-      pollRecovery.current.end(requestKey);
-    }
-  }, [acceptPublicPresentationTurn]);
+  const fetchRoom = useCallback((options: { viewerId?: string | null; forceFresh?: boolean; reason?: string } = {}) => gateway.refresh(options), [gateway]);
 
   const notePublicCounterReadVisible = useCallback((identity: string, durationMs = UI_TIMING.publicCounterRead, renew = false) => {
     if (!identity || (!renew && lastPublicCounterReadIdentity.current === identity)) return;
@@ -2880,17 +2808,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem("three-realms-session");
-    if (!saved) return;
-    try {
-      const session = JSON.parse(saved) as { code: string; token: string; name?: string };
-      if (!/^[A-Z0-9]{5}$/.test(session.code) || !session.token) throw new Error("Invalid saved session");
-      resumeAttackDodgeUxTraceSession();
-      recordAttackDodgeUxTrace("saved-game-session-restored", { automaticRecording: true });
-      const timer = setTimeout(() => { setToken(session.token); setCode(session.code); if (session.name) setName(session.name); void fetchRoom(session.code, session.token, true); }, 0);
-      return () => clearTimeout(timer);
-    } catch { localStorage.removeItem("three-realms-session"); }
-  }, [fetchRoom]);
+    resumeAttackDodgeUxTraceSession();
+    void gateway.restoreSavedSession();
+    return () => gateway.dispose();
+  }, [gateway]);
 
   useEffect(() => {
     const updateVisibility = () => setPageVisible(document.visibilityState !== "hidden");
@@ -2899,9 +2820,9 @@ export default function Home() {
     return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
 
-  const roomCode = room?.code ?? (token ? code : undefined);
+  const roomCode = sessionView.active ? sessionView.roomCode : undefined;
   useEffect(() => {
-    if (!roomCode || !token || busy) return;
+    if (!roomCode || !sessionView.active || busy) return;
     const publicReadActive = publicCounterReadUntil > Date.now();
     const interval = !pageVisible ? UI_TIMING.hiddenPoll
       : room?.phase === "response" || room?.phase === "dying" || publicReadActive
@@ -2911,12 +2832,18 @@ export default function Home() {
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => {
       if (cancelled) return;
-      const delay = pollRecovery.current.stale ? pollRecovery.current.retryDelay(!pageVisible) : interval;
-      timer = setTimeout(async () => { await fetchRoom(roomCode, token, true); schedule(); }, delay);
+      const delay = gateway.stale ? gateway.retryDelay(!pageVisible) : interval;
+      timer = setTimeout(async () => { await fetchRoom({ reason: "poll" }); schedule(); }, delay);
     };
     schedule();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase, room?.status, publicCounterReadUntil]);
+  }, [roomCode, sessionView.active, busy, pageVisible, fetchRoom, gateway, room?.phase, room?.status, publicCounterReadUntil]);
+  const previousPageVisibleRef = useRef(pageVisible);
+  useEffect(() => {
+    const wasVisible = previousPageVisibleRef.current;
+    previousPageVisibleRef.current = pageVisible;
+    if (pageVisible && !wasVisible && sessionView.active) void fetchRoom({ forceFresh: true, reason: "visibility-resume" });
+  }, [pageVisible, sessionView.active, fetchRoom]);
   useEffect(() => {
     if (!publicCounterReadUntil) return;
     const timer = setTimeout(() => setPublicCounterReadUntil((current) => current === publicCounterReadUntil ? 0 : current),
@@ -2925,112 +2852,32 @@ export default function Home() {
   }, [publicCounterReadUntil]);
 
   async function send(action: "create" | "join" | "start" | "add_test_players" | "enable_test_room" | "configure_test_hands" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
-    if (pollRecovery.current.stale && action !== "create" && action !== "join") return false;
-    const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
-    const maintenanceAction = action === "advance_timers";
-    const nonBlocking = backgroundPreview || maintenanceAction;
-    const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
-    if (!nonBlocking && mutationInFlight.current === mutationKey) return false;
-    if (!nonBlocking && mutationInFlight.current) return false;
-    if (!nonBlocking) mutationInFlight.current = mutationKey;
-    const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
     if (action === "create" || action === "join") beginAttackDodgeUxTraceSession();
-    const uxTraceId = getAttackDodgeUxTraceId();
-    if (!nonBlocking) { setBusy(true); setBusyAction(action); setError(""); }
-    try {
-      if (action === "join") {
-        const saved = localStorage.getItem("three-realms-session");
-        try {
-          const session = saved ? JSON.parse(saved) as { code?: string; token?: string } : null;
-          if (session?.code === code && session.token && await fetchRoom(code, session.token, true)) return true;
-        } catch { localStorage.removeItem("three-realms-session"); }
+    const currentRoom = roomRef.current;
+    const context = currentRoom && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "choose_hero", "heartbeat", "advance_timers"].includes(action)
+      ? {
+        actionRevision: currentRoom.actionRevision ?? "",
+        meId: currentRoom.meId,
+        phase: currentRoom.phase,
+        pendingKind: pendingKind(currentRoom),
+        actorId: currentRoom.actionPlayerId,
+        ...((currentRoom.currentAction?.sharedWindow?.windowId ?? currentRoom.currentAction?.negationWindowId)
+          ? { windowId: currentRoom.currentAction?.sharedWindow?.windowId ?? currentRoom.currentAction?.negationWindowId }
+          : {}),
       }
-      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "choose_hero", "heartbeat", "advance_timers"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...((room.currentAction?.sharedWindow?.windowId ?? room.currentAction?.negationWindowId) ? { windowId: room.currentAction?.sharedWindow?.windowId ?? room.currentAction?.negationWindowId } : {}) } : undefined;
-      if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-request", { traceId: uxTraceId, action, hasRevisionContext: Boolean(context?.actionRevision) });
-      const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...(uxTraceId ? { uxTraceId } : {}), ...extra }) });
-      const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown; stale?: boolean; attackDodgeUxTrace?: Record<string, unknown> }>(response);
-      if (uxTraceId) {
-        recordAttackDodgeUxTrace("gameplay-action-response", {
-          traceId: uxTraceId,
-          action,
-          status: response.status,
-          ok: response.ok,
-          stale: rawData.stale === true,
-          roomReturned: Boolean(rawData.room),
-          serverDiagnosticReturned: Boolean(rawData.attackDodgeUxTrace),
-        });
-        if (rawData.attackDodgeUxTrace) {
-          const diagnosticStage = rawData.attackDodgeUxTrace.stage === "server-projection-after-play"
-            ? "server-projection-after-play"
-            : "server-proof-evaluation";
-          recordAttackDodgeUxTrace(diagnosticStage, sanitizeAttackDodgeUxTraceData(
-            rawData.attackDodgeUxTrace,
-            room?.players.map((player) => player.name) ?? [],
-            room?.code,
-            [token, ...(room?.myHand.map((card) => card.id) ?? [])],
-          ) as Record<string, unknown>);
-        }
-      }
-      if (await resyncStaleResponseTimer(action, response.status, rawData.stale === true, async () => {
-        await fetchRoom(code, token, true, testViewerIdRef.current ?? room?.meId);
-      })) return true;
-      const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
-      const testHeroSelectionAdvances = room?.isTestController && room.status === "heroes"
-        && data.room?.status === "heroes";
-      const gameplayViewStartsForHost = room?.isTestController && room.status === "heroes"
-        && data.room?.status === "playing"
-        ? data.room.players.find((player) => player.isHost)?.id ?? null
-        : null;
-      const preservedTestViewerId = gameplayViewStartsForHost
-        ?? (room?.isTestController && room.status !== "heroes" ? testViewerIdRef.current : null);
-      if (testHeroSelectionAdvances && data.room) {
-        testViewerRoomCodeRef.current = data.room.code;
-        testViewerIdRef.current = data.room.meId;
-      }
-      if (gameplayViewStartsForHost && data.room) {
-        testViewerRoomCodeRef.current = data.room.code;
-        testViewerIdRef.current = gameplayViewStartsForHost;
-        testViewerRevisionRef.current += 1;
-      }
-      const preserveTestViewer = Boolean(data.room && preservedTestViewerId);
-      if (preserveTestViewer && data.room) {
-        await fetchRoom(data.room.code, token, true, preservedTestViewerId!);
-      }
-      const responseMayApply = maintenanceAction ? epoch === stateEpoch.current : nonBlocking || epoch === stateEpoch.current;
-      const responseTurnMayApply = Boolean(data.room && !preserveTestViewer
-        && mutationSequence >= latestAppliedMutation.current && responseMayApply
-        && acceptPublicPresentationTurn(data.room));
-      if (responseTurnMayApply && data.room) recordPublicGameRoomSnapshot(data.room, "action");
-      if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
-      if (responseTurnMayApply && data.room) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
-      if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
-      if (action === "heartbeat") return true;
-      const nextToken = data.token ?? token;
-      if (responseTurnMayApply && data.room && epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
-      localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name: name.trim() }));
-      return true;
-    } catch (cause) {
-      if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-failure", { traceId: uxTraceId, action, kind: cause instanceof Error ? cause.name : "unknown" });
-      if (maintenanceAction) console.warn("Timer maintenance did not advance; checking the authoritative room state.");
-      else if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
-      return false;
-    }
-    finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); setBusyAction(null); } }
+      : undefined;
+    return gateway.command({ action, name, code, extra, context, room: currentRoom });
   }
 
   sharedResponseExpiryAdvanceRef.current = () => send("advance_timers");
 
   async function switchTestViewer(playerId: string) {
     const targetPlayer = room?.players.find((player) => player.id === playerId);
-    if (!room?.isTestController || !targetPlayer || (!targetPlayer.isTestPlayer && !targetPlayer.isHost) || targetPlayer.id === room.meId) return;
-    pollRecovery.current.stale = true;
+    if (!room?.isTestController || !targetPlayer || (!targetPlayer.isTestPlayer && !targetPlayer.isHost) || targetPlayer.id === sessionView.viewerId) return;
     setConnectionInterrupted(true);
-    testViewerRoomCodeRef.current = room.code;
-    testViewerIdRef.current = playerId;
-    testViewerRevisionRef.current += 1;
     pendingTestViewerFocusIdRef.current = playerId;
-    recordAttackDodgeUxTrace("test-viewer-changed", { fromSeat: room.players.find((player) => player.id === room.meId)?.seat ?? null, toSeat: targetPlayer.seat });
-    if (!await fetchRoom(room.code, token, true, playerId)) pendingTestViewerFocusIdRef.current = null;
+    recordAttackDodgeUxTrace("test-viewer-changed", { fromSeat: room.players.find((player) => player.id === sessionView.viewerId)?.seat ?? null, toSeat: targetPlayer.seat });
+    if (!await fetchRoom({ viewerId: playerId, forceFresh: true, reason: "test-viewer-switch" })) pendingTestViewerFocusIdRef.current = null;
   }
 
   useEffect(() => {
@@ -3041,33 +2888,33 @@ export default function Home() {
   }, [room?.meId]);
 
   useEffect(() => {
-    if (!roomCode || !token || !pageVisible || room?.isTestController) return;
+    if (!roomCode || !sessionView.active || !pageVisible || room?.isTestController) return;
     const timer = setInterval(() => { void send("heartbeat"); }, UI_TIMING.presenceHeartbeat);
     return () => clearInterval(timer);
   // Presence is independent of room mutations; it intentionally tracks only
   // this browser session and never makes normal GET polling write to D1.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, pageVisible, room?.isTestController]);
+  }, [roomCode, sessionView.active, pageVisible, room?.isTestController]);
 
   useEffect(() => {
-    if (!roomCode || !token) return;
-    const checkForInactivity = () => { void fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "expire_inactive_room", code: roomCode, token }) }); };
+    if (!roomCode || !sessionView.active) return;
+    const checkForInactivity = () => { void gateway.expireInactiveRoom(); };
     checkForInactivity();
     const timer = setInterval(checkForInactivity, UI_TIMING.inactivityCheck);
     return () => clearInterval(timer);
-  }, [roomCode, token]);
+  }, [roomCode, sessionView.active, gateway]);
 
   const harvestDeadline = room?.pendingHarvest?.complete ? room.pendingHarvest.countdownUntil : 0;
   const harvestComplete = room?.phase === "response" && room.pendingHarvest?.complete === true;
   const harvestRevealEventId = room?.pendingHarvest?.revealEventId ?? "";
   useEffect(() => {
-    if (!roomCode || !token || !harvestComplete || !harvestDeadline) {
+    if (!roomCode || !sessionView.active || !harvestComplete || !harvestDeadline) {
       const existing = harvestCompletionWatcherRef.current;
       if (existing?.timer !== null && existing?.timer !== undefined) clearTimeout(existing.timer);
       harvestCompletionWatcherRef.current = null;
       return;
     }
-    const viewerId = room?.meId ?? "";
+    const viewerId = sessionView.viewerId ?? room?.meId ?? "";
     const key = `${roomCode}|${harvestRevealEventId}|${harvestDeadline}|${viewerId}`;
     let watcher = harvestCompletionWatcherRef.current;
     if (!watcher || watcher.key !== key) {
@@ -3094,12 +2941,7 @@ export default function Home() {
       console.warn(`Harvest completion state could not be confirmed; the next room check is in ${delay} ms.`);
       schedule(delay);
     };
-    const refresh = () => fetchRoom(
-      roomCode,
-      token,
-      true,
-      room?.isTestController ? testViewerIdRef.current ?? viewerId : undefined,
-    );
+    const refresh = () => fetchRoom({ viewerId, forceFresh: true, reason: "harvest-deadline" });
     const checkAndAdvance = async () => {
       watcher!.timer = null;
       if (cancelled || !pageVisible || harvestCompletionWatcherRef.current !== watcher) return;
@@ -3147,10 +2989,10 @@ export default function Home() {
   // first refreshes authoritative room state and retries only the same expired
   // completion. Chooser countdown expiry never selects a card automatically.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, pageVisible, harvestComplete, harvestDeadline, harvestRevealEventId, room?.meId, room?.isTestController, fetchRoom]);
+  }, [roomCode, sessionView.active, sessionView.viewerId, pageVisible, harvestComplete, harvestDeadline, harvestRevealEventId, room?.meId, fetchRoom]);
   const sharedWindow = room?.presentationV2?.sharedResponseWindow ?? room?.presentationSnapshot?.sharedResponseWindow;
   useEffect(() => {
-    const validWindow = roomCode && token && sharedWindow?.semantics === "PROVEN"
+    const validWindow = roomCode && sessionView.active && sharedWindow?.semantics === "PROVEN"
       && sharedWindow.windowId && Number.isSafeInteger(sharedWindow.deadline)
       ? sharedWindow : null;
     let watcher = sharedResponseExpiryWatcherRef.current;
@@ -3185,11 +3027,11 @@ export default function Home() {
       if (watcher!.inFlight) { schedule(1_000); return; }
       watcher!.inFlight = true;
       try {
-        const selectedViewerId = room?.isTestController ? testViewerIdRef.current ?? undefined : undefined;
+        const selectedViewerId = sessionView.viewerId ?? undefined;
         await runSharedResponseExpiryAttempt({
           expected: { windowId, deadline },
           readCurrentWindow: async () => {
-            const current = await fetchRoom(roomCode, token, true, selectedViewerId);
+            const current = await fetchRoom({ viewerId: selectedViewerId, forceFresh: true, reason: "shared-response-expiry" });
             return current === false ? false : current.presentationV2?.sharedResponseWindow ?? current.presentationSnapshot?.sharedResponseWindow ?? null;
           },
           advanceTimers: () => sharedResponseExpiryAdvanceRef.current(),
@@ -3212,35 +3054,27 @@ export default function Home() {
     };
   // The public window identity, not the selected viewer or action revision, owns this timer.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, pageVisible, room?.isTestController, sharedWindow?.windowId, sharedWindow?.deadline, sharedWindow?.stage, fetchRoom]);
+  }, [roomCode, sessionView.active, sessionView.viewerId, pageVisible, sharedWindow?.windowId, sharedWindow?.deadline, sharedWindow?.stage, fetchRoom]);
 
   const negationDeadline = room?.pendingNegation?.deadline ?? 0;
   useEffect(() => {
-    if (!roomCode || !token || !pageVisible || !negationDeadline) return;
+    if (!roomCode || !sessionView.active || !pageVisible || !negationDeadline) return;
     const timer = setTimeout(() => { void send("advance_timers"); }, Math.max(0, negationDeadline - Date.now()));
     return () => clearTimeout(timer);
   // Any connected viewer may advance an expired Negation decision. The
   // server rechecks the capability and deadline before moving the chain.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, pageVisible, negationDeadline]);
+  }, [roomCode, sessionView.active, pageVisible, negationDeadline]);
 
   async function retryGameScreen() {
-    stateEpoch.current += 1;
-    pollRecovery.current.reset();
-    return Boolean(await fetchRoom(code, token, true, testViewerIdRef.current ?? room?.meId));
+    return Boolean(await fetchRoom({ viewerId: sessionView.viewerId ?? room?.meId, forceFresh: true, reason: "game-screen-recovery" }));
   }
 
   function leave() {
     recordAttackDodgeUxTrace("game-user-left", { status: room?.status ?? null, phase: room?.phase ?? null });
-    pollRecovery.current.reset();
-    setConnectionInterrupted(false);
     stopAttackDodgeUxTrace("player-left-game");
-    clearSavedGameSession();
     setTraceAvailable(hasAttackDodgeUxTrace());
-    testViewerIdRef.current = null;
-    testViewerRoomCodeRef.current = null;
-    testViewerRevisionRef.current += 1;
-    stateEpoch.current += 1; setRoom(null); setCode(""); setToken(""); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
+    gateway.retire("left");
   }
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
@@ -3248,7 +3082,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") {
     const presentationTurnKey = [room.code, room.meId, room.publicPresentationTurn?.epoch ?? 0, room.publicPresentationTurn?.retireAll ? "finished" : "active"].join(":");
-    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onRefreshRoom={() => fetchRoom(room.code, token, true, testViewerIdRef.current ?? room.meId)} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
+    return <>{connectionStatus}<GameRoomErrorBoundary key={presentationTurnKey} room={room} onRecover={retryGameScreen} onLeave={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy || connectionInterrupted} busyAction={busyAction} error={error} onAction={send} onRefreshRoom={() => fetchRoom({ viewerId: sessionView.viewerId ?? room.meId, forceFresh: true, reason: "game-screen-refresh" })} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary></>;
   }
   if (room?.status === "heroes") return <>{connectionStatus}<HeroSelection room={room} busy={busy || connectionInterrupted} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} /></>;
   if (room) return <>{connectionStatus}<WaitingRoom room={room} busy={busy || connectionInterrupted} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} /></>;

@@ -17,6 +17,7 @@ const fastTests = [
   "tests/public-equipment-target-pool.test.mjs",
   "tests/room-safety.test.mjs",
   "tests/room-poll-recovery.test.mjs",
+  "tests/room-session-gateway.test.mjs",
   "tests/game-screen-recovery.test.mjs",
   "tests/local-precommit-selection.test.mjs",
   "tests/hand-choice-selection.test.mjs",
