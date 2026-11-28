@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { GameRoom } from "../../app/page.tsx";
+import { RoomSessionStore } from "../../app/room-session/room-session-store.ts";
 import { normalizeRoomData } from "../../game/room-safety.js";
 import "../../app/globals.css";
 import "../../app/sequence-overrides.css";
@@ -1039,12 +1040,16 @@ function readFixture() {
 const { state, count, handSize, handKind, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix, lowHpSeat, defeatedSeat, turnSeatOverride } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
+const roomSessionStore = new RoomSessionStore();
 let fixtureRoom = browserRoom({ state, count, handSize, handKind, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix, lowHpSeat, defeatedSeat, turnSeatOverride });
 window.__browserActions = [];
 window.__browserLeaves = 0;
 window.__browserRoom = fixtureRoom;
 const fanjianCombinedActorAction = state === "fanjian-combined" ? fixtureRoom.currentAction : null;
-const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {
+const renderFixture = () => {
+  roomSessionStore.setSession({ roomCode: fixtureRoom.code, viewerId: fixtureRoom.meId, epoch: 1, active: true });
+  roomSessionStore.publish(fixtureRoom);
+  return root.render(<GameRoom room={fixtureRoom} roomSessionStore={roomSessionStore} busy={false} error="" onAction={async (action, extra) => {
   window.__browserActions.push({ action, extra });
   const targetId = typeof extra?.targetId === "string" ? extra.targetId : null;
   if (acknowledgeLocalPreview && action === "play_card" && targetId) {
@@ -1087,6 +1092,7 @@ const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false
   window.__browserRoom = fixtureRoom;
   renderFixture();
 }} />);
+};
 window.__updateBrowserRoom = (update) => {
   fixtureRoom = typeof update === "function" ? update(fixtureRoom) : update;
   window.__browserRoom = fixtureRoom;

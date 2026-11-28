@@ -18,7 +18,7 @@ const publicCardDisplaySource = readFileSync(new URL("../app/public-card-display
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
-function GameRoom(props) {
+function renderGameRoom(props) {
   const roomSessionStore = new RoomSessionStore();
   roomSessionStore.setSession({ roomCode: props.room.code, viewerId: props.room.meId, epoch: 1, active: true });
   roomSessionStore.publish(props.room);
@@ -323,7 +323,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
       transitionEvents: [],
     },
   });
-  const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.ok(html.includes(`data-build-sha="${BUILD_SHA}"`), "the game screen exposes the exact build SHA used for its client bundle");
   assert.match(html, /GitHub Actions SHA/);
   assert.match(html, /Download UX trace/);
@@ -352,7 +352,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     decision: { actorId: "p2", stage: "ATTACK_RESPONSE" },
     localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
   };
-  const semanticSeatHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: semanticSeatSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const semanticSeatHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: { ...uxRoom, presentationSnapshot: semanticSeatSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-source[^"]*"[^>]*data-player-anchor="p2"/);
   assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-original-target[^"]*"[^>]*data-player-anchor="p2"/);
   assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-active-target[^"]*"[^>]*data-player-anchor="p2"/);
@@ -369,7 +369,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
     localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p1", entitled: true },
   };
-  const localSourceOwnedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localSourceOwnedSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const localSourceOwnedHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: { ...uxRoom, presentationSnapshot: localSourceOwnedSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(localSourceOwnedHtml, /<section class="local-player-dock[^"]*interaction-seat-source[^"]*interaction-seat-decision-actor[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local source-owned decision preserves source, decision, and viewer roles");
   assert.match(localSourceOwnedHtml, /class="[^"]*player-square[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-active-resolver[^"]*"[^>]*data-player-anchor="p2"/, "remote target keeps active target, participant, and resolver roles");
   const localSpecialSnapshot = {
@@ -379,7 +379,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     decision: null,
     localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: null, entitled: false },
   };
-  const localSpecialHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localSpecialSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const localSpecialHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: { ...uxRoom, presentationSnapshot: localSpecialSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(localSpecialHtml, /<section class="local-player-dock[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*"[^>]*data-player-anchor="p1"/, "local active target/current roles remain public without a decision actor");
   assert.doesNotMatch(localSpecialHtml, /<section class="local-player-dock[^"]*interaction-seat-decision-actor/, "SPECIAL does not invent a local decision role");
   const localOverlapSnapshot = {
@@ -389,14 +389,14 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
     localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p1", entitled: true },
   };
-  const localOverlapHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localOverlapSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const localOverlapHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: { ...uxRoom, presentationSnapshot: localOverlapSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(localOverlapHtml, /<section class="local-player-dock[^"]*interaction-seat-source[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-decision-actor[^"]*interaction-seat-active-resolver[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local overlapping roles remain simultaneous");
-  const legacyMismatchHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, actionPlayerId: "p2", actionReason: "legacy owner", isMyAction: false, currentAction: { ...uxRoom.currentAction, actorId: "p2", reason: "legacy action" } }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const legacyMismatchHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: { ...uxRoom, actionPlayerId: "p2", actionReason: "legacy owner", isMyAction: false, currentAction: { ...uxRoom.currentAction, actorId: "p2", reason: "legacy action" } }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Lü Bu · YOU<\/b>/, "active status ownership comes from PresentationClientView");
   assert.doesNotMatch(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun/, "legacy action owner cannot replace the public decision actor");
   assert.match(html, /YOUR DECISION/);
   assert.match(html, /Lü Bu/);
-  const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const restHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
   assert.equal((restHtml.match(/data-player-anchor="/g) ?? []).length, 2, "REST hides semantic focus without collapsing topology");
   assert.equal((restHtml.match(/class="local-player-dock/g) ?? []).length, 1, "REST retains one local dock");
@@ -718,7 +718,7 @@ test("UI-11 keeps one local dock and stable opponent anchors across supported pl
   for (const playerCount of [2, 3, 4, 5, 6, 8, 10]) {
     const room = responsiveTopologyRoom({ playerCount });
     assert.ok(room, `${playerCount}-player fixture normalizes`);
-    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
     const boardStart = html.indexOf('<div class="player-board"');
     const dockStart = html.indexOf('<section class="local-player-dock');
     assert.ok(boardStart >= 0 && dockStart > boardStart, `${playerCount}-player markup has a board before the dock`);
@@ -748,7 +748,7 @@ test("UI-11 keeps one local dock and stable opponent anchors across supported pl
 test("UI-11 preserves hand rail and one footer console for one, five, and ten cards", () => {
   for (const handSize of [1, 5, 10]) {
     const room = responsiveTopologyRoom({ playerCount: 4, handSize });
-    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
     assert.equal((html.match(/data-hand-card-id="/g) ?? []).length, handSize, `${handSize}-card hand preserves each physical card`);
     assert.equal((html.match(/class="local-hand-section"/g) ?? []).length, 1);
     assert.equal((html.match(/class="local-hand-rail"/g) ?? []).length, 1);
@@ -775,7 +775,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   };
   const room = normalizeRoomData(payload);
   assert.ok(room);
-  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "a four-player board renders only the three opponents");
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 4, "every visible player has one authoritative DOM anchor");
   assert.match(html, /class="local-player-dock\s*"[^>]*data-player-anchor="p1"/);
@@ -811,7 +811,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   for (const [current, max] of [[5, 5], [4, 5], [1, 5], [4, 4], [3, 4]]) {
     const hpRoom = normalizeRoomData({ ...payload, code: `DOCK-HP-${current}-${max}`, players: players.map((player) => player.id === "p1" ? { ...player, hp: current, maxHp: max } : player) });
     assert.ok(hpRoom);
-    const hpHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: hpRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const hpHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: hpRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
     assert.match(hpHtml, new RegExp(`class="local-hero-identity-footer"[\\s\\S]*class="local-hero-hp" aria-label="HP ${current} of ${max}">HP ${current}/${max}<\\/span>`), `${current}/${max} renders the authoritative numeric HP in the external footer`);
     assert.doesNotMatch(hpHtml, /class="local-hero-hearts"/, "numeric HP does not duplicate decorative hearts");
   }
@@ -835,7 +835,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(html, /class="local-zone-panel"/);
   const emptyRoom = normalizeRoomData({ ...payload, code: "DOCK-EMPTY", players: players.map((player) => player.id === "p1" ? { ...player, equipmentCards: [], judgementCards: [] } : player) });
   assert.ok(emptyRoom);
-  const emptyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: emptyRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const emptyHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: emptyRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((emptyHtml.match(/class="local-zone-empty-label"/g) ?? []).length, 4, "empty equipment slots retain all four labels");
   assert.doesNotMatch(emptyHtml, />\+<\/span>/, "empty equipment slots do not render a plus placeholder");
   assert.equal((emptyHtml.match(/class="local-judgement-cards local-judgement-overlay"/g) ?? []).length, 0, "an empty local Judgement zone consumes no overlay");
@@ -1010,7 +1010,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);
-  const switchedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const switchedHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((switchedHtml.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "switching the controlled seat keeps three opponents on the board");
   assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
   assert.match(switchedHtml, /class="local-hero-identity-footer"[\s\S]*class="local-hero-role" aria-label="Role: Loyalist">Loyalist<\/span>/, "TEST SWITCH updates the private role footer for the controlled viewer");
@@ -1043,7 +1043,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   };
   const room = normalizeRoomData(payload);
   assert.ok(room);
-  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, />Heroic<\/button>/, "metadata-backed Heroic remains rendered");
   const fanjianButton = html.match(/<button[^>]*aria-label="Sowing Distrust"[^>]*>Sowing Distrust<\/button>/)?.[0];
   assert.ok(fanjianButton, "metadata-backed Sowing Distrust is rendered");
@@ -1057,7 +1057,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
 
   const unavailableRoom = normalizeRoomData({ ...payload, code: "FANJIAN-UI-OFF", currentAction: { ...payload.currentAction, triggerOptions: [] } });
   assert.ok(unavailableRoom);
-  const unavailableHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: unavailableRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const unavailableHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: unavailableRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   const unavailableButton = unavailableHtml.match(/<button[^>]*aria-label="Sowing Distrust"[^>]*>Sowing Distrust<\/button>/)?.[0];
   assert.ok(unavailableButton, "Sowing Distrust remains visible when unavailable");
   assert.match(unavailableButton, /disabled=""/, "Sowing Distrust is disabled without its projected capability");
@@ -1073,7 +1073,7 @@ test("normalized malformed and unknown response states render safely", () => {
     pendingGroup: null, pendingNegation: null, pendingHarvest: { kind: "harvest", revealed: [null, card("revealed")], choices: null }, pendingTargetCard: null, pendingDying: null,
   });
   assert.ok(room);
-  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /aria-label="System menu"/);
   assert.doesNotMatch(html, /class="game-exit"/);
   assert.match(html, /class="local-player-dock\s*"/);
@@ -1130,7 +1130,7 @@ test("normalized malformed and unknown response states render safely", () => {
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingDying: null,
   });
   assert.ok(waitingRoom);
-  const waitingHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: waitingRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const waitingHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: waitingRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(waitingHtml, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "an empty discard pile retains only its nonvisual flight anchor");
   assert.doesNotMatch(waitingHtml, /Skip · take 1 damage/);
   assert.match(waitingHtml, /Waiting for the latest response state/);
@@ -1141,7 +1141,7 @@ test("normalized malformed and unknown response states render safely", () => {
     myHand: [card("longdan-dodge", "Dodge"), card("longdan-attack", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
     currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "longdan-dodge", canPlayAs: "attack" }] },
   });
-  const longdanPlayHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanPlayRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const longdanPlayHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: longdanPlayRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(longdanPlayHtml, />Braveheart<\/button>/);
   assert.match(longdanPlayHtml, /class="game-card dodge black-suit/);
 
@@ -1151,7 +1151,7 @@ test("normalized malformed and unknown response states render safely", () => {
     myHand: [card("longdan-response-attack", "Attack"), card("longdan-response-dodge", "Dodge")], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
     pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-dodge"] } }, { providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Braveheart as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-attack"] } }] },
   });
-  const longdanResponseHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const longdanResponseHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: longdanResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(longdanResponseHtml, />Braveheart<\/button>/);
   assert.doesNotMatch(longdanResponseHtml, /Use Braveheart as Dodge/);
   assert.match(longdanResponseHtml, />Confirm<\/button>/, "response providers use one generic confirmation control");
@@ -1164,7 +1164,7 @@ test("normalized malformed and unknown response states render safely", () => {
     myHand: [{ ...card("zhen-black", "Dodge"), suit: "♠" }, { ...card("zhen-red", "Dodge"), suit: "♥" }], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
     pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["zhen-black", "zhen-red"] } }, { providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", activation: "explicit", label: "Use Empress Dowager as Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["zhen-black"] } }] },
   });
-  const zhenResponseHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: zhenResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const zhenResponseHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: zhenResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   const empressButton = zhenResponseHtml.match(/<button[^>]*aria-label="Empress Dowager"[^>]*>Empress Dowager<\/button>/)?.[0];
   assert.ok(empressButton, "Empress Dowager remains visible in the Skills panel");
   assert.doesNotMatch(empressButton, /disabled=""/, "Empress Dowager is enabled from its projected response option");
@@ -1186,13 +1186,13 @@ test("normalized malformed and unknown response states render safely", () => {
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   };
   const luoshenRoom = normalizeRoomData(luoshenPayload);
-  const luoshenReadyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const luoshenReadyHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   const luoshenButton = luoshenReadyHtml.match(/<button[^>]*aria-label="Godess of Luo River"[^>]*>Godess of Luo River<\/button>/)?.[0];
   assert.ok(luoshenButton, "Godess of Luo River remains in the Skills panel");
   assert.doesNotMatch(luoshenButton, /disabled=""/, "a legal turn trigger enables its Skills panel button");
   assert.doesNotMatch(luoshenReadyHtml, />Use Godess of Luo River<\/button>/);
   assert.match(luoshenReadyHtml, />Skip<\/button>/);
-  const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
+  const luoshenBusyHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Godess of Luo River<\/button>/);
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assertNoTransientBusyGuidance(luoshenBusyHtml);
@@ -1207,7 +1207,7 @@ test("normalized malformed and unknown response states render safely", () => {
     pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Use Frost Sword", legalActions: ["trigger", "decline_trigger"], triggerEvent: "damage_about_to_apply", triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 2, max: 2, eligibleKeys: ["hand:3", "hand:0", "hand:1", "hand:2", "armor"] } }], declineAction: "decline_trigger" },
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   });
-  const pickerHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const pickerHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
   assert.match(pickerHtml, /card-pool-panel--compact-density/, "Frost opts into the existing shared compact pool density");
   assert.match(pickerHtml, /card-pool-panel--compact-control-surfaces/, "only the Frost pool opts into the reduced painted tab and action surfaces");
@@ -1269,7 +1269,7 @@ test("normalized malformed and unknown response states render safely", () => {
     ...pickerRoom,
     currentAction: { ...pickerRoom.currentAction, triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 2, max: 2, eligibleKeys: ["hand:0", "not-public"] } }] },
   };
-  const invalidFrostHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: invalidFrostRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const invalidFrostHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: invalidFrostRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.doesNotMatch(invalidFrostHtml, /target-card-picker-overlay|target-card-picker-panel--zones|data-trigger-target-pool="true"/, "unsupported Frost Sword proof fails closed instead of restoring the legacy picker");
   const kirinEquipment = [card("mount-a", "FerganaSteed"), card("unrelated-armor", "NioShield"), card("mount-b", "Shadowrunner")];
   const kirinRoom = {
@@ -1284,7 +1284,7 @@ test("normalized malformed and unknown response states render safely", () => {
       triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["mount-a", "mount-b"] } }],
     },
   };
-  const kirinHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: kirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const kirinHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: kirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(kirinHtml, /data-trigger-target-pool="true"[^>]*data-target-card-pool-layout="central"/);
   assert.match(kirinHtml, /class="[^"]*card-pool-panel--actor-target-select/);
   assert.match(kirinHtml, /class="card-pool-panel__title">KIRIN BOW<\/b>/);
@@ -1303,9 +1303,9 @@ test("normalized malformed and unknown response states render safely", () => {
     ...kirinRoom,
     currentAction: { ...kirinRoom.currentAction, triggerOptions: [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["hand:0"] } }] },
   };
-  const invalidKirinHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: invalidKirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const invalidKirinHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: invalidKirinRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.doesNotMatch(invalidKirinHtml, /target-card-picker-overlay|target-card-picker-panel--zones|data-trigger-target-pool="true"/, "inconsistent Kirin authority fails closed without restoring the legacy picker");
-  const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
+  const pickerBusyHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.match(pickerBusyHtml, /<button[^>]*aria-label="Confirm Frost Sword selection"[^>]*disabled=""[^>]*>Confirm<\/button>/);
   assertNoTransientBusyGuidance(pickerBusyHtml);
@@ -1321,7 +1321,7 @@ test("normalized malformed and unknown response states render safely", () => {
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   };
   const choiceRoom = normalizeRoomData(choicePayload);
-  const choiceHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const choiceHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: choiceRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(choiceHtml, /class="target-card-picker-panel choice-trigger-panel/);
   assert.match(choiceHtml, /YIN-YANG SWORDS/);
   assert.match(choiceHtml, /Discard 1 hand card/);
@@ -1329,12 +1329,12 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(choiceHtml, /aria-label="Hidden hand card \d+"/, "hand cards stay hidden until discard is chosen");
   assert.doesNotMatch(choiceHtml, />Yin-Yang Swords<\/button>/, "mandatory choices open without a trigger activation button");
   assert.doesNotMatch(choiceHtml, /Skip/, "mandatory Yin-Yang choice has no Skip action");
-  const choiceBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
+  const choiceBusyHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: choiceRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(choiceBusyHtml, /<button[^>]*disabled=""[^>]*>Confirm choice<\/button>/);
   assertNoTransientBusyGuidance(choiceBusyHtml);
 
   const triumphantPayload = normalizeRoomData({ ...choicePayload, meId: "p1", myRole: "Lord", actionPlayerId: "p1", actionReason: "Triumphant", isMyAction: true, currentAction: { ...choicePayload.currentAction, actorId: "p1", reason: "Triumphant", legalActions: ["trigger", "decline_trigger"], triggerOptions: [{ effectId: "hua_xiong_triumphant", label: "Triumphant", allowDecline: true, selection: { type: "choice", choices: [{ id: "recover", label: "Recover 1 HP" }, { id: "draw", label: "Draw 1 card" }], eligibleHandKeys: [] } }], declineAction: "decline_trigger" } });
-  const triumphantHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: triumphantPayload, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const triumphantHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: triumphantPayload, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(triumphantHtml, /Recover 1 HP/);
   assert.match(triumphantHtml, /Draw 1 card/);
   assert.match(triumphantHtml, />Skip<\/button>/);
@@ -1357,7 +1357,7 @@ test("normalized malformed and unknown response states render safely", () => {
     myHand: [],
     currentAction: { ...choicePayload.currentAction, triggerOptions: [{ ...choicePayload.currentAction.triggerOptions[0], selection: { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] } }] },
   });
-  const noHandHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: noHandRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const noHandHtml = renderToStaticMarkup(React.createElement(renderGameRoom, { room: noHandRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(noHandHtml, /Allow attacker to draw 1 card/);
   assert.doesNotMatch(noHandHtml, /Discard 1 hand card/);
   assert.doesNotMatch(noHandHtml, /Hidden hand card/);
@@ -1420,7 +1420,7 @@ test("a normalized Negation response retains its legal controls", () => {
     pendingHarvest: null, pendingTargetCard: null, pendingDying: null,
   });
   assert.ok(room?.pendingNegation, "the normalizer must keep a valid public Negation DTO");
-  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /Play Negation/);
   assert.match(html, />Skip<\/button>/);
   assert.doesNotMatch(html, /Waiting for the latest response state/);
@@ -1443,7 +1443,7 @@ test("Qixi active-skill activation has a safe empty-selection render contract", 
     currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards or finish the Play Phase", legalActions: ["trigger"], triggerOptions: [{ effectId: "gan_ning_qixi", label: "Ambushment", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["qixi-black"], targetIds: ["p2"] } }] },
   });
   assert.ok(room);
-  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /aria-label="Ambushment"[^>]*>/, "Ambushment is rendered from the semantic option");
   assert.match(html, /data-hand-card-id="qixi-black"[\s\S]*class="game-card borrowedsword black-suit/, "the legal black hand card is rendered");
   assert.match(html, /data-player-anchor="p2"[\s\S]*aria-label="Inspect TARGET"/, "the legal opponent is rendered for targeting after activation");
@@ -1479,7 +1479,7 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
       currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards or use a hero skill", legalActions: ["trigger"], triggerOptions: [{ effectId: activeSkill.effectId, label: activeSkill.label, selection: { type: "cards", min: activeSkill.min, max: activeSkill.max, eligibleCardIds: activeSkill.cardIds, targetIds: activeSkill.targetIds, targetMin: activeSkill.targetMin, targetMax: activeSkill.targetMax } }] },
     });
     assert.ok(room, `${activeSkill.effectId} room normalizes`);
-    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
     assert.match(html, new RegExp(`aria-label="${activeSkill.skill}"`), `${activeSkill.effectId} skill button renders`);
     assert.match(html, new RegExp(`data-hand-card-id="${activeSkill.cardIds[0]}"`), `${activeSkill.effectId} eligible card renders`);
     assert.match(html, /data-player-anchor="p2"/, `${activeSkill.effectId} target board renders`);
@@ -1507,7 +1507,7 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
       myHand: [card(conversion.cardId, "Dodge")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
       currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: conversion.cardId, canPlayAs: conversion.canPlayAs }] },
     });
-    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const html = renderToStaticMarkup(React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
     assert.match(html, new RegExp(`aria-label="${conversion.skill}"`), `${conversion.hero} conversion skill renders`);
     assert.match(html, new RegExp(`data-hand-card-id="${conversion.cardId}"`), `${conversion.hero} conversion card renders`);
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/);

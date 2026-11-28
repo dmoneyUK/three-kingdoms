@@ -13,7 +13,7 @@ import { IMPLEMENTED_STANDARD_HEROES } from "../game/heroes.ts";
 
 const card = (id, kind = "Attack", suit = "♠") => ({ id, kind, suit, rank: "A" });
 
-function GameRoom(props) {
+function renderGameRoom(props) {
   const roomSessionStore = new RoomSessionStore();
   roomSessionStore.setSession({ roomCode: props.room.code, viewerId: props.room.meId, epoch: 1, active: true });
   roomSessionStore.publish(props.room);
@@ -244,7 +244,7 @@ async function gameTree(skill, onAction) {
   let actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); onAction?.(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return { renderer, actionCalls };
 }
@@ -277,7 +277,7 @@ function renderedNodeText(node) { return typeof node === "string" || typeof node
 async function verifyResponsePrecommitOwner({ room, ownerLabel, ownerProps, cardId, providerId }) {
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const actionsBeforeSelection = [...actionCalls];
   const ownerButton = () => button(renderer, ownerProps);
@@ -493,7 +493,7 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
   const actionCalls = [];
   const { renderer } = await (async () => {
     let mounted;
-    await act(async () => { mounted = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+    await act(async () => { mounted = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     return { renderer: mounted };
   })();
@@ -536,7 +536,7 @@ test("ordinary target Stratagem has no Cancel and same-card retap clears target 
   const room = normalStealTargetRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   const cancelSurface = nodeWith(renderer, "data-console-surface", "local-operation");
@@ -575,7 +575,7 @@ test("End Turn opens the in-battlefield confirmation and preserves legal action 
   let browserConfirmCalls = 0;
   let renderer;
   globalThis.window.confirm = () => { browserConfirmCalls += 1; return true; };
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const endTurn = button(renderer, { children: "End" });
   assert.equal(endTurn.props.disabled, false, "the authoritative End Turn action remains available");
@@ -608,7 +608,7 @@ test("Wusheng keeps its stable name and same-skill retap clears card and target 
   const room = normalWushengTargetRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { button(renderer, { "aria-label": "God of War" }).props.onClick(); });
   assert.equal(renderedNodeText(button(renderer, { "aria-label": "God of War" })), "God of War");
@@ -635,7 +635,7 @@ test("Longdan Play keeps its stable name, toggles locally, and confirms the real
   const room = normalLongdanTargetRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const owner = () => button(renderer, { "aria-label": "Braveheart" });
   await act(async () => { owner().props.onClick(); });
@@ -683,7 +683,7 @@ test("Serpent Spear stays named, retap clears its draft, and Confirm preserves t
   const room = serpentTargetRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const modeButton = button(renderer, { "data-serpent-spear-control": "true" });
   assert.equal(renderedNodeText(modeButton), "Serpent Spear");
@@ -717,7 +717,7 @@ test("Serpent Spear stays named, retap clears its draft, and Confirm preserves t
 test("Serpent Spear response option keeps the full projected weapon name", async () => {
   const roomWithoutProvider = duelResponseRoom();
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: roomWithoutProvider, onRecover: () => {} }, React.createElement(GameRoom, { room: roomWithoutProvider, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: roomWithoutProvider, onRecover: () => {} }, React.createElement(renderGameRoom, { room: roomWithoutProvider, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByType("button").filter((node) => renderedNodeText(node).includes("Serpent Spear")).length, 0, "the response label is not invented when CurrentAction omits the provider");
   await act(async () => { renderer.unmount(); });
@@ -735,7 +735,7 @@ test("Serpent Spear response option keeps the full projected weapon name", async
       { providerId: "serpent_spear_attack", satisfies: "attack", label: "Use Serpent Spear", description: "Use Serpent Spear", activation: "explicit", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: responseCards.map((item) => item.id) } },
     ],
   };
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const spearProviderButton = button(renderer, { children: "Serpent Spear" });
   assert.match(spearProviderButton.props.className, /serpent-control/);
@@ -759,7 +759,7 @@ test("Borrowed Sword target selection stays local until Confirm and preserves th
   const room = borrowedSwordTargetRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const presentationBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
   assert.equal(targetButton(renderer, "p3").props.disabled, false, "server-projected eligible target is selectable");
@@ -788,12 +788,12 @@ test("Borrowed Sword local target clears when the authoritative revision changes
   const room = borrowedSwordTargetRoom();
   const action = async () => true;
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { targetButton(renderer, "p3").props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   const revisedRoom = { ...room, actionRevision: "borrowed-sword-target-revision-2" };
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "stale revision clears the local target");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
@@ -805,7 +805,7 @@ test("pending Dismantle shared choice keeps opaque selection local until Confirm
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
   const publicRolesBefore = nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"];
@@ -849,7 +849,7 @@ test(`${cardKind} pending card choice uses the nonmodal shared pool without Canc
     const confirmAccessibleLabel = `Confirm ${actionName} selection`;
     const actionCalls = [];
     let renderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
     const stage = nodeWithClass(renderer, "card-pool-target-stage");
@@ -901,7 +901,7 @@ test("pending target-card routing requires valid CurrentAction authority but not
   ];
   for (const { room, selectable, label } of cases) {
     let renderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(renderer.root.findAll((node) => typeof node.type === "string" && node.props?.className?.split(/\s+/).includes("card-pool-target-stage")).length, selectable ? 1 : 0, `${label}: only valid server-projected eligibility reaches the shared choice stage`);
     assert.equal(renderer.root.findAll((node) => node.props?.className?.includes("table-hidden-card-picker")).length, 0, `${label}: no unrelated legacy picker is restored as fallback`);
@@ -916,7 +916,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const actionCountBeforeSelection = actionCalls.length;
   assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "an empty mandatory picker does not present Cancel as if the trigger could be declined");
@@ -941,12 +941,12 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
 test("pending target-card selection clears when authoritative availability changes", async () => {
   const room = pendingTargetCardRoom("target-card-revision", { withFocusProjection: true });
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { button(renderer, { "aria-label": "Choose hidden Hand position 2" }).props.onClick(); });
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 2" }).props["aria-pressed"], true);
   const changed = pendingTargetCardRoom(room.actionRevision, { handCount: 1, withFocusProjection: true });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(GameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(renderGameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Choose hidden Hand position 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
   assert.equal(button(renderer, { "aria-label": "Confirm Burning Bridge selection" }).props.disabled, true);
@@ -957,7 +957,7 @@ test("generic selectable trigger keeps its name and retap clears target without 
   const room = { ...triggerRoom({ triggerOptions: [{ effectId: "future_target", label: "Future Target", selection: { type: "target", targetIds: ["p2"], min: 1, max: 1 } }] }), isMyTurn: true };
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const actionsBeforeSelection = [...actionCalls];
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "a stale isMyTurn flag cannot expose a turn footer primary during a trigger");
@@ -1094,7 +1094,7 @@ test("Quick Test projected Zhang Liao seat keeps Assault Confirm available", asy
   assert.equal(room.isMyAction, true, "the projected Zhang Liao seat owns the current decision");
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const assault = button(renderer, { "aria-label": "Assault" });
   assert.equal(assault.props.disabled, false);
@@ -1117,7 +1117,7 @@ test("Zhang Liao Assault keeps Confirm visible when a late presentation is still
   const useButton = (tree) => button(tree, { children: "Confirm" });
   const action = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { button(renderer, { "aria-label": "Assault" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
@@ -1126,7 +1126,7 @@ test("Zhang Liao Assault keeps Confirm visible when a late presentation is still
 
   const lateCard = { type: "card", id: "late-assault-presentation", player: "ACTIVE HERO", target: "TARGET ONE", action: "play", card: card("late-assault-card", "Attack") };
   const lateRoom = normalizeRoomData({ ...room, timeline: [lateCard] });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: lateRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: lateRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: lateRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: lateRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   assert.equal(useButton(renderer).props.disabled, false, "a late presentation cannot hide or disable Assault Confirm");
@@ -1139,7 +1139,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     let actionCalls = [];
     const onAction = async (...args) => { actionCalls.push(args); return true; };
     let renderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction, onLeave: () => {} }))); });
+    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
     const cultivation = button(renderer, { "aria-label": "Cultivation" });
@@ -1151,14 +1151,14 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
 
     let skipRenderer;
     const skipRoom = triggerRoom();
-    await act(async () => { skipRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: skipRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: skipRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
+    await act(async () => { skipRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: skipRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: skipRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     await act(async () => { button(skipRenderer, { children: "Skip" }).props.onClick(); });
     assert.deepEqual(actionCalls.at(-1), ["decline_trigger"]);
 
     const opponentRoom = triggerRoom({ meId: "p2", triggerOptions: [] });
     let opponentRenderer;
-    await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
+    await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(opponentRenderer.root.findAllByType("strong").filter((node) => renderedNodeText(node) === "No action needed.").length, 1, "absent public proof keeps the non-actor Local Dock neutral");
     assert.equal(renderedNodeText(opponentRenderer.root).includes("Waiting for the target to answer the attacker"), false, "the Attack fallback prompt is absent");
@@ -1167,7 +1167,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     assert.equal(opponentRoom.currentAction.actorId, "p1");
 
     const continuationRoom = normalizeRoomData({ ...room, isMyAction: false, actionPlayerId: "p2", currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Negation window", requirement: "negate", legalActions: ["respond", "decline_response"], options: [], triggerOptions: [] }, pendingNegation: { kind: "negation", actorId: "p2", responseTarget: "Stratagem's effect on TARGET", cardName: "Stratagem" }, phase: "response" });
-    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: continuationRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: continuationRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
+    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: continuationRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: continuationRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     assert.equal(renderer.root.findAll((node) => node.props?.["data-public-activity-chip"] === "true").length, 0,
       "an unproven continuation has no public status plaque or live announcement");
     assert.equal(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Negation window")).length, 0, "a non-actor does not get a duplicate or CurrentAction-derived waiting message");
@@ -1180,7 +1180,7 @@ test("Diao Chan Beauty uses exactly one routed profile control and remains disab
   const actionCalls = [];
   const onAction = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   const beautyButtons = renderer.root.findAllByType("button").filter((node) => node.props["aria-label"] === "Beauty Outshining the Moon");
@@ -1193,7 +1193,7 @@ test("Diao Chan Beauty uses exactly one routed profile control and remains disab
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "diao_chan_beauty_outshining_moon" }]);
 
   const unavailableRoom = triggerRoom({ hero: "diao-chan", playerName: "DIAO CHAN", code: "BEAUTY-UI-INACTIVE", triggerOptions: [], currentAction: { triggerEvent: "turn_end" } });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: unavailableRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: unavailableRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: unavailableRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: unavailableRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const inactiveBeauty = button(renderer, { "aria-label": "Beauty Outshining the Moon" });
   assert.equal(inactiveBeauty.props.disabled, true, "Beauty remains visible but disabled when unavailable");
@@ -1204,7 +1204,7 @@ test("an unmapped future trigger remains available through generic trigger contr
   const room = triggerRoom({ triggerOptions: [{ effectId: "future_trigger", label: "Future Trigger", selection: null }] });
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const future = button(renderer, { children: "Use Future Trigger" });
   assert.equal(future.props.disabled, false);
@@ -1220,7 +1220,7 @@ test("an unmapped attack_targeted trigger stays generic beside mapped Da Qiao De
   ] });
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   assertOnlyDeflectionProfile(renderer);
@@ -1239,7 +1239,7 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   assert.equal(recoveryRendered(renderer), false);
@@ -1307,7 +1307,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   const skillButton = () => button(renderer, { "aria-label": "Retaliation" });
@@ -1339,7 +1339,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
 
   await act(async () => { button(renderer, { "aria-label": "Choose one random Hand card, 1 cards" }).props.onClick(); });
   const revisedRoom = retaliationRoom("retaliation-ui-revision-2");
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(picker().length, 0, "a new action revision clears active Retaliation");
   await act(async () => { skillButton().props.onClick(); });
@@ -1349,7 +1349,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand"] }]);
 
   const skipRendererRoom = retaliationRoom("retaliation-ui-skip");
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: skipRendererRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: skipRendererRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: skipRendererRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: skipRendererRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { button(renderer, { children: "Skip" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["decline_trigger"]);
@@ -1362,7 +1362,7 @@ test("Da Qiao Deflection can select projected Equipment and resets stale selecti
   const actionCalls = [];
   const action = async (...args) => { actionCalls.push(args); return true; };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
   const equipmentButton = nodeWith(renderer, "data-equipment-id", "deflection-equipment").findAllByType("button").find((entry) => entry.props.className.includes("local-zone-card-button"));
@@ -1382,7 +1382,7 @@ test("Da Qiao Deflection can select projected Equipment and resets stale selecti
   assert.equal(recoveryRendered(renderer), false);
 
   const reloaded = normalizeRoomData({ ...room, actionRevision: "deflection-ui-revision-2" });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: reloaded, onRecover: () => {} }, React.createElement(GameRoom, { room: reloaded, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: reloaded, onRecover: () => {} }, React.createElement(renderGameRoom, { room: reloaded, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0, "a new action revision cannot reuse the old selection");
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
@@ -1398,10 +1398,10 @@ test("group card scope preview is local, rule-derived, and does not become targe
   let renderer;
   const render = async (nextRoom, busy = false, presentationView) => {
     room = nextRoom;
-    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, presentationView, busy, error: "", onAction: action, onLeave: () => {} }))); });
+    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, presentationView, busy, error: "", onAction: action, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   };
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   await act(async () => { handCardButton(renderer, "Oath-card").props.onClick(); });
@@ -1462,7 +1462,7 @@ test("mounted Duel response follows CurrentAction while the retired public stage
   const room = duelResponseRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "Duel focus uses the existing stable seat anchors");
   assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the fixture has no public physical root event to display");
@@ -1481,7 +1481,7 @@ test("mounted Duel response follows CurrentAction while the retired public stage
 test("mounted Duel response keeps private controls and public focus viewer-equal", async () => {
   const room = duelResponseRoom({ meId: "p1", actorId: "p2" });
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "an observer does not receive an unproven Duel CardFace");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "a non-actor cannot see private response controls");
@@ -1494,7 +1494,7 @@ test("mounted Duel response keeps private controls and public focus viewer-equal
 test("mounted Duel response keeps legal cards unselectable while an authoritative request is busy", async () => {
   const room = duelResponseRoom();
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: true, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: true, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(handCardButton(renderer, "duel-response-attack").props.disabled, true, "the response card cannot race a busy deadline/action update");
   assert.equal(consoleButtonsByClass(renderer, "primary")[0].props.disabled, true);
@@ -1504,12 +1504,12 @@ test("mounted Duel response keeps legal cards unselectable while an authoritativ
 test("mounted Duel response clears local selection when the server revision hands off", async () => {
   let room = duelResponseRoom();
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { handCardButton(renderer, "duel-response-attack").props.onClick(); });
   assert.equal(handCardButton(renderer, "duel-response-attack").props.className.includes("selected"), true);
   room = duelResponseRoom({ actorId: "p1", actionRevision: "duel-response-2" });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "responder handoff keeps seat order and count stable");
   assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the prior public card presenter remains fail-closed after handoff");
@@ -1522,7 +1522,7 @@ test("mounted Duel semantics ignore legacy action owner and turn fields", async 
   const base = duelResponseRoom();
   const room = { ...base, actionPlayerId: "p1", actionReason: "legacy owner", turnSeat: 1, isMyTurn: true };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "legacy owner fields cannot create a public Duel card without its proven event");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "CurrentAction still owns the local response console");
@@ -1539,7 +1539,7 @@ test("mounted Negation window fails closed without public card proof while respo
   const room = negationReactionRoom();
   const actionCalls = [];
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "a missing public physical root event cannot create a card display");
   assert.equal(renderer.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 0, "the retired reaction panel is absent");
@@ -1556,8 +1556,8 @@ test("mounted Negation keeps unproven public cards hidden, private controls scop
   const observerRoom = negationReactionRoom({ meId: "p1", actorId: "p2" });
   let actor;
   let observer;
-  await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
-  await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(actor.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the actor fixture has no public committed root event");
   assert.equal(observer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the observer sees the same fail-closed public projection");
@@ -1569,7 +1569,7 @@ test("mounted Negation keeps unproven public cards hidden, private controls scop
   await act(async () => { handCardButton(actor, "negation-private").props.onClick(); });
   assert.equal(button(actor, { children: "Confirm" }).props.disabled, false);
   const nextRoom = negationReactionRoom({ actorId: "p1", actionRevision: "negation-response-2" });
-  await act(async () => { actor.update(React.createElement(GameRoomErrorBoundary, { room: nextRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: nextRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { actor.update(React.createElement(GameRoomErrorBoundary, { room: nextRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: nextRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(actor.root.findAllByProps({ "data-hand-card-id": "negation-private" }).length, 0, "revision/actor change clears the private card selection");
   assert.equal(buttonsContaining(actor, "Confirm").length, 0);
@@ -1580,7 +1580,7 @@ test("mounted Dying handoff keeps the dying player focused while Peach stays loc
   const actionCalls = [];
   const actorRoom = dyingRescueRoom();
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: actorRoom, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   const handoff = renderer.root.findByProps({ "data-dying-handoff": "proven" });
@@ -1605,18 +1605,18 @@ test("mounted GameRoom exposes semantic transition hooks without animation or pr
   const initial = dyingRescueRoom();
   const rest = { ...initial, presentationSnapshot: null };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: rest, onRecover: () => {} }, React.createElement(GameRoom, { room: rest, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: rest, onRecover: () => {} }, React.createElement(renderGameRoom, { room: rest, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: initial, onRecover: () => {} }, React.createElement(GameRoom, { room: initial, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: initial, onRecover: () => {} }, React.createElement(renderGameRoom, { room: initial, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "INTERACTION_TRANSITION");
   assert.equal(renderer.root.findByProps({ "data-stage": "DYING" }).props["data-presentation-transition"], "INTERACTION_TRANSITION");
 
   const privateOnly = { ...initial, presentationSnapshot: { ...initial.presentationSnapshot, localControl: { ...initial.presentationSnapshot.localControl, actorId: "p1", actionRevision: "private-only", entitled: false } } };
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: privateOnly, onRecover: () => {} }, React.createElement(GameRoom, { room: privateOnly, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: privateOnly, onRecover: () => {} }, React.createElement(renderGameRoom, { room: privateOnly, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "NONE");
 
   const content = dyingRescueRoom({ actionRevision: "dying-rescue-2" });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: content, onRecover: () => {} }, React.createElement(GameRoom, { room: content, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: content, onRecover: () => {} }, React.createElement(renderGameRoom, { room: content, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "CONTENT_UPDATE");
   await act(async () => { renderer.unmount(); });
 });
@@ -1626,8 +1626,8 @@ test("mounted Dying scene is viewer-equal, preserves child context, and hides re
   const observerRoom = dyingRescueRoom({ meId: "p1", actorId: "p3", continuity: "CHILD_FRAME", parentFrameId: "duel-frame" });
   let actor;
   let observer;
-  await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
-  await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(renderGameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-continuity"], "CHILD_FRAME");
   assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-parent-frame-id"], "duel-frame");
@@ -1644,12 +1644,12 @@ test("mounted Dying scene is viewer-equal, preserves child context, and hides re
 test("mounted Dying handoff follows the server actor revision and ignores legacy focus fields", async () => {
   const initial = dyingRescueRoom();
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: initial, onRecover: () => {} }, React.createElement(GameRoom, { room: initial, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: initial, onRecover: () => {} }, React.createElement(renderGameRoom, { room: initial, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   await act(async () => { handCardButton(renderer, "dying-peach").props.onClick(); });
   const handedOff = dyingRescueRoom({ actorId: "p1", actionRevision: "dying-rescue-2", meId: "p3" });
   const legacyMutated = { ...handedOff, actionPlayerId: "p3", actionReason: "legacy owner", turnSeat: 2, isMyTurn: true, players: handedOff.players.map((player) => player.id === "p2" ? { ...player, hp: 4 } : player), timeline: [{ id: "legacy-dying", type: "message", player: "legacy", target: "legacy", message: "legacy" }] };
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: legacyMutated, onRecover: () => {} }, React.createElement(GameRoom, { room: legacyMutated, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: legacyMutated, onRecover: () => {} }, React.createElement(renderGameRoom, { room: legacyMutated, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-decision-actor-id"], "p1");
   assert.equal(renderer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-player-id"], "p2");
@@ -1665,7 +1665,7 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
   const actionCalls = [];
   let renderer;
   const action = async (...args) => { actionCalls.push(args); return true; };
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-has-interaction"], "true", "the server-projected Judgement stage remains available without the old central panel");
   assert.equal(renderer.root.findAllByProps({ className: "interaction-stage" }).length, 0, "Judgement does not restore the oversized generic stage");
@@ -1682,7 +1682,7 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_guicai", cardIds: ["judgement-replacement"] }]);
 
   room = judgementReplacementRoom({ actorId: "p1", actionRevision: "judgement-effective-2", triggerEvent: "judgement_effective" });
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByType("main").props["data-presentation-has-interaction"], "true");
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, true, "the old replacement provider is disabled after the authoritative actor changes");
@@ -1694,7 +1694,7 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
 test("mounted Judgement keeps public focus viewer-equal without leaking replacement identity", async () => {
   const room = judgementReplacementRoom({ meId: "p1", actorId: "p2" });
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(renderGameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-hero-focus": "true" }).length, 0, "the viewer's hero is not duplicated centrally when no unique external source is available");
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "judgement-replacement" }).length, 0, "replacement candidates remain private to Sima Yi");
@@ -1710,11 +1710,11 @@ test("mounted Judgement keeps public focus viewer-equal without leaking replacem
 test("mounted Judgement focus and controls ignore legacy owners and require an authorized reveal event", async () => {
   const legacy = { ...judgementReplacementRoom(), actionPlayerId: "p1", actionReason: "legacy owner", turnSeat: 1, isMyTurn: true };
   let renderer;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: legacy, onRecover: () => {} }, React.createElement(GameRoom, { room: legacy, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: legacy, onRecover: () => {} }, React.createElement(renderGameRoom, { room: legacy, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
   assert.equal(renderer.root.findByType("main").props["data-presentation-has-interaction"], "true");
-  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: judgementReplacementRoom({ includeReveal: false }), onRecover: () => {} }, React.createElement(GameRoom, { room: judgementReplacementRoom({ includeReveal: false }), busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: judgementReplacementRoom({ includeReveal: false }), onRecover: () => {} }, React.createElement(renderGameRoom, { room: judgementReplacementRoom({ includeReveal: false }), busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-stage": "JUDGEMENT" }).length, 0, "Judgement semantics remain server-projected without restoring the retired central panel");
   const renderedDodgeCards = renderer.root.findAll((node) => typeof node.props.className === "string"

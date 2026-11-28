@@ -12702,12 +12702,12 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
       actionRevisionPresent: Boolean(room.actionRevision),
     });
   }, [busy, endTurnConfirmationAuthorizationReason, endTurnConfirmationIdentity, endTurnConfirmationIsCurrent,
-    endTurnConfirmationScope, endTurnConfirmationSubmitting,
+    endTurnConfirmationScope, endTurnConfirmationSubmitting, endTurnConfirmationTraceSignatureRef,
     room.actionRevision, room.currentAction?.actorId, room.currentAction?.kind, room.meId]);
   useEffect(() => {
     if (!endTurnConfirmationIsCurrent) return;
     endTurnConfirmationCancelRef.current?.focus({ preventScroll: true });
-  }, [endTurnConfirmationIdentity, endTurnConfirmationIsCurrent]);
+  }, [endTurnConfirmationCancelRef, endTurnConfirmationIdentity, endTurnConfirmationIsCurrent]);
   useEffect(() => {
     if (!endTurnConfirmationIsCurrent) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
@@ -12718,7 +12718,7 @@ export function GameRoom({ room, roomSessionStore, presentationView, busy, busyA
     };
     window.addEventListener("keydown", dismissOnEscape, true);
     return () => window.removeEventListener("keydown", dismissOnEscape, true);
-  }, [closeEndTurnConfirmation, endTurnConfirmationIsCurrent]);
+  }, [closeEndTurnConfirmation, endTurnConfirmation.isSubmissionInFlight, endTurnConfirmationIsCurrent]);
   const confirmEndTurn = async () => {
     const submission = endTurnConfirmation.beginSubmission({
       scope: endTurnConfirmationScope,
